@@ -1,0 +1,766 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  Plus,
+  ClipboardList,
+  Truck,
+  PackageCheck,
+  DollarSign,
+  Ban,
+  Printer,
+  FileSpreadsheet,
+  Search,
+  X,
+  Check,
+  FileText,
+  ArrowRightCircle,
+  PackageCheck as ReceiveIcon,
+} from "lucide-react";
+import { useFetch, api } from "@/lib/client";
+import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
+import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { LineBuilder, Line } from "@/components/LineBuilder";
+import { usd, num, dateTime, shortDate } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
+
+const STATUS_TONE: Record<POStatus, "brand" | "amber" | "emerald" | "slate"> = {
+  Open: "brand",
+  Partial: "amber",
+  Received: "emerald",
+  Cancelled: "slate",
+};
+
+const poTotal = (po: PurchaseOrder) => po.items.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
+const prTotal = (pr: PurchaseRequest) => pr.items.reduce((s, i) => s + i.cost * i.qty, 0);
+const receivedPct = (po: PurchaseOrder) => {
+  const ord = po.items.reduce((s, i) => s + i.qtyOrdered, 0);
+  const rec = po.items.reduce((s, i) => s + Math.min(i.qtyReceived, i.qtyOrdered), 0);
+  return ord ? Math.round((rec / ord) * 100) : 0;
+};
+
+export default function PurchaseOrdersPage() {
+  const { data: pos, loading, error, reload } = useFetch<PurchaseOrder[]>("/api/purchase-orders");
+  const { data: prs, reload: reloadPRs } = useFetch<PurchaseRequest[]>("/api/purchase-requests");
+  const { data: products } = useFetch<Product[]>("/api/products");
+  const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
+  const searchParams = useSearchParams();
+  const [creating, setCreating] = useState(false);
+  const [presetSupplierCode, setPresetSupplierCode] = useState<string | undefined>(undefined);
+  const [viewing, setViewing] = useState<PurchaseOrder | null>(null);
+  const [viewingPR, setViewingPR] = useState<PurchaseRequest | null>(null);
+  const [prBusy, setPrBusy] = useState(false);
+
+  // Procurement's inbox: requests submitted by the operation team.
+  const queue = (prs || []).filter((r) => r.status === "Submitted" || r.status === "Approved");
+
+  async function decidePR(pr: PurchaseRequest, status: "Approved" | "Rejected") {
+    setPrBusy(true);
+    try {
+      await api(`/api/purchase-requests/${pr.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      setViewingPR(null);
+      reloadPRs();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setPrBusy(false);
+    }
+  }
+
+  async function convertPR(pr: PurchaseRequest) {
+    setPrBusy(true);
+    try {
+      const res = await api<{ pos: { poNo: string }[] }>(`/api/purchase-requests/${pr.id}/convert`, {
+        method: "POST",
+      });
+      setViewingPR(null);
+      reloadPRs();
+      reload();
+      alert(`Created ${res.pos.length} purchase order(s): ${res.pos.map((p) => p.poNo).join(", ")}`);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setPrBusy(false);
+    }
+  }
+
+  // Deep-link from the Suppliers page ("New PO for this supplier").
+  useEffect(() => {
+    const code = searchParams.get("supplier");
+    if (code) {
+      setPresetSupplierCode(code);
+      setCreating(true);
+    }
+  }, [searchParams]);
+
+  const list = pos || [];
+  const open = list.filter((p) => p.status === "Open" || p.status === "Partial").length;
+  const received = list.filter((p) => p.status === "Received").length;
+  const openValue = list
+    .filter((p) => p.status === "Open" || p.status === "Partial")
+    .reduce((s, p) => s + poTotal(p), 0);
+
+  async function cancel(po: PurchaseOrder) {
+    if (!confirm(`Cancel ${po.poNo}?`)) return;
+    await api(`/api/purchase-orders/${po.id}`, { method: "PATCH", body: JSON.stringify({ action: "cancel" }) });
+    setViewing(null);
+    reload();
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Purchase Orders"
+        subtitle="Procurement team — approve store requests, order from suppliers, track receiving"
+        actions={
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Plus size={18} /> New Order
+          </button>
+        }
+      />
+
+      {error && <ErrorBox message={error} />}
+
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Total Orders" value={num(list.length)} icon={<ClipboardList size={18} />} accent="brand" />
+        <StatCard label="Open / Partial" value={num(open)} icon={<Truck size={18} />} accent="amber" />
+        <StatCard label="Fully Received" value={num(received)} icon={<PackageCheck size={18} />} accent="emerald" />
+        <StatCard label="Open Value" value={usd(openValue)} icon={<DollarSign size={18} />} accent="violet" />
+      </div>
+
+      {queue.length > 0 && (
+        <>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+            <FileText size={16} /> Requests from Operations ({queue.length})
+          </h2>
+          <div className="mb-6 space-y-2">
+            {queue.map((pr) => (
+              <div
+                key={pr.id}
+                className="card flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50/60"
+                onClick={() => setViewingPR(pr)}
+              >
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="font-semibold text-ink-800">{pr.prNo}</p>
+                    <p className="text-xs text-slate-400">
+                      {pr.requestedBy} · {dateTime(pr.createdAt)}
+                    </p>
+                  </div>
+                  <Badge tone={pr.status === "Submitted" ? "amber" : "emerald"}>{pr.status}</Badge>
+                  <span className="text-sm text-slate-500">
+                    {pr.items.length} item{pr.items.length === 1 ? "" : "s"} ·{" "}
+                    <b className="text-ink-800">{usd(prTotal(pr))}</b>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  {pr.status === "Submitted" && (
+                    <>
+                      <button
+                        disabled={prBusy}
+                        onClick={() => decidePR(pr, "Rejected")}
+                        className="btn-danger !px-3 !py-1.5 text-xs"
+                      >
+                        <X size={14} /> Reject
+                      </button>
+                      <button
+                        disabled={prBusy}
+                        onClick={() => decidePR(pr, "Approved")}
+                        className="btn-primary !px-3 !py-1.5 text-xs"
+                      >
+                        <Check size={14} /> Approve
+                      </button>
+                    </>
+                  )}
+                  {pr.status === "Approved" && (
+                    <button
+                      disabled={prBusy}
+                      onClick={() => convertPR(pr)}
+                      className="btn-primary !px-3 !py-1.5 text-xs"
+                    >
+                      <ArrowRightCircle size={14} /> Generate PO
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <Card className="p-0">
+        {loading ? (
+          <Spinner label="Loading orders…" />
+        ) : list.length === 0 ? (
+          <EmptyState title="No purchase orders yet" hint="Approve a request or create an order directly." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-4 py-3 font-semibold">Order</th>
+                  <th className="px-4 py-3 font-semibold">Supplier</th>
+                  <th className="px-4 py-3 text-right font-semibold">Value</th>
+                  <th className="px-4 py-3 font-semibold">Received</th>
+                  <th className="px-4 py-3 text-center font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((po) => {
+                  const pct = receivedPct(po);
+                  return (
+                    <tr
+                      key={po.id}
+                      className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/60"
+                      onClick={() => setViewing(po)}
+                    >
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-ink-800">{po.poNo}</p>
+                        <p className="text-xs text-slate-400">
+                          {po.prNo ? `from ${po.prNo} · ` : ""}
+                          {shortDate(po.createdAt)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{po.supplier}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink-800">{usd(poTotal(po))}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-full rounded-full ${
+                                pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300"
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-slate-500">{pct}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          {(po.status === "Open" || po.status === "Partial") && (
+                            <Link href="/receiving" className="btn-primary !px-3 !py-1.5 text-xs">
+                              <ReceiveIcon size={14} /> Receive
+                            </Link>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {creating && (
+        <CreatePOModal
+          products={products || []}
+          suppliers={suppliers || []}
+          initialSupplierCode={presetSupplierCode}
+          onClose={() => {
+            setCreating(false);
+            setPresetSupplierCode(undefined);
+          }}
+          onCreated={() => {
+            setCreating(false);
+            setPresetSupplierCode(undefined);
+            reload();
+          }}
+        />
+      )}
+
+      {viewing && <ViewPOModal po={viewing} onClose={() => setViewing(null)} onCancel={() => cancel(viewing)} />}
+
+      {viewingPR && (
+        <ReviewPRModal
+          pr={viewingPR}
+          busy={prBusy}
+          onClose={() => setViewingPR(null)}
+          onApprove={() => decidePR(viewingPR, "Approved")}
+          onReject={() => decidePR(viewingPR, "Rejected")}
+          onConvert={() => convertPR(viewingPR)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReviewPRModal({
+  pr,
+  busy,
+  onClose,
+  onApprove,
+  onReject,
+  onConvert,
+}: {
+  pr: PurchaseRequest;
+  busy: boolean;
+  onClose: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onConvert: () => void;
+}) {
+  const suppliersInPR = Array.from(new Set(pr.items.map((i) => i.supplier)));
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Review ${pr.prNo}`}
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <a href={`/api/purchase-requests/${pr.id}/export`} className="btn-ghost">
+            <FileSpreadsheet size={16} /> Excel
+          </a>
+          <div className="flex gap-2">
+            {pr.status === "Submitted" && (
+              <>
+                <button className="btn-danger" disabled={busy} onClick={onReject}>
+                  <X size={16} /> Reject
+                </button>
+                <button className="btn-primary" disabled={busy} onClick={onApprove}>
+                  <Check size={16} /> Approve
+                </button>
+              </>
+            )}
+            {pr.status === "Approved" && (
+              <button className="btn-primary" disabled={busy} onClick={onConvert}>
+                <ArrowRightCircle size={16} /> Generate PO{suppliersInPR.length > 1 ? "s" : ""}
+              </button>
+            )}
+          </div>
+        </div>
+      }
+    >
+      <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-500">
+        <span>
+          Requested by <b className="text-ink-700">{pr.requestedBy}</b>
+        </span>
+        <span>{dateTime(pr.createdAt)}</span>
+        {suppliersInPR.length > 1 && (
+          <span className="text-brand-600">
+            {suppliersInPR.length} suppliers → will split into {suppliersInPR.length} POs
+          </span>
+        )}
+      </div>
+      {pr.note && <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{pr.note}</p>}
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-semibold">Product</th>
+              <th className="px-3 py-2 font-semibold">Supplier</th>
+              <th className="px-3 py-2 text-center font-semibold">Qty</th>
+              <th className="px-3 py-2 text-right font-semibold">Line</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pr.items.map((it) => (
+              <tr key={it.productId} className="border-b border-slate-50 last:border-0">
+                <td className="px-3 py-2">
+                  <p className="font-semibold text-ink-800">{it.name}</p>
+                  <p className="text-[11px] text-slate-400">{it.barcode || it.sku}</p>
+                </td>
+                <td className="px-3 py-2 text-slate-600">{it.supplier}</td>
+                <td className="px-3 py-2 text-center">
+                  {it.qty} {it.unit}
+                </td>
+                <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(it.cost * it.qty)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-50">
+              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={3}>
+                Total estimated cost
+              </td>
+              <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(prTotal(pr))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Modal>
+  );
+}
+
+type SupplierGroup = { supplierCode: string; supplierName: string; lines: Line[] };
+
+function CreatePOModal({
+  products,
+  suppliers,
+  initialSupplierCode,
+  onClose,
+  onCreated,
+}: {
+  products: Product[];
+  suppliers: Supplier[];
+  initialSupplierCode?: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [lines, setLines] = useState<Line[]>([]);
+  const [browsingSupplierCode, setBrowsingSupplierCode] = useState<string | null>(initialSupplierCode ?? null);
+  const [expectedDate, setExpectedDate] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const productCountByCode = useMemo(() => {
+    const m = new Map<string, number>();
+    products.forEach((p) => {
+      if (p.supplierCode) m.set(p.supplierCode, (m.get(p.supplierCode) || 0) + 1);
+    });
+    return m;
+  }, [products]);
+
+  function addLine(product: Product, qty = 1) {
+    setLines((prev) => {
+      const existing = prev.find((l) => l.product.id === product.id);
+      if (existing) return prev.map((l) => (l.product.id === product.id ? { ...l, qty: l.qty + qty } : l));
+      return [...prev, { product, qty }];
+    });
+  }
+
+  // A cart can span many suppliers — scanning is never restricted by
+  // supplier. Group by supplierCode so the order auto-splits into one PO
+  // per supplier at creation time, exactly like PR → PO conversion already does.
+  const groups = useMemo<SupplierGroup[]>(() => {
+    const map = new Map<string, SupplierGroup>();
+    for (const l of lines) {
+      const code = l.product.supplierCode || "";
+      const key = code || `unlinked:${l.product.supplier}`;
+      if (!map.has(key)) {
+        map.set(key, { supplierCode: code, supplierName: l.product.supplier, lines: [] });
+      }
+      map.get(key)!.lines.push(l);
+    }
+    return [...map.values()];
+  }, [lines]);
+
+  const orderable = groups.filter((g) => g.supplierCode);
+  const unlinked = groups.filter((g) => !g.supplierCode);
+  const groupTotal = (g: SupplierGroup) => g.lines.reduce((s, l) => s + l.product.cost * l.qty, 0);
+
+  async function save() {
+    if (orderable.length === 0) return;
+    setBusy(true);
+    try {
+      const created: string[] = [];
+      for (const g of orderable) {
+        const res = await api<{ poNo: string }>("/api/purchase-orders", {
+          method: "POST",
+          body: JSON.stringify({
+            supplier: g.supplierName,
+            expectedDate: expectedDate || undefined,
+            items: g.lines.map((l) => ({
+              productId: l.product.id,
+              sku: l.product.sku,
+              name: l.product.name,
+              unit: l.product.unit,
+              qtyOrdered: l.qty,
+              cost: l.product.cost,
+              barcode: l.product.barcode,
+            })),
+          }),
+        });
+        created.push(res.poNo);
+      }
+      onCreated();
+      if (created.length > 1) {
+        alert(`Split across ${created.length} suppliers — created: ${created.join(", ")}`);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="New Purchase Order"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={busy || orderable.length === 0} onClick={save}>
+            {busy
+              ? "Creating…"
+              : orderable.length > 1
+                ? `Create ${orderable.length} Purchase Orders`
+                : "Create Order"}
+          </button>
+        </>
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3">
+        <p className="text-sm text-slate-500">
+          Scan or search any item — items from different suppliers are automatically split into separate orders.
+        </p>
+        <div>
+          <label className="label mb-0.5">Expected date</label>
+          <input
+            className="input"
+            type="date"
+            value={expectedDate}
+            onChange={(e) => setExpectedDate(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <LineBuilder products={products} lines={lines} setLines={setLines} />
+
+      {/* Order summary — shows the split before it happens */}
+      {groups.length > 0 && (
+        <div className="mt-4">
+          <p className="label mb-2">
+            {orderable.length > 1
+              ? `This will create ${orderable.length} purchase orders`
+              : "Order summary"}
+          </p>
+          <div className="space-y-1.5">
+            {orderable.map((g) => (
+              <div
+                key={g.supplierCode}
+                className="flex items-center justify-between rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm"
+              >
+                <span className="font-semibold text-ink-800">{g.supplierName}</span>
+                <span className="text-slate-500">
+                  {g.lines.length} item{g.lines.length === 1 ? "" : "s"} ·{" "}
+                  <b className="text-ink-800">{usd(groupTotal(g))}</b>
+                </span>
+              </div>
+            ))}
+            {unlinked.map((g) => (
+              <div
+                key={g.supplierName}
+                className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm"
+              >
+                <span className="font-semibold text-amber-800">
+                  {g.supplierName === "—" ? "No supplier linked" : g.supplierName}
+                </span>
+                <span className="text-amber-700">
+                  {g.lines.length} item{g.lines.length === 1 ? "" : "s"} excluded —{" "}
+                  <a href="/inventory" className="underline">
+                    link supplier
+                  </a>{" "}
+                  to order
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 border-t border-slate-100 pt-4">
+        <button
+          type="button"
+          onClick={() => setBrowsingSupplierCode(browsingSupplierCode ? null : "")}
+          className="text-xs font-semibold text-brand-600 underline"
+        >
+          {browsingSupplierCode !== null ? "Hide supplier browser" : "Browse a supplier's catalog"}
+        </button>
+        {browsingSupplierCode !== null && (
+          <div className="mt-3">
+            <SupplierBrowser
+              suppliers={suppliers}
+              products={products}
+              productCountByCode={productCountByCode}
+              supplierCode={browsingSupplierCode}
+              onChooseSupplier={setBrowsingSupplierCode}
+              onAdd={addLine}
+            />
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Optional convenience: pick a supplier and click through its catalog to
+// bulk-add items — purely additive, never restricts what the scan/search
+// box above can add.
+function SupplierBrowser({
+  suppliers,
+  products,
+  productCountByCode,
+  supplierCode,
+  onChooseSupplier,
+  onAdd,
+}: {
+  suppliers: Supplier[];
+  products: Product[];
+  productCountByCode: Map<string, number>;
+  supplierCode: string;
+  onChooseSupplier: (code: string) => void;
+  onAdd: (product: Product, qty?: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const supplier = suppliers.find((s) => s.code === supplierCode);
+
+  if (!supplier) {
+    const q = query.trim().toLowerCase();
+    const withProducts = suppliers.filter((s) => (productCountByCode.get(s.code) || 0) > 0);
+    const filtered = (q
+      ? withProducts.filter((s) => s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q))
+      : withProducts
+    ).slice(0, 50);
+    return (
+      <div>
+        <div className="relative mb-2">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            autoFocus
+            className="input py-2 pl-9 text-sm"
+            placeholder="Search suppliers…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200">
+          {filtered.map((s) => (
+            <button
+              key={s.code}
+              type="button"
+              onClick={() => onChooseSupplier(s.code)}
+              className="flex w-full items-center justify-between border-b border-slate-50 px-3.5 py-2 text-left text-sm last:border-0 hover:bg-brand-50"
+            >
+              <span className="font-medium text-ink-800">{s.name}</span>
+              <Badge tone="slate">{productCountByCode.get(s.code) || 0}</Badge>
+            </button>
+          ))}
+          {filtered.length === 0 && <p className="px-3.5 py-5 text-center text-sm text-slate-400">No suppliers match.</p>}
+        </div>
+      </div>
+    );
+  }
+
+  const items = products.filter((p) => p.supplierCode === supplierCode).sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-sm font-semibold text-ink-800">{supplier.name}</p>
+        <button type="button" onClick={() => onChooseSupplier("")} className="text-xs text-slate-400 hover:text-slate-600">
+          Change supplier
+        </button>
+      </div>
+      <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200">
+        {items.slice(0, 60).map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onAdd(p)}
+            className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3.5 py-2 text-left text-sm last:border-0 hover:bg-brand-50"
+          >
+            <span className="min-w-0 truncate font-medium text-ink-800">{p.name}</span>
+            <span className="shrink-0 text-xs text-slate-500">{usd(p.cost)}</span>
+          </button>
+        ))}
+        {items.length === 0 && <p className="px-3.5 py-5 text-center text-sm text-slate-400">No products found.</p>}
+      </div>
+      {items.length > 60 && (
+        <p className="mt-1 text-[11px] text-slate-400">Showing 60 of {items.length} — use search above to narrow.</p>
+      )}
+    </div>
+  );
+}
+
+function ViewPOModal({
+  po,
+  onClose,
+  onCancel,
+}: {
+  po: PurchaseOrder;
+  onClose: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${po.poNo} · ${po.supplier}`}
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
+          <div className="flex gap-2">
+            <Link href={`/purchase-orders/${po.id}/print`} className="btn-ghost">
+              <Printer size={16} /> Print PO
+            </Link>
+            <a href={`/api/purchase-orders/${po.id}/export`} className="btn-ghost">
+              <FileSpreadsheet size={16} /> Excel
+            </a>
+            {(po.status === "Open" || po.status === "Partial") && (
+              <>
+                <button className="btn-danger" onClick={onCancel}>
+                  <Ban size={16} /> Cancel PO
+                </button>
+                <Link href="/receiving" className="btn-primary">
+                  <ReceiveIcon size={16} /> Receive Goods
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      }
+    >
+      <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-500">
+        <span>Created {dateTime(po.createdAt)}</span>
+        {po.prNo && <span>From <b className="text-ink-700">{po.prNo}</b></span>}
+        {po.expectedDate && <span>Expected {shortDate(po.expectedDate)}</span>}
+      </div>
+      {po.note && <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{po.note}</p>}
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-semibold">Product</th>
+              <th className="px-3 py-2 text-center font-semibold">Ordered</th>
+              <th className="px-3 py-2 text-center font-semibold">Received</th>
+              <th className="px-3 py-2 text-right font-semibold">Line</th>
+            </tr>
+          </thead>
+          <tbody>
+            {po.items.map((it) => {
+              const short = it.qtyOrdered - it.qtyReceived;
+              return (
+                <tr key={it.productId} className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-2">
+                    <p className="font-semibold text-ink-800">{it.name}</p>
+                    <p className="text-xs text-slate-400">{it.sku}</p>
+                  </td>
+                  <td className="px-3 py-2 text-center">{it.qtyOrdered} {it.unit}</td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={it.qtyReceived >= it.qtyOrdered ? "text-emerald-600" : "text-amber-600"}>
+                      {it.qtyReceived}
+                    </span>
+                    {short > 0 && it.qtyReceived > 0 && (
+                      <span className="ml-1 text-xs text-rose-500">(-{short})</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(it.cost * it.qtyOrdered)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-50">
+              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={3}>
+                Total order value
+              </td>
+              <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(poTotal(po))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Modal>
+  );
+}

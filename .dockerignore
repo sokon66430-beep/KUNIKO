@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+data/stores
+data/system.json
+data/db.json
+*.xlsx
+npm-debug.log
+.env*.local
+DEPLOY.md
+README.md
