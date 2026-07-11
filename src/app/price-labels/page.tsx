@@ -181,6 +181,10 @@ export default function PriceLabelsPage() {
   const [nameMode, setNameMode] = useState<NameMode>("kh-en"); // what shows on the label
   const [perRow, setPerRow] = useState<4 | 5>(4); // labels across an A4 page
   const [pdfBusy, setPdfBusy] = useState(false);
+  // Current shelf location — set this BEFORE scanning; every item scanned in
+  // takes this Gondola/Shelf. Change it when you move to the next shelf.
+  const [curGondola, setCurGondola] = useState("");
+  const [curShelf, setCurShelf] = useState("");
   const scanRef = useRef<HTMLInputElement>(null);
 
   // Label width (mm) + a 1mm gap so there's a thin line to cut between labels
@@ -220,7 +224,12 @@ export default function PriceLabelsPage() {
         const updated = { ...existing, qty: existing.qty + 1 };
         return [updated, ...b.filter((l) => l.product.id !== p.id)];
       }
-      return [{ product: p, qty: 1, gondola: p.gondola || "", shelf: p.shelf || "" }, ...b];
+      // A newly scanned item takes the CURRENT shelf location (set at the top);
+      // if none is set, fall back to whatever the product already had.
+      return [
+        { product: p, qty: 1, gondola: curGondola || p.gondola || "", shelf: curShelf || p.shelf || "" },
+        ...b,
+      ];
     });
     setScan("");
     setNotice(null);
@@ -448,6 +457,32 @@ export default function PriceLabelsPage() {
             )}
           </div>
           {notice && <p className="mt-2 text-xs font-medium text-amber-600">{notice}</p>}
+
+          {/* Shelf location — fill this FIRST, then scan; every item scanned in
+              takes this Gondola/Shelf. Change it when you move to the next shelf. */}
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-brand-50/60 px-3.5 py-2.5 ring-1 ring-brand-100">
+            <span className="text-xs font-bold uppercase tracking-wide text-brand-700">Shelf location</span>
+            <span className="text-[11px] text-slate-500">Fill this first, then scan — every item you scan gets this spot</span>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+              Gondola
+              <input
+                className="h-9 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-bold text-ink-900 outline-none focus:border-brand-500"
+                value={curGondola}
+                onChange={(e) => setCurGondola(e.target.value)}
+                placeholder="A12"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+              Shelf
+              <input
+                className="h-9 w-16 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-bold text-ink-900 outline-none focus:border-brand-500"
+                value={curShelf}
+                onChange={(e) => setCurShelf(e.target.value)}
+                placeholder="3"
+              />
+            </label>
+          </div>
+
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-500">Per row:</span>

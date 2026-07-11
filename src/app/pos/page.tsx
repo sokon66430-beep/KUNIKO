@@ -798,6 +798,10 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <>
+              <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                Sales are imported daily from your POS — figures are current up to your last import (usually yesterday).
+              </p>
+
               {/* Filters: a searchable category picker + item search (no raw dropdown) */}
               <div className="mb-4 flex flex-col gap-2 sm:flex-row">
                 <SearchSelect
