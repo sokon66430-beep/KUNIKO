@@ -14,7 +14,6 @@ import {
   ScanLine,
   PackageCheck,
   Ban,
-  Sparkles,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseRequest, PRStatus } from "@/lib/types";
@@ -84,31 +83,6 @@ export default function PurchaseRequestsPage() {
     setCreating(true);
   }
 
-  // Opening order for a NEW store: pull best sellers from your other stores and
-  // pre-fill a request with a recommended quantity for each (adjustable).
-  const productBySku = useMemo(() => new Map((products || []).map((p) => [p.sku, p])), [products]);
-  const [loadingBest, setLoadingBest] = useState(false);
-  async function stockNewStore() {
-    setLoadingBest(true);
-    try {
-      const res = await fetch("/api/cross-store-bestsellers").then((r) => r.json());
-      const lines: Line[] = [];
-      for (const it of res.items || []) {
-        const p = productBySku.get(it.sku);
-        if (p) lines.push({ product: p, qty: it.recommendedQty || 1 });
-      }
-      if (lines.length === 0) {
-        alert("No sales history in your other stores yet — nothing to recommend. Import some sales first, then try again.");
-        return;
-      }
-      startRequest(lines);
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setLoadingBest(false);
-    }
-  }
-
   function quickAdd(s: Suggestion) {
     const p = productById.get(s.productId);
     if (!p) return;
@@ -171,14 +145,9 @@ export default function PurchaseRequestsPage() {
         title="Purchase Requests"
         subtitle="Create and track stock requests — approval and ordering are handled by Procurement"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <button className="btn-ghost" disabled={loadingBest} onClick={stockNewStore} title="Pre-fill an opening order from best sellers across your other stores">
-              <Sparkles size={18} /> {loadingBest ? "Building…" : "Stock a new store"}
-            </button>
-            <button className="btn-primary" onClick={() => startRequest()}>
-              <Plus size={18} /> New Request
-            </button>
-          </div>
+          <button className="btn-primary" onClick={() => startRequest()}>
+            <Plus size={18} /> New Request
+          </button>
         }
       />
 

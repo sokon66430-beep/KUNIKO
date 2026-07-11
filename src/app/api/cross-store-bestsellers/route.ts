@@ -19,6 +19,7 @@ export async function GET(req: Request) {
   const exclude = url.searchParams.get("exclude") || s.storeId;
   const days = Math.max(1, Number(url.searchParams.get("days")) || 30);
   const cover = Math.max(1, Number(url.searchParams.get("cover")) || 30);
+  const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 200));
 
   const sys = await readSystem();
   const now = Date.now();
@@ -60,7 +61,7 @@ export async function GET(req: Request) {
       return { sku: e.sku, name: e.name, barcode: e.barcode, category: e.category, units: e.units, stores: e.stores.size, recommendedQty };
     })
     .sort((a, b) => b.units - a.units)
-    .slice(0, 200);
+    .slice(0, limit);
 
   return NextResponse.json({ items, storesWithSales, days, cover });
 }

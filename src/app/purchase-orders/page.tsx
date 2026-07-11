@@ -18,12 +18,14 @@ import {
   FileText,
   ArrowRightCircle,
   PackageCheck as ReceiveIcon,
+  Sparkles,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
+import { OpeningOrderModal } from "@/components/OpeningOrderModal";
 import { usd, num, dateTime, shortDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +52,7 @@ export default function PurchaseOrdersPage() {
   const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
   const searchParams = useSearchParams();
   const [creating, setCreating] = useState(false);
+  const [openingStore, setOpeningStore] = useState(false);
   const [presetSupplierCode, setPresetSupplierCode] = useState<string | undefined>(undefined);
   const [viewing, setViewing] = useState<PurchaseOrder | null>(null);
   const [viewingPR, setViewingPR] = useState<PurchaseRequest | null>(null);
@@ -125,13 +128,29 @@ export default function PurchaseOrdersPage() {
         title="Purchase Orders"
         subtitle="Procurement team — approve store requests, order from suppliers, track receiving"
         actions={
-          <button className="btn-primary" onClick={() => setCreating(true)}>
-            <Plus size={18} /> New Order
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="btn-ghost" onClick={() => setOpeningStore(true)} title="Order best sellers to stock a new store">
+              <Sparkles size={18} /> Stock a new store
+            </button>
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              <Plus size={18} /> New Order
+            </button>
+          </div>
         }
       />
 
       {error && <ErrorBox message={error} />}
+
+      {openingStore && (
+        <OpeningOrderModal
+          products={products || []}
+          onClose={() => setOpeningStore(false)}
+          onDone={() => {
+            setOpeningStore(false);
+            reload();
+          }}
+        />
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Total Orders" value={num(list.length)} icon={<ClipboardList size={18} />} accent="brand" />
