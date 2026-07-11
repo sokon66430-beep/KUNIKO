@@ -187,8 +187,8 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Store switcher (owners with >1 store) — custom styled dropdown */}
-      {ALLOW_STORE_SWITCH && isOwner && (session?.stores.length || 0) > 1 && (
+      {/* Store switcher (owner) — switch the active store, or add more. */}
+      {ALLOW_STORE_SWITCH && isOwner && (session?.stores.length || 0) >= 1 && (
         <div className="relative px-3 pb-1">
           <button
             type="button"
@@ -216,7 +216,7 @@ export default function Sidebar() {
               <div className="fixed inset-0 z-40" onClick={() => setStoreMenuOpen(false)} />
               <div className="absolute left-3 right-3 z-50 mt-1.5 animate-fade-up overflow-hidden rounded-xl bg-white shadow-lift ring-1 ring-slate-900/[0.08]">
                 <p className="border-b border-slate-100 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                  Switch store
+                  {session!.stores.length > 1 ? "Switch store" : "Your store"}
                 </p>
                 {session!.stores.map((s) => {
                   const active = s.id === session!.user.storeId;
@@ -244,6 +244,16 @@ export default function Sidebar() {
                     </button>
                   );
                 })}
+                <Link
+                  href="/stores"
+                  onClick={() => setStoreMenuOpen(false)}
+                  className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-left text-[13px] font-semibold text-brand-600 transition hover:bg-brand-50/60"
+                >
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-brand-50 text-brand-600">
+                    <Building2 size={13} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">Add / manage stores</span>
+                </Link>
               </div>
             </>
           )}
