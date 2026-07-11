@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ScanLine, Search, Trash2, Sparkles, X, Camera } from "lucide-react";
 import type { Product } from "@/lib/types";
 import { usd } from "@/lib/format";
+import { useFetch } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 
 export type Line = { product: Product; qty: number };
@@ -12,6 +13,61 @@ export type Suggestion = {
   productId: string;
   suggestedQty: number;
 };
+
+// Sales velocity per product (from /api/product-velocity): units sold in the
+// last 3 and 7 days, plus a per-weekday tally (Mon..Sun) over the last 4 weeks.
+type Velocity = { d3: number; d7: number; dow: number[] };
+const DOW_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+
+// Recommended order quantity: cover ~1 week of recent sales, minus what's on
+// hand. Falls back to the reorder-level gap when there's no recent sales data.
+function recommendQty(p: Product, v?: Velocity): number {
+  if (v && v.d7 > 0) {
+    const target = Math.ceil((v.d7 / 7) * 7); // ~7 days of cover
+    return Math.max(target - p.stock, 1);
+  }
+  if (p.reorderLevel > 0) return Math.max(p.reorderLevel * 2 - p.stock, 1);
+  return 1;
+}
+
+// Compact sales-performance readout for one order line: last 3d / 7d units sold,
+// units on hand, and a tiny Mon..Sun bar chart (today highlighted).
+function SalesMini({ v, stock }: { v?: Velocity; stock: number }) {
+  const d3 = v?.d3 ?? 0;
+  const d7 = v?.d7 ?? 0;
+  const dow = v?.dow ?? [0, 0, 0, 0, 0, 0, 0];
+  const max = Math.max(1, ...dow);
+  const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
+  const noData = d7 === 0 && dow.every((n) => n === 0);
+  return (
+    <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1 text-[11px] text-slate-500">
+      <span>
+        Sold <b className="text-ink-700">3d {d3}</b> · <b className="text-ink-700">7d {d7}</b>
+      </span>
+      <span className="text-slate-400">on hand {stock}</span>
+      {noData ? (
+        <span className="text-slate-300">no recent sales</span>
+      ) : (
+        <span className="flex items-end gap-[3px]" title="Units sold per weekday (last 4 weeks)">
+          {dow.map((n, i) => (
+            <span key={i} className="flex w-3 flex-col items-center">
+              <span className="text-[9px] leading-none text-slate-400">{n}</span>
+              <span
+                className={`mt-0.5 block w-2 rounded-sm ${i === todayIdx ? "bg-brand-500" : "bg-slate-300"}`}
+                style={{ height: `${3 + Math.round((n / max) * 12)}px` }}
+              />
+              <span
+                className={`text-[9px] leading-none ${i === todayIdx ? "font-bold text-brand-600" : "text-slate-400"}`}
+              >
+                {DOW_LABELS[i]}
+              </span>
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function LineBuilder({
   products,
@@ -29,6 +85,7 @@ export function LineBuilder({
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<Product[] | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const { data: velocity } = useFetch<Record<string, Velocity>>("/api/product-velocity");
   const scanRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // After a product is added, jump the cursor into ITS quantity box so the qty
@@ -53,17 +110,20 @@ export function LineBuilder({
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
-  function addProduct(p: Product, qty = 1, focus = true) {
+  function addProduct(p: Product, qty?: number, focus = true) {
     setLines((prev) => {
       const existing = prev.find((l) => l.product.id === p.id);
       if (existing) {
-        const updated = { ...existing, qty: existing.qty + qty };
+        // Re-scan bumps by 1 (or an explicit qty); a new line defaults to the
+        // recommended order quantity based on sales velocity.
+        const updated = { ...existing, qty: existing.qty + (qty ?? 1) };
         // Manual scan/search → move the touched item to the TOP so the newest is
         // always the first row. Batch autofill (focus=false) keeps its order.
         if (!focus) return prev.map((l) => (l.product.id === p.id ? updated : l));
         return [updated, ...prev.filter((l) => l.product.id !== p.id)];
       }
-      return focus ? [{ product: p, qty }, ...prev] : [...prev, { product: p, qty }];
+      const newQty = qty ?? recommendQty(p, velocity?.[p.id]);
+      return focus ? [{ product: p, qty: newQty }, ...prev] : [...prev, { product: p, qty: newQty }];
     });
     if (focus) setFocusQty((f) => ({ id: p.id, tick: (f?.tick || 0) + 1 }));
   }
@@ -349,9 +409,10 @@ export function LineBuilder({
                   <p className="text-xs text-slate-400">
                     {l.product.sku} · {l.product.supplier}
                   </p>
+                  <SalesMini v={velocity?.[l.product.id]} stock={l.product.stock} />
                 </td>
                 <td className="px-3 py-2 text-right text-slate-500">{usd(l.product.cost)}</td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2 align-top">
                   <input
                     type="number"
                     min={1}
@@ -378,6 +439,25 @@ export function LineBuilder({
                     }}
                     className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                   />
+                  {(() => {
+                    const rec = recommendQty(l.product, velocity?.[l.product.id]);
+                    return rec === l.qty ? (
+                      <p className="mt-1 text-center text-[10px] font-semibold text-emerald-600">✓ Rec {rec}</p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLines((prev) =>
+                            prev.map((x) => (x.product.id === l.product.id ? { ...x, qty: rec } : x)),
+                          )
+                        }
+                        title="Apply the recommended quantity"
+                        className="mx-auto mt-1 block text-[10px] font-semibold text-brand-600 hover:underline"
+                      >
+                        Rec {rec} ↺
+                      </button>
+                    );
+                  })()}
                 </td>
                 <td className="px-3 py-2 text-right font-semibold text-ink-800">
                   {usd(l.product.cost * l.qty)}
