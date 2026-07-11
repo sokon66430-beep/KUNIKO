@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PackageCheck,
   Truck,
@@ -508,11 +508,43 @@ function ReceiveModal({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
+  const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  // Scan order: the just-scanned item floats to the TOP row and its quantity box
+  // gets focus, so the amount is confirmed/adjusted before the next scan.
+  const [scanOrder, setScanOrder] = useState<Record<string, number>>({});
+  const seq = useRef(0);
+  const [focusQty, setFocusQty] = useState<{ id: string; tick: number } | null>(null);
+
+  useEffect(() => {
+    if (!focusQty) return;
+    const el = qtyRefs.current[focusQty.id];
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, [focusQty]);
 
   function bump(productId: string, name: string) {
     setNow((p) => ({ ...p, [productId]: (p[productId] || 0) + 1 }));
+    seq.current += 1;
+    const s = seq.current;
+    setScanOrder((o) => ({ ...o, [productId]: s }));
     setFlash({ tone: "ok", text: `+1 ${name}` });
+    setFocusQty({ id: productId, tick: s });
   }
+
+  // Scanned items first (most-recent on top), then the rest in original PO order.
+  const orderedItems = useMemo(() => {
+    const idx = new Map(po.items.map((it, i) => [it.productId, i] as const));
+    return [...po.items].sort((a, b) => {
+      const oa = scanOrder[a.productId];
+      const ob = scanOrder[b.productId];
+      if (oa != null && ob != null) return ob - oa;
+      if (oa != null) return -1;
+      if (ob != null) return 1;
+      return (idx.get(a.productId) ?? 0) - (idx.get(b.productId) ?? 0);
+    });
+  }, [po.items, scanOrder]);
 
   // codeArg comes from the camera scanner; otherwise read the text box.
   function handleScan(codeArg?: string) {
@@ -533,12 +565,13 @@ function ReceiveModal({
     const line = byBarcode[0] || po.items.find((i) => i.sku.toLowerCase() === lc || i.name.toLowerCase() === lc);
     if (line) {
       bump(line.productId, line.name);
+      if (!fromCamera) setScan(""); // bump() moves focus into the item's qty box
     } else {
       setFlash({ tone: "warn", text: `“${code}” not on this PO` });
-    }
-    if (!fromCamera) {
-      setScan("");
-      scanRef.current?.focus();
+      if (!fromCamera) {
+        setScan("");
+        scanRef.current?.focus();
+      }
     }
   }
 
@@ -673,7 +706,7 @@ function ReceiveModal({
             </tr>
           </thead>
           <tbody>
-            {po.items.map((it) => {
+            {orderedItems.map((it) => {
               const receivingNow = now[it.productId] || 0;
               const afterTotal = it.qtyReceived + receivingNow;
               const short = it.qtyOrdered - afterTotal;
@@ -699,10 +732,21 @@ function ReceiveModal({
                     <input
                       type="number"
                       min={0}
+                      ref={(el) => {
+                        qtyRefs.current[it.productId] = el;
+                      }}
                       value={receivingNow}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) =>
                         setNow((p) => ({ ...p, [it.productId]: Math.max(0, Number(e.target.value) || 0) }))
                       }
+                      onKeyDown={(e) => {
+                        // Enter confirms this amount and returns to the scan box for the next item.
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          scanRef.current?.focus();
+                        }
+                      }}
                       className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                     />
                   </td>

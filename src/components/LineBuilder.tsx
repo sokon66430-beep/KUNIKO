@@ -50,8 +50,14 @@ export function LineBuilder({
   function addProduct(p: Product, qty = 1, focus = true) {
     setLines((prev) => {
       const existing = prev.find((l) => l.product.id === p.id);
-      if (existing) return prev.map((l) => (l.product.id === p.id ? { ...l, qty: l.qty + qty } : l));
-      return [...prev, { product: p, qty }];
+      if (existing) {
+        const updated = { ...existing, qty: existing.qty + qty };
+        // Manual scan/search → move the touched item to the TOP so the newest is
+        // always the first row. Batch autofill (focus=false) keeps its order.
+        if (!focus) return prev.map((l) => (l.product.id === p.id ? updated : l));
+        return [updated, ...prev.filter((l) => l.product.id !== p.id)];
+      }
+      return focus ? [{ product: p, qty }, ...prev] : [...prev, { product: p, qty }];
     });
     if (focus) setFocusQty((f) => ({ id: p.id, tick: (f?.tick || 0) + 1 }));
   }
