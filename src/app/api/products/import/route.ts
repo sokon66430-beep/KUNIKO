@@ -128,6 +128,14 @@ export async function POST(req: Request) {
     const errors: string[] = [];
 
     for (const row of rows) {
+      // A human-readable tag for this row so skipped messages say WHICH product:
+      // barcode + item code + name.
+      const rowLabel =
+        `Row ${row.rowNum}` +
+        (row.barcode ? ` · barcode ${row.barcode}` : "") +
+        (row.sku ? ` · ${row.sku}` : "") +
+        (row.name ? ` · ${row.name}` : "");
+
       // Resolve the supplier link: code wins, then exact name (canonical master).
       // A supplier named in the sheet but NOT in the system is never guessed /
       // free-texted — the row is skipped so the user adds the supplier first.
@@ -144,7 +152,7 @@ export async function POST(req: Request) {
         supplierName = s.name;
       } else if (rawSupCode || rawSupName) {
         errors.push(
-          `Row ${row.rowNum}: supplier "${rawSupName || rawSupCode}" is not in the system — add it under Suppliers first; row skipped`,
+          `${rowLabel}: supplier "${rawSupName || rawSupCode}" is not in the system — add it under Suppliers first; row skipped`,
         );
         continue;
       }
@@ -157,7 +165,7 @@ export async function POST(req: Request) {
         else if (matches.length > 1) {
           target = row.sku ? matches.find((m) => m.sku === row.sku) : undefined;
           if (!target) {
-            errors.push(`Row ${row.rowNum}: barcode ${row.barcode} matches ${matches.length} products — add a SKU column to disambiguate; skipped`);
+            errors.push(`${rowLabel}: barcode ${row.barcode} matches ${matches.length} products — add a SKU column to disambiguate; skipped`);
             continue;
           }
         }
