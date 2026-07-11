@@ -1,0 +1,1 @@
+# Static assets folder (favicon, images). Kept so the Docker build can copy it.
