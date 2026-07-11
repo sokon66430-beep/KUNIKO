@@ -12,7 +12,7 @@ import {
   FileDown,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
-import { useFetch } from "@/lib/client";
+import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import type { Product } from "@/lib/types";
 import { PageHeader, Card, ErrorBox, EmptyState } from "@/components/ui";
@@ -31,7 +31,7 @@ function rielPrice(usdPrice: number): number {
 }
 const riel = (n: number) => n.toLocaleString("en-US");
 
-type BatchLine = { product: Product; qty: number };
+type BatchLine = { product: Product; qty: number; gondola: string; shelf: string };
 
 function today(): string {
   const d = new Date();
@@ -62,11 +62,15 @@ function PriceLabel({
   kh: khOverride,
   mode = "kh-en",
   widthMm = 47,
+  gondola: gondolaOverride,
+  shelf: shelfOverride,
 }: {
   product: Product;
   kh?: string;
   mode?: NameMode;
   widthMm?: number;
+  gondola?: string;
+  shelf?: string;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const code = product.barcode || product.sku;
@@ -93,6 +97,8 @@ function PriceLabel({
   }, [code]);
 
   const kh = mode === "en" ? undefined : (khOverride ?? product.nameKh)?.trim();
+  const gondola = (gondolaOverride ?? product.gondola ?? "").trim();
+  const shelf = (shelfOverride ?? product.shelf ?? "").trim();
   return (
     <div className="label-card overflow-hidden bg-white" style={{ width: `${widthMm}mm`, height: `${heightMm}mm` }}>
       <div
@@ -148,11 +154,11 @@ function PriceLabel({
           </div>
           <div className="flex shrink-0 flex-col items-end justify-between py-0.5 text-right text-black">
             <p className="text-[19px] font-bold leading-[23px] tracking-tight">{product.sku}</p>
-            {(product.gondola || product.shelf) && (
+            {(gondola || shelf) && (
               <p className="text-[13px] font-bold leading-[16px] tracking-tight text-black/85">
-                {product.gondola ? `G${product.gondola}` : ""}
-                {product.gondola && product.shelf ? " · " : ""}
-                {product.shelf ? `SH${product.shelf}` : ""}
+                {gondola ? `G${gondola}` : ""}
+                {gondola && shelf ? " · " : ""}
+                {shelf ? `SH${shelf}` : ""}
               </p>
             )}
             <p className="text-[22px] font-black leading-[24px]">{product.ranking || "A"}</p>
@@ -214,11 +220,25 @@ export default function PriceLabelsPage() {
         const updated = { ...existing, qty: existing.qty + 1 };
         return [updated, ...b.filter((l) => l.product.id !== p.id)];
       }
-      return [{ product: p, qty: 1 }, ...b];
+      return [{ product: p, qty: 1, gondola: p.gondola || "", shelf: p.shelf || "" }, ...b];
     });
     setScan("");
     setNotice(null);
     scanRef.current?.focus();
+  }
+
+  // Update a label's Gondola/Shelf, and remember it on the product so it
+  // pre-fills next time and shows the same location everywhere.
+  function setLocation(id: string, field: "gondola" | "shelf", value: string) {
+    setBatch((b) => b.map((l) => (l.product.id === id ? { ...l, [field]: value } : l)));
+  }
+  function saveLocation(line: BatchLine) {
+    api(`/api/products/${line.product.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ gondola: line.gondola, shelf: line.shelf }),
+    }).catch(() => {
+      /* best-effort — the label still prints what was typed */
+    });
   }
 
   function lookup(codeArg?: string) {
@@ -501,8 +521,10 @@ export default function PriceLabelsPage() {
               </button>
             </div>
             <ul className="divide-y divide-slate-50">
-              {batch.map(({ product: p, qty }) => (
-                <li key={p.id} className="flex items-center gap-3 px-5 py-2.5">
+              {batch.map((line) => {
+                const { product: p, qty } = line;
+                return (
+                <li key={p.id} className="flex flex-wrap items-center gap-3 px-5 py-2.5">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink-800">
                       {p.name}
@@ -511,6 +533,29 @@ export default function PriceLabelsPage() {
                     <p className="text-[11px] text-slate-400">
                       {p.sku} · {usd(p.price)} → <span className="font-semibold text-brand-600">{riel(rielPrice(p.price))}៛</span>
                     </p>
+                  </div>
+                  {/* Gondola + Shelf — type the placement; it prints on the label and saves to the product */}
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+                      Gondola
+                      <input
+                        className="h-8 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm font-bold text-ink-900 outline-none focus:border-brand-500"
+                        value={line.gondola}
+                        onChange={(e) => setLocation(p.id, "gondola", e.target.value)}
+                        onBlur={() => saveLocation({ ...line, gondola: line.gondola })}
+                        placeholder="A12"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+                      Shelf
+                      <input
+                        className="h-8 w-14 rounded-lg border border-slate-200 px-2 text-center text-sm font-bold text-ink-900 outline-none focus:border-brand-500"
+                        value={line.shelf}
+                        onChange={(e) => setLocation(p.id, "shelf", e.target.value)}
+                        onBlur={() => saveLocation({ ...line, shelf: line.shelf })}
+                        placeholder="3"
+                      />
+                    </label>
                   </div>
                   <div className="flex items-center gap-1">
                     <button className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200" onClick={() => setQty(p.id, qty - 1)}>
@@ -531,7 +576,8 @@ export default function PriceLabelsPage() {
                     <Trash2 size={15} />
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </Card>
         )}
@@ -553,7 +599,7 @@ export default function PriceLabelsPage() {
           className="label-sheet grid"
           style={{ gridTemplateColumns: `repeat(${perRow}, ${layout.w}mm)`, gap: `${layout.gap}mm`, width: "max-content" }}
         >
-          {batch.flatMap(({ product, qty }) =>
+          {batch.flatMap(({ product, qty, gondola, shelf }) =>
             Array.from({ length: qty }, (_, i) => (
               <PriceLabel
                 key={`${product.id}-${i}`}
@@ -561,6 +607,8 @@ export default function PriceLabelsPage() {
                 kh={product.nameKh}
                 mode={nameMode}
                 widthMm={layout.w}
+                gondola={gondola}
+                shelf={shelf}
               />
             )),
           )}
