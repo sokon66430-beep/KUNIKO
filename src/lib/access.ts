@@ -8,6 +8,12 @@ import type { Role } from "./auth";
 
 const OWNER_ONLY = ["/all-stores"];
 
+// Pages a specific role may NOT use. Operations staff run the shop floor and
+// don't handle purchasing, so the Purchase functions are hidden from them.
+const ROLE_DENIED: Partial<Record<Role, string[]>> = {
+  operations: ["/purchase-requests", "/purchase-orders"],
+};
+
 function matches(pathname: string, base: string): boolean {
   return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
 }
@@ -15,6 +21,8 @@ function matches(pathname: string, base: string): boolean {
 export function canAccessPage(role: Role, pathname: string): boolean {
   if (role === "owner") return true;
   if (OWNER_ONLY.some((p) => matches(pathname, p))) return false;
+  const denied = ROLE_DENIED[role];
+  if (denied && denied.some((p) => matches(pathname, p))) return false;
   return true; // all departments see every other function
 }
 

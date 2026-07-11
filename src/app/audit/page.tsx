@@ -12,6 +12,7 @@ import {
   Package,
   User,
   Filter,
+  ShoppingCart,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
 import type { AuditEvent, AuditEntityType } from "@/lib/types";
@@ -27,6 +28,7 @@ const TYPE_META: Record<AuditEntityType, { icon: any; tint: string }> = {
   Stock: { icon: Package, tint: "bg-emerald-50 text-emerald-600" },
   Count: { icon: ClipboardCheck, tint: "bg-brand-50 text-brand-600" },
   WriteOff: { icon: Package, tint: "bg-rose-50 text-rose-600" },
+  Sale: { icon: ShoppingCart, tint: "bg-brand-50 text-brand-600" },
 };
 
 const ACTION_COLOR: Record<string, string> = {

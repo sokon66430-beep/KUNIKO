@@ -12,11 +12,14 @@ import {
   QrCode,
   Loader2,
   RefreshCw,
+  Upload,
+  FileSpreadsheet,
+  BarChart3,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
-import { usd, riel } from "@/lib/format";
+import { usd, riel, num } from "@/lib/format";
 
 type CartLine = { product: Product; qty: number; seq: number };
 
@@ -50,6 +53,27 @@ export default function PosPage() {
   const [khqrOpen, setKhqrOpen] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  async function importSales(file: File) {
+    setImporting(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/sales/import", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)${data.skipped ? ` · ${data.skipped} skipped` : ""}`);
+      reload();
+    } catch (e: any) {
+      setToast(e.message);
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
 
   const categories = useMemo(() => {
     const set = new Set((products || []).map((p) => p.category));
@@ -151,9 +175,37 @@ export default function PosPage() {
 
   return (
     <div>
-      <PageHeader title="Point of Sale" subtitle="Ring up a sale — stock and loyalty update automatically" />
+      <PageHeader
+        title="Point of Sale"
+        subtitle="Ring up a sale — stock and loyalty update automatically"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="btn-ghost !py-2 text-sm" onClick={() => setReportOpen(true)}>
+              <BarChart3 size={16} /> Sales Report
+            </button>
+            <a className="btn-ghost !py-2 text-sm" href="/api/reports/sales/export">
+              <FileSpreadsheet size={16} /> Export
+            </a>
+            <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => importRef.current?.click()}>
+              <Upload size={16} /> {importing ? "Importing…" : "Import"}
+            </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importSales(f);
+              }}
+            />
+          </div>
+        }
+      />
 
       {error && <ErrorBox message={error} />}
+
+      {reportOpen && <SalesReportModal onClose={() => setReportOpen(false)} />}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         {/* Product picker */}
@@ -648,6 +700,153 @@ function KhqrModal({
                   <button className="btn-ghost flex-1" onClick={manualConfirm}>
                     Mark as received
                   </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Sales report — units sold, revenue and profit by item and by category.
+// -------------------------------------------------------------------------
+type ItemRow = { sku: string; name: string; category: string; qty: number; revenue: number; cost: number; profit: number };
+type CatRow = { category: string; qty: number; revenue: number; cost: number; profit: number };
+type SalesReportData = {
+  byItem: ItemRow[];
+  byCategory: CatRow[];
+  totals: { qty: number; revenue: number; cost: number; profit: number; sales: number };
+};
+
+function SalesReportModal({ onClose }: { onClose: () => void }) {
+  const [days, setDays] = useState<number | null>(30);
+  const from = days ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : null;
+  const url = from ? `/api/sales-report?from=${from}` : "/api/sales-report";
+  const { data, loading } = useFetch<SalesReportData>(url);
+  const ranges: { label: string; value: number | null }[] = [
+    { label: "7 days", value: 7 },
+    { label: "30 days", value: 30 },
+    { label: "90 days", value: 90 },
+    { label: "All time", value: null },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-ink-900/70 p-3 backdrop-blur-sm sm:p-6">
+      <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-lift">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-brand-600" />
+            <h3 className="text-base font-bold text-ink-900">Sales Report</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+              {ranges.map((r) => (
+                <button
+                  key={r.label}
+                  onClick={() => setDays(r.value)}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                    days === r.value ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={onClose}
+              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading || !data ? (
+            <div className="grid h-40 place-items-center text-sm text-slate-400">Loading…</div>
+          ) : data.totals.sales === 0 ? (
+            <div className="grid h-40 place-items-center text-sm text-slate-400">
+              No sales in this period. Ring up a sale or use Import to load history.
+            </div>
+          ) : (
+            <>
+              {/* Totals */}
+              <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: "Units sold", value: num(data.totals.qty) },
+                  { label: "Revenue", value: usd(data.totals.revenue) },
+                  { label: "Profit", value: usd(data.totals.profit) },
+                  { label: "Sales", value: num(data.totals.sales) },
+                ].map((s) => (
+                  <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
+                    <p className="mt-1 text-lg font-bold text-ink-900">{s.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* By category */}
+                <div>
+                  <h4 className="mb-2 text-sm font-bold text-ink-900">By category</h4>
+                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                          <th className="px-3 py-2 font-semibold">Category</th>
+                          <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                          <th className="px-3 py-2 text-right font-semibold">Revenue</th>
+                          <th className="px-3 py-2 text-right font-semibold">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.byCategory.map((c) => (
+                          <tr key={c.category} className="border-b border-slate-50 last:border-0">
+                            <td className="px-3 py-2 font-medium text-ink-800">{c.category}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{num(c.qty)}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(c.revenue)}</td>
+                            <td className="px-3 py-2 text-right text-emerald-600">{usd(c.profit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* By item (top sellers) */}
+                <div>
+                  <h4 className="mb-2 text-sm font-bold text-ink-900">By item — top sellers</h4>
+                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                          <th className="px-3 py-2 font-semibold">Item</th>
+                          <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                          <th className="px-3 py-2 text-right font-semibold">Revenue</th>
+                          <th className="px-3 py-2 text-right font-semibold">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.byItem.slice(0, 50).map((it) => (
+                          <tr key={it.sku} className="border-b border-slate-50 last:border-0">
+                            <td className="px-3 py-2">
+                              <p className="font-medium text-ink-800">{it.name}</p>
+                              <p className="text-[11px] text-slate-400">{it.sku} · {it.category}</p>
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
+                            <td className="px-3 py-2 text-right text-emerald-600">{usd(it.profit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {data.byItem.length > 50 && (
+                    <p className="mt-2 text-xs text-slate-400">Showing top 50 of {data.byItem.length} items — full list in Export.</p>
+                  )}
                 </div>
               </div>
             </>

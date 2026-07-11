@@ -139,9 +139,8 @@ export default function Sidebar() {
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const isOwner = session?.user.role === "owner";
-  // Store switching is turned off for now (owner stays on their own store).
-  // Flip to true to bring the switcher back.
-  const ALLOW_STORE_SWITCH = false;
+  // Owner can switch between and manage every store.
+  const ALLOW_STORE_SWITCH = true;
 
   const role = (session?.user.role || "operations") as Role;
   const admin = {

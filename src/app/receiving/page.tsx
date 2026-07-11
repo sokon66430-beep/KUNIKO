@@ -15,6 +15,8 @@ import {
   Pencil,
   Clock,
   ShieldCheck,
+  Printer,
+  X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
@@ -28,6 +30,26 @@ export default function ReceivingPage() {
   const [receiving, setReceiving] = useState<PurchaseOrder | null>(null);
   const [editing, setEditing] = useState<GoodsReceipt | null>(null);
   const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
+  const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+
+  // Open a receipt's PDF inside the app (so it can be viewed and printed here).
+  async function openPdf(g: GoodsReceipt) {
+    setPdfLoading(g.id);
+    try {
+      const res = await fetch(`/api/goods-receipts/${g.id}/export?format=pdf`);
+      const blob = await res.blob();
+      setPdfView({ url: URL.createObjectURL(blob), title: g.grnNo });
+    } catch {
+      alert("Could not open the PDF.");
+    } finally {
+      setPdfLoading(null);
+    }
+  }
+  function closePdf() {
+    if (pdfView) URL.revokeObjectURL(pdfView.url);
+    setPdfView(null);
+  }
 
   const openPOs = (pos || []).filter((p) => p.status === "Open" || p.status === "Partial");
   const receiptsToday = (grns || []).length;
@@ -184,13 +206,14 @@ export default function ReceivingPage() {
                           >
                             <FileSpreadsheet size={14} /> Excel
                           </a>
-                          <a
-                            href={`/api/goods-receipts/${g.id}/export?format=pdf`}
-                            title="Download this receipt as PDF"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                          <button
+                            onClick={() => openPdf(g)}
+                            disabled={pdfLoading === g.id}
+                            title="View this receipt as PDF (with print)"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                           >
-                            <FileType2 size={14} /> PDF
-                          </a>
+                            <FileType2 size={14} /> {pdfLoading === g.id ? "Opening…" : "PDF"}
+                          </button>
                           {pending ? (
                             <button
                               onClick={() => setReviewing(g)}
@@ -251,6 +274,44 @@ export default function ReceivingPage() {
           }}
         />
       )}
+
+      {pdfView && <PdfViewer url={pdfView.url} title={pdfView.title} onClose={closePdf} />}
+    </div>
+  );
+}
+
+// In-app PDF viewer with Print + Download. Used to preview a goods receipt.
+function PdfViewer({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  function print() {
+    const w = frameRef.current?.contentWindow;
+    if (w) {
+      w.focus();
+      w.print();
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-ink-900/70 p-3 backdrop-blur-sm sm:p-6">
+      <div className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-lift">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h3 className="text-sm font-bold text-ink-900">Receipt {title}</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={print} className="btn-primary !py-2 text-sm">
+              <Printer size={15} /> Print
+            </button>
+            <a href={url} download={`${title}.pdf`} className="btn-ghost !py-2 text-sm">
+              <FileType2 size={15} /> Download
+            </a>
+            <button
+              onClick={onClose}
+              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+        <iframe ref={frameRef} src={url} title={`Receipt ${title}`} className="w-full flex-1" />
+      </div>
     </div>
   );
 }

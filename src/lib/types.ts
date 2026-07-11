@@ -77,6 +77,7 @@ export type Sale = {
   paymentMethod: PaymentMethod;
   paymentRef?: string; // e.g. KHQR md5 of the confirmed Bakong transaction
   createdAt: string;
+  imported?: boolean; // true when brought in from a sales-history import (no stock change)
 };
 
 // ---------------------------------------------------------------------------
@@ -247,7 +248,7 @@ export type WriteOff = {
   cancelledAt?: string;
 };
 
-export type AuditEntityType = "PR" | "PO" | "GRN" | "Product" | "Supplier" | "Stock" | "Count" | "WriteOff";
+export type AuditEntityType = "PR" | "PO" | "GRN" | "Product" | "Supplier" | "Stock" | "Count" | "WriteOff" | "Sale";
 
 export type AuditEvent = {
   id: string;
