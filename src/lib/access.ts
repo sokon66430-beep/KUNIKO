@@ -8,10 +8,11 @@ import type { Role } from "./auth";
 
 const OWNER_ONLY = ["/all-stores"];
 
-// Pages a specific role may NOT use. Operations staff run the shop floor and
-// don't handle purchasing, so the Purchase functions are hidden from them.
+// Pages a specific role may NOT use. Operations staff run the shop floor: they
+// CAN raise Purchase Requests (ask for stock) but not create Purchase Orders
+// (that's Procurement's job).
 const ROLE_DENIED: Partial<Record<Role, string[]>> = {
-  operations: ["/purchase-requests", "/purchase-orders"],
+  operations: ["/purchase-orders"],
 };
 
 function matches(pathname: string, base: string): boolean {
