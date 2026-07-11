@@ -56,6 +56,7 @@ export default function PosPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [skipped, setSkipped] = useState<{ code?: string; barcode?: string; name?: string; rows?: number; units?: number }[]>([]);
   const importRef = useRef<HTMLInputElement>(null);
 
   async function importSales(file: File) {
@@ -66,13 +67,36 @@ export default function PosPage() {
       const res = await fetch("/api/sales/import", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Import failed");
-      setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)${data.skipped ? ` · ${data.skipped} skipped` : ""}`);
+      setSkipped(data.skippedItems || []);
+      setToast(
+        `Imported ${data.matched} sale lines (${data.salesCreated} days)${data.skipped ? ` · ${data.skipped} items skipped` : ""}`,
+      );
       reload();
     } catch (e: any) {
       setToast(e.message);
     } finally {
       setImporting(false);
       if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  // Download the skipped items (things the import couldn't match) as an Excel file.
+  async function downloadSkipped() {
+    try {
+      const res = await fetch("/api/sales/skipped-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: skipped }),
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "skipped-items.xlsx";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      setToast("Could not build the skipped-items file.");
     }
   }
 
@@ -205,6 +229,25 @@ export default function PosPage() {
       />
 
       {error && <ErrorBox message={error} />}
+
+      {skipped.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="flex-1 text-sm text-amber-800">
+            <b>{skipped.length}</b> item{skipped.length === 1 ? "" : "s"} in your import couldn&apos;t be matched to a product and
+            were skipped. Download the list to fix the codes or add the products.
+          </p>
+          <button className="btn-primary !py-2 text-sm" onClick={downloadSkipped}>
+            <FileSpreadsheet size={16} /> Download skipped (Excel)
+          </button>
+          <button
+            className="grid h-8 w-8 place-items-center rounded-lg text-amber-500 hover:bg-amber-100"
+            onClick={() => setSkipped([])}
+            title="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {reportOpen && <SalesReportModal onClose={() => setReportOpen(false)} />}
 

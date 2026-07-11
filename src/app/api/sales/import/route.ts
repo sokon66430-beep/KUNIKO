@@ -132,6 +132,9 @@ export async function POST(req: Request) {
     const byDay = new Map<string, SaleItem[]>();
     let matched = 0;
     const errors: string[] = [];
+    // Skipped items, de-duplicated: one entry per unique code/barcode/name, with
+    // how many times it appeared and the total units that couldn't be counted.
+    const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
 
     for (const row of rows) {
       const p =
@@ -140,6 +143,14 @@ export async function POST(req: Request) {
         (row.name && byName.get(row.name.toLowerCase()));
       if (!p) {
         errors.push(`Row ${row.rowNum}: no product for ${row.sku || row.barcode || row.name}; skipped`);
+        const key = (row.barcode || row.sku || row.name).toLowerCase();
+        const ex = skippedMap.get(key);
+        if (ex) {
+          ex.rows += 1;
+          ex.units += row.qty;
+        } else {
+          skippedMap.set(key, { code: row.sku, barcode: row.barcode, name: row.name, rows: 1, units: row.qty });
+        }
         continue;
       }
       const day = row.day || today;
@@ -190,7 +201,15 @@ export async function POST(req: Request) {
       entity: file.name || "Excel file",
       detail: `${matched} lines · ${salesCreated} day-sales · ${errors.length} skipped`,
     });
-    return { matched, salesCreated, skipped: errors.length, errors: errors.slice(0, 10), totalRows: rows.length };
+    const skippedItems = [...skippedMap.values()].sort((a, b) => b.rows - a.rows);
+    return {
+      matched,
+      salesCreated,
+      skipped: skippedItems.length, // unique items skipped (deduped)
+      skippedRows: errors.length, // total rows skipped
+      skippedItems,
+      totalRows: rows.length,
+    };
   });
 
   return NextResponse.json(result);
