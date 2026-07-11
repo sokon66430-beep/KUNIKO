@@ -19,18 +19,26 @@ export function OpeningOrderModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [count, setCount] = useState(50);
+  // 0 = ALL best sellers, no cap.
+  const [count, setCount] = useState<number>(50);
   const [rows, setRows] = useState<OpenRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const bySku = useMemo(() => new Map(products.map((p) => [p.sku, p])), [products]);
-  const presets = [25, 50, 100, 150, 200];
+  const presets: { label: string; value: number }[] = [
+    { label: "25", value: 25 },
+    { label: "50", value: 50 },
+    { label: "100", value: 100 },
+    { label: "200", value: 200 },
+    { label: "500", value: 500 },
+    { label: "All", value: 0 },
+  ];
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/cross-store-bestsellers?limit=${count}`)
+    fetch(count > 0 ? `/api/cross-store-bestsellers?limit=${count}` : "/api/cross-store-bestsellers")
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
@@ -105,24 +113,24 @@ export function OpeningOrderModal({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold text-slate-500">How many SKUs (top sellers):</span>
             <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
-              {presets.map((n) => (
+              {presets.map((p) => (
                 <button
-                  key={n}
-                  onClick={() => setCount(n)}
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${count === n ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                  key={p.label}
+                  onClick={() => setCount(p.value)}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${count === p.value ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                 >
-                  {n}
+                  {p.label}
                 </button>
               ))}
             </div>
             <input
               type="number"
-              min={1}
-              max={1000}
-              value={count}
-              onChange={(e) => setCount(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))}
-              className="h-8 w-20 rounded-lg border border-slate-200 px-2 text-center text-sm font-semibold outline-none focus:border-brand-500"
-              title="Or type an exact number"
+              min={0}
+              value={count || ""}
+              placeholder="All"
+              onChange={(e) => setCount(Math.max(0, Number(e.target.value) || 0))}
+              className="h-8 w-24 rounded-lg border border-slate-200 px-2 text-center text-sm font-semibold outline-none focus:border-brand-500"
+              title="Type any number — leave empty for ALL"
             />
           </div>
         </div>

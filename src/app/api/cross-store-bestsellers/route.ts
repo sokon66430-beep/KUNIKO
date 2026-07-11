@@ -19,7 +19,9 @@ export async function GET(req: Request) {
   const exclude = url.searchParams.get("exclude") || s.storeId;
   const days = Math.max(1, Number(url.searchParams.get("days")) || 30);
   const cover = Math.max(1, Number(url.searchParams.get("cover")) || 30);
-  const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 200));
+  // No cap — the shop can request as many SKUs as it wants (0/absent = all).
+  const limitParam = Number(url.searchParams.get("limit"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : Infinity;
 
   const sys = await readSystem();
   const now = Date.now();
