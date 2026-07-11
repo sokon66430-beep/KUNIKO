@@ -126,6 +126,9 @@ export async function POST(req: Request) {
     let created = 0;
     let updated = 0;
     const errors: string[] = [];
+    // Suppliers that appeared in the sheet but weren't in the system — we create
+    // them automatically (code → name) so their products still import.
+    const createdSuppliers = new Map<string, string>();
 
     for (const row of rows) {
       // A human-readable tag for this row so skipped messages say WHICH product:
@@ -151,10 +154,17 @@ export async function POST(req: Request) {
         supplierCode = s.code;
         supplierName = s.name;
       } else if (rawSupCode || rawSupName) {
-        errors.push(
-          `${rowLabel}: supplier "${rawSupName || rawSupCode}" is not in the system — add it under Suppliers first; row skipped`,
-        );
-        continue;
+        // Supplier isn't in the system yet — create it automatically (from the
+        // sheet's code + name) so the product still imports. Deduped via the maps.
+        const code = rawSupCode || rawSupName;
+        const name = rawSupName || rawSupCode;
+        const newSup = { code, name };
+        db.suppliers.push(newSup);
+        supByCode.set(code, newSup);
+        supByName.set(name.toLowerCase(), newSup);
+        supplierCode = code;
+        supplierName = name;
+        createdSuppliers.set(code, name);
       }
 
       // Match an existing product: barcode first (only if unambiguous), then SKU.
@@ -235,14 +245,23 @@ export async function POST(req: Request) {
       }
     }
 
+    const newSuppliers = [...createdSuppliers.entries()].map(([code, name]) => (name === code ? code : `${name} (${code})`));
     logAudit(db, {
       actor: "Admin",
       action: "Imported",
       entityType: "Product",
       entity: file.name || "Excel file",
-      detail: `${created} new · ${updated} updated · ${errors.length} skipped`,
+      detail: `${created} new · ${updated} updated · ${newSuppliers.length} suppliers created · ${errors.length} skipped`,
     });
-    return { created, updated, skipped: errors.length, errors: errors.slice(0, 10), totalRows: rows.length };
+    return {
+      created,
+      updated,
+      skipped: errors.length,
+      errors: errors.slice(0, 10),
+      suppliersCreated: newSuppliers.length,
+      newSuppliers,
+      totalRows: rows.length,
+    };
   });
 
   return NextResponse.json(result);

@@ -38,6 +38,8 @@ type ImportResult = {
   skipped: number;
   totalRows: number;
   errors: string[];
+  suppliersCreated?: number;
+  newSuppliers?: string[];
 };
 
 const PAGE_SIZE = 100;
@@ -318,9 +320,16 @@ export default function ProductsPage() {
           <div>
             <p className="font-semibold">
               Import complete — {num(importResult.created)} new, {num(importResult.updated)} updated
+              {importResult.suppliersCreated ? `, ${num(importResult.suppliersCreated)} suppliers created` : ""}
               {importResult.skipped > 0 ? `, ${num(importResult.skipped)} skipped` : ""} (
               {num(importResult.totalRows)} rows read)
             </p>
+            {importResult.newSuppliers && importResult.newSuppliers.length > 0 && (
+              <p className="mt-1 text-xs text-emerald-700">
+                New suppliers created (rename them anytime in Suppliers): {importResult.newSuppliers.slice(0, 20).join(", ")}
+                {importResult.newSuppliers.length > 20 ? ` +${importResult.newSuppliers.length - 20} more` : ""}
+              </p>
+            )}
             {importResult.errors.length > 0 && (
               <ul className="mt-1 list-inside list-disc text-xs text-amber-700">
                 {importResult.errors.map((e, i) => (
