@@ -18,7 +18,7 @@ import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel } from "@/lib/format";
 
-type CartLine = { product: Product; qty: number };
+type CartLine = { product: Product; qty: number; seq: number };
 
 type GeneratedKhqr = {
   qr: string;
@@ -42,6 +42,7 @@ export default function PosPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
+  const cartSeq = useRef(0);
   const [customerId, setCustomerId] = useState<string>("");
   const [discount, setDiscount] = useState<string>("");
   const [payment, setPayment] = useState<PaymentMethod>("Cash");
@@ -67,7 +68,8 @@ export default function PosPage() {
     return list;
   }, [products, category, query]);
 
-  const lines = Object.values(cart);
+  // Newest-added line on top so the cashier always sees what they just scanned.
+  const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
   const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
   const discountNum = Math.min(Number(discount) || 0, subtotal);
   const taxed = subtotal - discountNum;
@@ -82,7 +84,8 @@ export default function PosPage() {
         setToast(`Only ${product.stock} ${product.unit} of ${product.name} in stock`);
         return prev;
       }
-      return { ...prev, [product.id]: { product, qty } };
+      cartSeq.current += 1; // bump so the just-scanned line floats to the top
+      return { ...prev, [product.id]: { product, qty, seq: cartSeq.current } };
     });
   }
 

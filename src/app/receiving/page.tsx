@@ -524,6 +524,11 @@ function ReceiveModal({
     }
   }, [focusQty]);
 
+  // Auto-focus the scan box so a handheld (L#) scanner works immediately.
+  useEffect(() => {
+    scanRef.current?.focus();
+  }, []);
+
   function bump(productId: string, name: string) {
     setNow((p) => ({ ...p, [productId]: (p[productId] || 0) + 1 }));
     seq.current += 1;

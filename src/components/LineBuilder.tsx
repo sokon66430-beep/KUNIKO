@@ -45,6 +45,12 @@ export function LineBuilder({
     }
   }, [focusQty]);
 
+  // Keep the scan box focused on open so a handheld (L#) scanner works instantly
+  // — the operator never has to tap the field first.
+  useEffect(() => {
+    scanRef.current?.focus();
+  }, []);
+
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   function addProduct(p: Product, qty = 1, focus = true) {
@@ -82,19 +88,19 @@ export function LineBuilder({
       products.find((p) => p.sku.toLowerCase() === lc) ||
       products.find((p) => p.name.toLowerCase() === lc);
     if (match) {
-      addProduct(match);
+      addProduct(match); // moves item to top + focuses its qty box
       setNotice({ tone: "ok", text: `Added ${match.name}` });
+      if (!fromCamera) setScan(""); // clear text; cursor is now in the qty box
     } else if (!fromCamera && scanSuggestions.length > 0) {
       // Partial input with live suggestions showing — keep the text so the
       // dropdown stays open and the user can pick from it.
       setNotice({ tone: "warn", text: "No exact match — pick from the suggestions" });
-      return;
     } else {
       setNotice({ tone: "warn", text: fromCamera ? `Not in this list: ${code}` : `No product for “${code}”` });
-    }
-    if (!fromCamera) {
-      setScan("");
-      scanRef.current?.focus();
+      if (!fromCamera) {
+        setScan("");
+        scanRef.current?.focus();
+      }
     }
   }
 
@@ -160,10 +166,9 @@ export function LineBuilder({
   }, [products, scan]);
 
   function pickScanSuggestion(p: Product) {
-    addProduct(p);
+    addProduct(p); // focuses the new item's qty box
     setNotice({ tone: "ok", text: `Added ${p.name}` });
     setScan("");
-    scanRef.current?.focus();
   }
 
   function autofillLowStock() {
@@ -255,7 +260,10 @@ export function LineBuilder({
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => addProduct(p)}
+                    onClick={() => {
+                      addProduct(p); // to top + focuses its qty box
+                      setQuery(""); // close the dropdown; ready for the next search
+                    }}
                     className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3.5 py-2 text-left text-sm last:border-0 hover:bg-brand-50"
                   >
                     <span className="min-w-0">

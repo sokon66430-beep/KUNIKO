@@ -202,8 +202,12 @@ export default function PriceLabelsPage() {
   function addProduct(p: Product) {
     setBatch((b) => {
       const existing = b.find((l) => l.product.id === p.id);
-      if (existing) return b.map((l) => (l.product.id === p.id ? { ...l, qty: l.qty + 1 } : l));
-      return [...b, { product: p, qty: 1 }];
+      // Newest always on the top row; re-scanning bumps its qty and moves it up.
+      if (existing) {
+        const updated = { ...existing, qty: existing.qty + 1 };
+        return [updated, ...b.filter((l) => l.product.id !== p.id)];
+      }
+      return [{ product: p, qty: 1 }, ...b];
     });
     setScan("");
     setNotice(null);

@@ -257,11 +257,25 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const scanRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  // Track scan order so the most-recently-counted item floats to the top row.
+  const [scanOrder, setScanOrder] = useState<Record<string, number>>({});
+  const seqRef = useRef(0);
 
   const costOf = useMemo(() => new Map((products || []).map((p) => [p.id, p.cost])), [products]);
 
   const posted = count?.status === "Posted";
   const items = count?.items || [];
+  const displayItems = useMemo(() => {
+    const idx = new Map(items.map((it, i) => [it.productId, i] as const));
+    return [...items].sort((a, b) => {
+      const oa = scanOrder[a.productId];
+      const ob = scanOrder[b.productId];
+      if (oa != null && ob != null) return ob - oa;
+      if (oa != null) return -1;
+      if (ob != null) return 1;
+      return (idx.get(a.productId) ?? 0) - (idx.get(b.productId) ?? 0);
+    });
+  }, [items, scanOrder]);
 
   useEffect(() => {
     if (countTarget) {
@@ -284,6 +298,9 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   }, [products, query]);
 
   async function setCounted(productId: string, countedQty: number) {
+    seqRef.current += 1;
+    const s = seqRef.current;
+    setScanOrder((o) => ({ ...o, [productId]: s })); // this item floats to the top
     await api(`/api/stock-counts/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ items: [{ productId, countedQty }] }),
@@ -568,7 +585,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => {
+                {displayItems.map((it) => {
                   const shown = edits[it.productId] ?? String(it.countedQty);
                   const v = (Number(shown) || 0) - it.systemQty;
                   return (
