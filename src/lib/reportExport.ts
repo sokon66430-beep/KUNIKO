@@ -361,22 +361,47 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery): ReportDat
       };
     }
     case "goods-receipts": {
-      const rows = filterGRNs(db.goodsReceipts, q);
+      const grns = filterGRNs(db.goodsReceipts, q);
+      const prodById = new Map(db.products.map((p) => [p.id, p]));
+      // One row per received item, enriched with barcode + cost from the master,
+      // so the report shows item detail and the total cost of goods received.
+      const rows = grns.flatMap((g) =>
+        g.items.map((it) => {
+          const p = prodById.get(it.productId);
+          const cost = p?.cost ?? 0;
+          return {
+            date: ddmmyyyy(g.createdAt),
+            grnNo: g.grnNo,
+            poNo: g.poNo,
+            supplier: g.supplier,
+            sku: it.sku,
+            barcode: p?.barcode || "",
+            name: it.name,
+            cost,
+            qty: it.qtyReceived,
+            lineCost: cost * it.qtyReceived,
+            receivedBy: g.receivedBy,
+          };
+        }),
+      );
       return {
         title: "Goods Receiving Report",
         filename: "Receiving-Report",
         subtitle,
         rows,
-        fancyXlsx: async () => buildGRNReportWorkbook(rows, db.meta.business, note),
+        fancyXlsx: async () => buildGRNReportWorkbook(grns, db.products, db.meta.business, note),
         cols: [
-          { header: "Date", get: (g) => ddmmyyyy(g.createdAt) },
-          { header: "GRN No", get: (g) => g.grnNo },
-          { header: "PO No", get: (g) => g.poNo },
-          { header: "Supplier", get: (g) => g.supplier, width: 1.6 },
-          { header: "Received By", get: (g) => g.receivedBy, width: 1.2 },
-          { header: "Lines", get: (g) => g.items.length, num: true },
-          { header: "Qty Received", get: (g) => sum(g.items, (i: any) => i.qtyReceived), num: true },
-          { header: "Status", get: (g) => g.status || "Posted" },
+          { header: "Date", get: (r) => r.date },
+          { header: "GRN No", get: (r) => r.grnNo },
+          { header: "PO No", get: (r) => r.poNo },
+          { header: "Supplier", get: (r) => r.supplier, width: 1.6 },
+          { header: "Item Code", get: (r) => r.sku },
+          { header: "Barcode", get: (r) => r.barcode },
+          { header: "Item Name", get: (r) => r.name, width: 2 },
+          { header: "Cost", get: (r) => r.cost, money: true },
+          { header: "Qty", get: (r) => r.qty, num: true },
+          { header: "Line Cost", get: (r) => r.lineCost, money: true },
+          { header: "Received By", get: (r) => r.receivedBy, width: 1.2 },
         ],
       };
     }

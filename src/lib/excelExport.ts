@@ -519,6 +519,7 @@ export function buildPRReportWorkbook(prs: PurchaseRequest[], business: Business
 
 export function buildGRNReportWorkbook(
   grns: GoodsReceipt[],
+  products: Product[],
   business: Business,
   filterNote: string,
 ): ExcelJS.Workbook {
@@ -526,51 +527,85 @@ export function buildGRNReportWorkbook(
   const ws = wb.addWorksheet("Receiving Report", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
+  // No · Date · GRN · PO · Supplier · Item Code · Barcode · Item Name · Cost · Qty · Line Cost
   ws.columns = [
-    { width: 6 }, { width: 16 }, { width: 12 }, { width: 16 }, { width: 30 },
-    { width: 8 }, { width: 13 }, { width: 20 },
+    { width: 5 }, { width: 12 }, { width: 15 }, { width: 16 }, { width: 26 },
+    { width: 12 }, { width: 15 }, { width: 34 }, { width: 11 }, { width: 7 }, { width: 13 },
   ];
 
-  let row = reportHeader(ws, "GOODS RECEIVING REPORT", [`${business.name} · ${business.branch}`, filterNote], 8);
+  const prodById = new Map(products.map((p) => [p.id, p]));
+  let row = reportHeader(ws, "GOODS RECEIVING REPORT", [`${business.name} · ${business.branch}`, filterNote], 11);
 
   tableHead(ws, row, [
-    { label: "No" }, { label: "Receipt" }, { label: "Date" }, { label: "PO Number" }, { label: "Supplier" },
-    { label: "Items", align: "center" }, { label: "Units Received", align: "right" }, { label: "Received By" },
+    { label: "No" }, { label: "Date" }, { label: "GRN No" }, { label: "PO Number" }, { label: "Supplier" },
+    { label: "Item Code" }, { label: "Barcode" }, { label: "Item Name" },
+    { label: "Cost", align: "right" }, { label: "Qty", align: "right" }, { label: "Line Cost", align: "right" },
   ]);
 
+  // Flatten to one row per received item, enriched with barcode + cost.
+  const lineRows = grns.flatMap((g) =>
+    g.items.map((it) => {
+      const p = prodById.get(it.productId);
+      const cost = p?.cost ?? 0;
+      return {
+        date: ddmmyyyy(g.createdAt),
+        grnNo: g.grnNo,
+        poNo: g.poNo,
+        supplier: g.supplier,
+        sku: it.sku,
+        barcode: p?.barcode || "",
+        name: it.name,
+        cost,
+        qty: it.qtyReceived,
+        lineCost: round2(cost * it.qtyReceived),
+      };
+    }),
+  );
+
   const firstDataRow = row + 1;
-  let grandUnits = 0;
-  grns.forEach((g, i) => {
+  let grandQty = 0;
+  let grandCost = 0;
+  lineRows.forEach((li, i) => {
     const r = ws.getRow(firstDataRow + i);
-    const units = g.items.reduce((s, it) => s + it.qtyReceived, 0);
-    grandUnits += units;
-    const cells: [ExcelJS.CellValue, ("right" | "center" | "left")?][] = [
-      [i + 1, "center"], [g.grnNo], [ddmmyyyy(g.createdAt), "center"], [g.poNo], [g.supplier],
-      [g.items.length, "center"], [units, "right"], [g.receivedBy],
+    grandQty += li.qty;
+    grandCost += li.lineCost;
+    const cells: [ExcelJS.CellValue, ("right" | "center" | "left")?, string?][] = [
+      [i + 1, "center"], [li.date, "center"], [li.grnNo], [li.poNo], [li.supplier],
+      [li.sku], [li.barcode], [li.name],
+      [round2(li.cost), "right", MONEY], [li.qty, "right"], [li.lineCost, "right", MONEY],
     ];
-    cells.forEach(([val, align], c) => {
+    cells.forEach(([val, align, fmt], c) => {
       const cell = r.getCell(c + 1);
       cell.value = val;
       cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
       cell.alignment = { horizontal: align || "left", vertical: "middle" };
+      if (fmt) cell.numFmt = fmt;
       cell.border = allThin;
     });
   });
 
-  const totalRow = firstDataRow + grns.length;
+  const totalRow = firstDataRow + lineRows.length;
   const tr = ws.getRow(totalRow);
-  const lbl = tr.getCell(6);
+  const lbl = tr.getCell(8);
   lbl.value = "TOTAL";
   lbl.font = { name: CALIBRI, size: 11, bold: true };
   lbl.alignment = { horizontal: "right" };
   lbl.border = allThin;
-  const val = tr.getCell(7);
-  val.value = grandUnits;
-  val.font = { name: CALIBRI, size: 11, bold: true };
-  val.alignment = { horizontal: "right" };
-  val.border = allThin;
-  tr.getCell(8).border = allThin;
+  const qCell = tr.getCell(10);
+  qCell.value = grandQty;
+  qCell.font = { name: CALIBRI, size: 11, bold: true };
+  qCell.alignment = { horizontal: "right" };
+  qCell.border = allThin;
+  const cCell = tr.getCell(11);
+  cCell.value = round2(grandCost);
+  cCell.numFmt = MONEY;
+  cCell.font = { name: CALIBRI, size: 11, bold: true };
+  cCell.alignment = { horizontal: "right" };
+  cCell.border = allThin;
+  // border the gap cell for a clean total band
+  tr.getCell(9).border = allThin;
 
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;
 }
 
