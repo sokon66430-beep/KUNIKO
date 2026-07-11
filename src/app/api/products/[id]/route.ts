@@ -10,7 +10,7 @@ const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDay
 // supplierCode are dropped by JSON.stringify when undefined, so a product
 // that has never had a supplier linked genuinely lacks that key at runtime,
 // and `in` would wrongly refuse to ever set it for that record.
-const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode"]);
+const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json();

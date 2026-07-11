@@ -275,6 +275,24 @@ export function ProductModal({
           <label className="label">Low stock alert</label>
           <input className="input" type="number" value={form.reorderLevel ?? 0} onChange={(e) => set("reorderLevel", e.target.value)} />
         </div>
+        <div>
+          <label className="label">Gondola / Aisle</label>
+          <input
+            className="input"
+            value={form.gondola || ""}
+            onChange={(e) => set("gondola", e.target.value)}
+            placeholder="e.g. A12"
+          />
+        </div>
+        <div>
+          <label className="label">Shelf</label>
+          <input
+            className="input"
+            value={form.shelf || ""}
+            onChange={(e) => set("shelf", e.target.value)}
+            placeholder="e.g. 3"
+          />
+        </div>
       </div>
     </Modal>
   );

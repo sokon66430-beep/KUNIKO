@@ -18,6 +18,8 @@ export type Product = {
   reorderLevel: number;
   barcode?: string;
   trackStock?: boolean;
+  gondola?: string; // gondola / aisle where the product is displayed (on price label)
+  shelf?: string; // shelf position within the gondola (on price label)
 };
 
 export type Supplier = {

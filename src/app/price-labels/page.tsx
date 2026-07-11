@@ -148,6 +148,13 @@ function PriceLabel({
           </div>
           <div className="flex shrink-0 flex-col items-end justify-between py-0.5 text-right text-black">
             <p className="text-[19px] font-bold leading-[23px] tracking-tight">{product.sku}</p>
+            {(product.gondola || product.shelf) && (
+              <p className="text-[13px] font-bold leading-[16px] tracking-tight text-black/85">
+                {product.gondola ? `G${product.gondola}` : ""}
+                {product.gondola && product.shelf ? " · " : ""}
+                {product.shelf ? `SH${product.shelf}` : ""}
+              </p>
+            )}
             <p className="text-[22px] font-black leading-[24px]">{product.ranking || "A"}</p>
           </div>
         </div>

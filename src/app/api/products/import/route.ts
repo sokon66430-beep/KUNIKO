@@ -25,6 +25,8 @@ const ALIASES: Record<string, string[]> = {
   stock: ["stock", "qty on hand", "quantity", "on hand", "opening stock"],
   reorderLevel: ["low stock alert", "reorder level", "min stock", "minimum stock"],
   trackStock: ["track stock?", "track stock"],
+  gondola: ["gondola", "aisle", "gondola no"],
+  shelf: ["shelf", "shelf no", "shelf position", "shelf number"],
 };
 
 const num = (v: string) => {
@@ -186,6 +188,8 @@ export async function POST(req: Request) {
         if (row.stock) target.stock = num(row.stock);
         if (row.reorderLevel) target.reorderLevel = num(row.reorderLevel);
         if (row.trackStock) target.trackStock = row.trackStock.toLowerCase() === "yes";
+        if (row.gondola) target.gondola = row.gondola;
+        if (row.shelf) target.shelf = row.shelf;
         if (supplierName) {
           target.supplier = supplierName;
           target.supplierCode = supplierCode;

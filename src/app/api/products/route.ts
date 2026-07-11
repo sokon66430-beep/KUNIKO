@@ -47,6 +47,8 @@ export async function POST(req: Request) {
       stock: Math.max(0, Number(body.stock) || 0),
       reorderLevel: Math.max(0, Number(body.reorderLevel) || 0),
       barcode: body.barcode?.trim() || undefined,
+      gondola: body.gondola?.trim() || undefined,
+      shelf: body.shelf?.trim() || undefined,
     };
     db.products.push(product);
     logAudit(db, { actor: "Admin", action: "Created", entityType: "Product", entity: product.name, detail: product.barcode || product.sku });

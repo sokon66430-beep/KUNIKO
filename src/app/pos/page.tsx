@@ -723,6 +723,8 @@ type SalesReportData = {
 
 function SalesReportModal({ onClose }: { onClose: () => void }) {
   const [days, setDays] = useState<number | null>(30);
+  const [cat, setCat] = useState("All");
+  const [q, setQ] = useState("");
   const from = days ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : null;
   const url = from ? `/api/sales-report?from=${from}` : "/api/sales-report";
   const { data, loading } = useFetch<SalesReportData>(url);
@@ -733,13 +735,29 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
     { label: "All time", value: null },
   ];
 
+  // Only categories that actually sold — pick one to focus the item list.
+  const categories = useMemo(() => (data ? data.byCategory.map((c) => c.category) : []), [data]);
+  const ql = q.trim().toLowerCase();
+  const items = useMemo(() => {
+    if (!data) return [];
+    return data.byItem.filter(
+      (it) =>
+        (cat === "All" || it.category === cat) &&
+        (!ql || it.name.toLowerCase().includes(ql) || it.sku.toLowerCase().includes(ql)),
+    );
+  }, [data, cat, ql]);
+  const shown = useMemo(
+    () => items.reduce((a, it) => ({ qty: a.qty + it.qty, revenue: a.revenue + it.revenue, profit: a.profit + it.profit }), { qty: 0, revenue: 0, profit: 0 }),
+    [items],
+  );
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-ink-900/70 p-3 backdrop-blur-sm sm:p-6">
-      <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-lift">
+      <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-lift">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <div className="flex items-center gap-2">
             <BarChart3 size={18} className="text-brand-600" />
-            <h3 className="text-base font-bold text-ink-900">Sales Report</h3>
+            <h3 className="text-base font-bold text-ink-900">Sales Report — by item</h3>
           </div>
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
@@ -773,13 +791,34 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <>
-              {/* Totals */}
-              <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {/* Filters: one category dropdown + item search (no long category list) */}
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                <select value={cat} onChange={(e) => setCat(e.target.value)} className="input sm:max-w-[240px]">
+                  <option value="All">All categories</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    className="input pl-9"
+                    placeholder="Search an item by name or code…"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Totals for the current filter */}
+              <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  { label: "Units sold", value: num(data.totals.qty) },
-                  { label: "Revenue", value: usd(data.totals.revenue) },
-                  { label: "Profit", value: usd(data.totals.profit) },
-                  { label: "Sales", value: num(data.totals.sales) },
+                  { label: "Items", value: num(items.length) },
+                  { label: "Units sold", value: num(shown.qty) },
+                  { label: "Revenue", value: usd(shown.revenue) },
+                  { label: "Profit", value: usd(shown.profit) },
                 ].map((s) => (
                   <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
@@ -788,67 +827,44 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                {/* By category */}
-                <div>
-                  <h4 className="mb-2 text-sm font-bold text-ink-900">By category</h4>
-                  <div className="overflow-hidden rounded-xl border border-slate-200">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
-                          <th className="px-3 py-2 font-semibold">Category</th>
-                          <th className="px-3 py-2 text-right font-semibold">Qty</th>
-                          <th className="px-3 py-2 text-right font-semibold">Revenue</th>
-                          <th className="px-3 py-2 text-right font-semibold">Profit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.byCategory.map((c) => (
-                          <tr key={c.category} className="border-b border-slate-50 last:border-0">
-                            <td className="px-3 py-2 font-medium text-ink-800">{c.category}</td>
-                            <td className="px-3 py-2 text-right text-slate-600">{num(c.qty)}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(c.revenue)}</td>
-                            <td className="px-3 py-2 text-right text-emerald-600">{usd(c.profit)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* By item (top sellers) */}
-                <div>
-                  <h4 className="mb-2 text-sm font-bold text-ink-900">By item — top sellers</h4>
-                  <div className="overflow-hidden rounded-xl border border-slate-200">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
-                          <th className="px-3 py-2 font-semibold">Item</th>
-                          <th className="px-3 py-2 text-right font-semibold">Qty</th>
-                          <th className="px-3 py-2 text-right font-semibold">Revenue</th>
-                          <th className="px-3 py-2 text-right font-semibold">Profit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.byItem.slice(0, 50).map((it) => (
-                          <tr key={it.sku} className="border-b border-slate-50 last:border-0">
-                            <td className="px-3 py-2">
-                              <p className="font-medium text-ink-800">{it.name}</p>
-                              <p className="text-[11px] text-slate-400">{it.sku} · {it.category}</p>
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
-                            <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
-                            <td className="px-3 py-2 text-right text-emerald-600">{usd(it.profit)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {data.byItem.length > 50 && (
-                    <p className="mt-2 text-xs text-slate-400">Showing top 50 of {data.byItem.length} items — full list in Export.</p>
-                  )}
-                </div>
+              {/* By item */}
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                      <th className="px-3 py-2 font-semibold">Item</th>
+                      <th className="px-3 py-2 text-right font-semibold">Sold</th>
+                      <th className="px-3 py-2 text-right font-semibold">Revenue</th>
+                      <th className="px-3 py-2 text-right font-semibold">Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it) => (
+                      <tr key={it.sku} className="border-b border-slate-50 last:border-0">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-ink-800">{it.name}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {it.sku} · {it.category}
+                          </p>
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
+                        <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
+                        <td className="px-3 py-2 text-right text-emerald-600">{usd(it.profit)}</td>
+                      </tr>
+                    ))}
+                    {items.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-8 text-center text-sm text-slate-400">
+                          No items match this filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
+              <p className="mt-2 text-xs text-slate-400">
+                Showing {items.length} item{items.length === 1 ? "" : "s"} — use Export for the full spreadsheet.
+              </p>
             </>
           )}
         </div>
