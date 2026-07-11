@@ -147,6 +147,17 @@ export type GRNItem = {
 
 export type GRNStatus = "Posted" | "PendingApproval";
 
+// Supplier invoice photographed at receiving time, reviewed by Accounting.
+export type InvoiceStatus = "Pending" | "Approved" | "Rejected";
+export type InvoiceReview = {
+  image: string; // stored file name, served via /api/invoice-image/[name]
+  uploadedBy: string;
+  status: InvoiceStatus;
+  reviewedBy?: string;
+  reviewNote?: string; // reason when rejected (optional)
+  reviewedAt?: string;
+};
+
 // A proposed change to an already-submitted receipt, waiting for a manager to
 // approve before it touches stock.
 export type GRNPendingEdit = {
@@ -168,6 +179,7 @@ export type GoodsReceipt = {
   createdAt: string;
   status?: GRNStatus; // undefined = "Posted" (legacy receipts)
   pendingEdit?: GRNPendingEdit;
+  invoice?: InvoiceReview; // supplier invoice scanned at receiving (required for new receipts)
 };
 
 // An approver identity — a role + a secret code (barcode/PIN) that authorises

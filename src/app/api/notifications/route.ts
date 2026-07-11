@@ -39,6 +39,17 @@ export async function GET() {
     });
   }
 
+  const pendingInvoices = db.goodsReceipts.filter((g) => g.invoice?.status === "Pending").length;
+  if (pendingInvoices > 0) {
+    actions.push({
+      id: "invoices-pending",
+      title: `${pendingInvoices} invoice${pendingInvoices === 1 ? "" : "s"} awaiting Accounting review`,
+      detail: "Approve or reject the scanned supplier invoices",
+      href: "/invoices",
+      tone: "amber",
+    });
+  }
+
   const low = db.products.filter((p) => p.reorderLevel > 0 && p.stock <= p.reorderLevel).length;
   if (low > 0) {
     actions.push({

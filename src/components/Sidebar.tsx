@@ -31,6 +31,7 @@ import {
   Check,
   Store,
   Tag,
+  ReceiptText,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -61,6 +62,10 @@ const PROCUREMENT = {
     { href: "/receiving", label: "Receiving", icon: PackageCheck },
     { href: "/audit", label: "Audit Trail", icon: History },
   ],
+};
+const ACCOUNTING = {
+  label: "Accounting",
+  items: [{ href: "/invoices", label: "Invoices", icon: ReceiptText }],
 };
 
 // Two full palettes for the navigation chrome. Light is the default (clean white
@@ -153,7 +158,7 @@ export default function Sidebar() {
     ],
   };
   // Show only the menus this role may use (Accountant is limited; others see all).
-  const groups = [OPERATIONS, PROCUREMENT, admin]
+  const groups = [OPERATIONS, PROCUREMENT, ACCOUNTING, admin]
     .map((g) => ({ ...g, items: g.items.filter((it) => canAccessPage(role, it.href)) }))
     .filter((g) => g.items.length > 0);
 

@@ -672,6 +672,30 @@ function ReceiveModal({
     scanRef.current?.focus();
   }
 
+  // Supplier invoice photo — REQUIRED before the receipt can be submitted.
+  // Compressed client-side so uploads stay small even from a phone camera.
+  const [invoice, setInvoice] = useState<string>("");
+  const invoiceRef = useRef<HTMLInputElement>(null);
+  function pickInvoice(file: File) {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1600;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      setInvoice(canvas.toDataURL("image/jpeg", 0.72));
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert("Could not read that image — try another photo.");
+    };
+    img.src = url;
+  }
+
   async function confirm() {
     const items = po.items
       .map((it) => ({ productId: it.productId, qtyReceived: now[it.productId] || 0 }))
@@ -680,11 +704,15 @@ function ReceiveModal({
       setFlash({ tone: "warn", text: "Enter at least one quantity" });
       return;
     }
+    if (!invoice) {
+      setFlash({ tone: "warn", text: "Scan the supplier's invoice first — it's required" });
+      return;
+    }
     setBusy(true);
     try {
       await api(`/api/purchase-orders/${po.id}/receive`, {
         method: "POST",
-        body: JSON.stringify({ items, receivedBy }),
+        body: JSON.stringify({ items, receivedBy, invoice }),
       });
       onDone();
     } catch (e: any) {
@@ -706,7 +734,12 @@ function ReceiveModal({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" disabled={busy || totalNow === 0} onClick={confirm}>
+          <button
+            className="btn-primary"
+            disabled={busy || totalNow === 0 || !invoice}
+            title={!invoice ? "Scan the supplier's invoice first" : undefined}
+            onClick={confirm}
+          >
             <CheckCircle2 size={16} /> {busy ? "Posting…" : `Confirm receipt (+${totalNow})`}
           </button>
         </>
@@ -846,6 +879,46 @@ function ReceiveModal({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Supplier invoice — must be scanned before the receipt can be submitted */}
+      <div className="mt-4">
+        <label className="label flex items-center gap-1.5">
+          <FileType2 size={13} /> Supplier invoice <span className="text-rose-500">*</span>
+        </label>
+        <input
+          ref={invoiceRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) pickInvoice(f);
+            e.target.value = "";
+          }}
+        />
+        {invoice ? (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={invoice} alt="Invoice" className="h-16 w-16 rounded-lg object-cover ring-1 ring-emerald-200" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-emerald-700">Invoice attached ✓</p>
+              <p className="text-xs text-slate-500">Accounting will review it after you confirm.</p>
+            </div>
+            <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => invoiceRef.current?.click()}>
+              Retake
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => invoiceRef.current?.click()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-4 text-sm font-semibold text-slate-500 transition hover:border-brand-400 hover:text-brand-600"
+          >
+            <Camera size={17} /> Scan / photograph the supplier&apos;s invoice (required)
+          </button>
+        )}
       </div>
 
       <div className="mt-4">
