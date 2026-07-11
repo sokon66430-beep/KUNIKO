@@ -31,10 +31,18 @@ export const DEFAULT_STORE_NAME = "ON Mart PP – Tuol Kork (Street 592)";
 
 let sysWriteChain: Promise<unknown> = Promise.resolve();
 
+// A second store + its first employee, provisioned in the seed so they persist
+// even on hosting without a persistent disk (free tier re-seeds on restart).
+const STORE_TK592_ID = "on-mart-tk-592";
+const STORE_TK592_NAME = "ON Mart TK st.592";
+
 function buildSystemSeed(): SystemData {
   const now = new Date().toISOString();
   return {
-    stores: [{ id: DEFAULT_STORE_ID, name: DEFAULT_STORE_NAME, createdAt: now }],
+    stores: [
+      { id: DEFAULT_STORE_ID, name: DEFAULT_STORE_NAME, createdAt: now },
+      { id: STORE_TK592_ID, name: STORE_TK592_NAME, createdAt: now },
+    ],
     users: [
       {
         id: "u1",
@@ -45,9 +53,18 @@ function buildSystemSeed(): SystemData {
         storeId: DEFAULT_STORE_ID,
         createdAt: now,
       },
+      {
+        id: "u2",
+        username: "Chanvibol",
+        name: "Korn Chanvbol",
+        passwordHash: hashPassword("Chanvilbol592"),
+        role: "operations",
+        storeId: STORE_TK592_ID,
+        createdAt: now,
+      },
     ],
-    nextStore: 2,
-    nextUser: 2,
+    nextStore: 3,
+    nextUser: 3,
   };
 }
 
