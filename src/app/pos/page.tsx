@@ -766,20 +766,20 @@ type SalesReportData = {
 };
 
 function SalesReportModal({ onClose }: { onClose: () => void }) {
-  const [days, setDays] = useState<number | null>(30);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const [mode, setMode] = useState<"day" | "range">("day");
+  const [day, setDay] = useState(yesterday); // sales are ~1 day behind, so default to yesterday
+  const [days, setDays] = useState(7); // range length
   const [cat, setCat] = useState("All");
   const [q, setQ] = useState("");
-  const from = days ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : null;
-  const url = from ? `/api/sales-report?from=${from}` : "/api/sales-report";
-  const { data, loading } = useFetch<SalesReportData>(url);
-  const ranges: { label: string; value: number | null }[] = [
-    { label: "7 days", value: 7 },
-    { label: "30 days", value: 30 },
-    { label: "90 days", value: 90 },
-    { label: "All time", value: null },
-  ];
 
-  // Only categories that actually sold — pick one to focus the item list.
+  const from = mode === "day" ? day : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const to = mode === "day" ? day : undefined;
+  const query = `from=${from}${to ? `&to=${to}` : ""}`;
+  const { data, loading } = useFetch<SalesReportData>(`/api/sales-report?${query}`);
+  const exportHref = (fmt: string) => `/api/sales-report/export?format=${fmt}&${query}`;
+  const ranges = [7, 14, 30, 90];
+
   const categoryOptions = useMemo(
     () => [
       { value: "All", label: "All categories" },
@@ -796,6 +796,20 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
         (!ql || it.name.toLowerCase().includes(ql) || it.sku.toLowerCase().includes(ql)),
     );
   }, [data, cat, ql]);
+  // Group the filtered items by category (best-selling category first).
+  const groups = useMemo(() => {
+    const m = new Map<string, ItemRow[]>();
+    for (const it of items) (m.get(it.category) ?? m.set(it.category, []).get(it.category)!).push(it);
+    return [...m.entries()]
+      .map(([category, its]) => ({
+        category,
+        items: its,
+        qty: its.reduce((s, x) => s + x.qty, 0),
+        revenue: its.reduce((s, x) => s + x.revenue, 0),
+        profit: its.reduce((s, x) => s + x.profit, 0),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [items]);
   const shown = useMemo(
     () => items.reduce((a, it) => ({ qty: a.qty + it.qty, revenue: a.revenue + it.revenue, profit: a.profit + it.profit }), { qty: 0, revenue: 0, profit: 0 }),
     [items],
@@ -807,22 +821,15 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <div className="flex items-center gap-2">
             <BarChart3 size={18} className="text-brand-600" />
-            <h3 className="text-base font-bold text-ink-900">Sales Report — by item</h3>
+            <h3 className="text-base font-bold text-ink-900">Sales Report — by category</h3>
           </div>
           <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
-              {ranges.map((r) => (
-                <button
-                  key={r.label}
-                  onClick={() => setDays(r.value)}
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                    days === r.value ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
+            <a href={exportHref("xlsx")} className="btn-ghost !py-2 text-sm">
+              <FileSpreadsheet size={15} /> Excel
+            </a>
+            <a href={exportHref("pdf")} className="btn-ghost !py-2 text-sm">
+              PDF
+            </a>
             <button
               onClick={onClose}
               className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -833,19 +840,49 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
+          {/* Period: a single day (pick the date) or a recent range */}
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+              {(["day", "range"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition ${
+                    mode === m ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {m === "day" ? "A day" : "Range"}
+                </button>
+              ))}
+            </div>
+            {mode === "day" ? (
+              <input type="date" value={day} max={yesterday} onChange={(e) => setDay(e.target.value)} className="input !w-auto !py-2 text-sm" />
+            ) : (
+              <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+                {ranges.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setDays(n)}
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                      days === n ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    {n} days
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {loading || !data ? (
             <div className="grid h-40 place-items-center text-sm text-slate-400">Loading…</div>
           ) : data.totals.sales === 0 ? (
-            <div className="grid h-40 place-items-center text-sm text-slate-400">
-              No sales in this period. Ring up a sale or use Import to load history.
+            <div className="grid h-40 place-items-center px-6 text-center text-sm text-slate-400">
+              No sales {mode === "day" ? `on ${day}` : "in this period"}. Pick another date, or import that day&apos;s sales.
             </div>
           ) : (
             <>
-              <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                Sales are imported daily from your POS — figures are current up to your last import (usually yesterday).
-              </p>
-
-              {/* Filters: a searchable category picker + item search (no raw dropdown) */}
+              {/* Filter: a searchable category picker + item search */}
               <div className="mb-4 flex flex-col gap-2 sm:flex-row">
                 <SearchSelect
                   value={cat}
@@ -865,7 +902,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* Totals for the current filter */}
+              {/* Totals for the current period + filter */}
               <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   { label: "Items", value: num(items.length) },
@@ -880,44 +917,37 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
 
-              {/* By item */}
-              <div className="overflow-hidden rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
-                      <th className="px-3 py-2 font-semibold">Item</th>
-                      <th className="px-3 py-2 text-right font-semibold">Sold</th>
-                      <th className="px-3 py-2 text-right font-semibold">Revenue</th>
-                      <th className="px-3 py-2 text-right font-semibold">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((it) => (
-                      <tr key={it.sku} className="border-b border-slate-50 last:border-0">
-                        <td className="px-3 py-2">
-                          <p className="font-medium text-ink-800">{it.name}</p>
-                          <p className="text-[11px] text-slate-400">
-                            {it.sku} · {it.category}
-                          </p>
-                        </td>
-                        <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
-                        <td className="px-3 py-2 text-right text-emerald-600">{usd(it.profit)}</td>
-                      </tr>
-                    ))}
-                    {items.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="px-3 py-8 text-center text-sm text-slate-400">
-                          No items match this filter.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              {/* Grouped by category */}
+              <div className="space-y-4">
+                {groups.map((g) => (
+                  <div key={g.category} className="overflow-hidden rounded-xl border border-slate-200">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-3.5 py-2.5">
+                      <p className="text-sm font-bold text-ink-900">{g.category}</p>
+                      <p className="text-xs font-semibold text-slate-500">
+                        {num(g.qty)} sold · <span className="text-ink-800">{usd(g.revenue)}</span> · <span className="text-emerald-600">{usd(g.profit)} profit</span>
+                      </p>
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {g.items.map((it) => (
+                          <tr key={it.sku} className="border-b border-slate-50 last:border-0">
+                            <td className="px-3.5 py-2">
+                              <p className="font-medium text-ink-800">{it.name}</p>
+                              <p className="text-[11px] text-slate-400">{it.sku}</p>
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
+                            <td className="px-3.5 py-2 text-right text-emerald-600">{usd(it.profit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+                {groups.length === 0 && (
+                  <p className="py-8 text-center text-sm text-slate-400">No items match this filter.</p>
+                )}
               </div>
-              <p className="mt-2 text-xs text-slate-400">
-                Showing {items.length} item{items.length === 1 ? "" : "s"} — use Export for the full spreadsheet.
-              </p>
             </>
           )}
         </div>
