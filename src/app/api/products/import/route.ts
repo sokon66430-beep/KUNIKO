@@ -199,7 +199,9 @@ export async function POST(req: Request) {
         if (row.shelfLifeDays) target.shelfLifeDays = num(row.shelfLifeDays) || undefined;
         if (row.groupCode) target.groupCode = row.groupCode.toUpperCase();
         if (row.barcode) target.barcode = row.barcode;
-        if (row.category) target.category = row.category;
+        // Ignore category values that are just a code (pure number) — keep the
+        // existing real name instead of overwriting it with a number.
+        if (row.category && !/^\d+$/.test(row.category.trim())) target.category = row.category;
         if (row.unit) target.unit = row.unit;
         if (row.cost) target.cost = num(row.cost);
         if (row.price) target.price = num(row.price);
@@ -225,7 +227,7 @@ export async function POST(req: Request) {
             : "A"),
           shelfLifeDays: row.shelfLifeDays ? num(row.shelfLifeDays) || undefined : undefined,
           groupCode: row.groupCode ? row.groupCode.toUpperCase() : undefined,
-          category: row.category || "Uncategorized",
+          category: row.category && !/^\d+$/.test(row.category.trim()) ? row.category : "Uncategorized",
           supplier: supplierName || "—",
           supplierCode,
           unit: row.unit || "U",

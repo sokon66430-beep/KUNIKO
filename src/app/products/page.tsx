@@ -134,6 +134,21 @@ export default function ProductsPage() {
     }
   }
 
+  const [fixingCats, setFixingCats] = useState(false);
+  async function fixCategories() {
+    setFixingCats(true);
+    try {
+      const res = await fetch("/api/products/fix-categories", { method: "POST" });
+      const data = await res.json();
+      alert(`Cleaned up ${data.fixed} product${data.fixed === 1 ? "" : "s"} that had a number as their category.`);
+      reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setFixingCats(false);
+    }
+  }
+
   const list = products || [];
 
   // Live suggestions (barcode · item code · name) as you scan / type.
@@ -248,6 +263,18 @@ export default function ProductsPage() {
       />
 
       {error && <ErrorBox message={error} />}
+
+      {list.some((p) => /^\d+$/.test((p.category || "").trim())) && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="flex-1 text-sm text-amber-800">
+            Some products show a <b>number as their category</b> (a code that came in from an import). Clean it up to
+            remove the number chips — those products become <b>Uncategorized</b> until you set a real category name.
+          </p>
+          <button className="btn-primary !py-2 text-sm" disabled={fixingCats} onClick={fixCategories}>
+            {fixingCats ? "Cleaning…" : "Clean up number categories"}
+          </button>
+        </div>
+      )}
 
       {/* Quick product lookup — scan a barcode or search by name / Item ID (same
           concept as Purchase Requests & Purchase Orders) to open full details. */}
