@@ -196,7 +196,10 @@ export default function ProductsPage() {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
-          (p.barcode || "").includes(q),
+          (p.barcode || "").includes(q) ||
+          // location lookup: type a gondola/shelf to find what's placed there
+          (p.gondola || "").toLowerCase().includes(q) ||
+          (p.shelf || "").toLowerCase().includes(q),
       );
     }
     return result;
@@ -345,7 +348,7 @@ export default function ProductsPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               className="input pl-10"
-              placeholder="Search by name, Item ID or barcode…"
+              placeholder="Search by name, Item ID, barcode, or location (e.g. A12)…"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -384,13 +387,14 @@ export default function ProductsPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[1080px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
                     <th className="px-4 py-3 font-semibold">Barcode</th>
                     <th className="px-4 py-3 font-semibold">Product</th>
                     <th className="px-4 py-3 font-semibold">Category</th>
                     <th className="px-4 py-3 font-semibold">Supplier</th>
+                    <th className="px-4 py-3 font-semibold">Location</th>
                     <th className="px-4 py-3 text-center font-semibold">Unit</th>
                     <th className="px-4 py-3 text-right font-semibold">Cost</th>
                     <th className="px-4 py-3 text-right font-semibold">Price</th>
@@ -420,6 +424,17 @@ export default function ProductsPage() {
                             <span className="text-slate-600">{p.supplier}</span>
                           ) : (
                             <Badge tone="amber">Not linked</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {p.gondola || p.shelf ? (
+                            <span className="inline-flex items-center rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                              {p.gondola ? `G${p.gondola}` : ""}
+                              {p.gondola && p.shelf ? " · " : ""}
+                              {p.shelf ? `SH${p.shelf}` : ""}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center text-slate-500">{p.unit}</td>

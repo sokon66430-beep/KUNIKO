@@ -461,7 +461,7 @@ export default function PriceLabelsPage() {
           {/* Shelf location — fill this FIRST, then scan; every item scanned in
               takes this Gondola/Shelf. Change it when you move to the next shelf. */}
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-brand-50/60 px-3.5 py-2.5 ring-1 ring-brand-100">
-            <span className="text-xs font-bold uppercase tracking-wide text-brand-700">Shelf location</span>
+            <span className="text-xs font-bold uppercase tracking-wide text-brand-700">Item location</span>
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
               Gondola
               <input
