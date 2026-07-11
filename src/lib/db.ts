@@ -26,12 +26,18 @@ function backfill(db: DB): DB {
   if (!db.purchaseOrders) db.purchaseOrders = [];
   if (!db.goodsReceipts) db.goodsReceipts = [];
   if (!db.stockCounts) db.stockCounts = [];
+  if (!db.writeOffs) db.writeOffs = [];
   if (!db.auditLog) db.auditLog = [];
   if (db.meta.nextPR == null) db.meta.nextPR = 100002;
   if (db.meta.nextPO == null) db.meta.nextPO = 100021;
   if (db.meta.nextGRN == null) db.meta.nextGRN = 100001;
   if (db.meta.nextStockCount == null) db.meta.nextStockCount = 100001;
+  if (db.meta.nextWriteOff == null) db.meta.nextWriteOff = 100001;
   if (db.meta.nextAudit == null) db.meta.nextAudit = 1;
+  // Every product carries a ranking on its price label; default everything to "A".
+  for (const p of db.products || []) {
+    if (!p.ranking) p.ranking = "A";
+  }
   if (db.meta.business && !db.meta.business.approvers) {
     db.meta.business.approvers = [
       { role: "Manager", name: "", code: "1234" },

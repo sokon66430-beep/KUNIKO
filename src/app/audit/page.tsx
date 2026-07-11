@@ -26,6 +26,7 @@ const TYPE_META: Record<AuditEntityType, { icon: any; tint: string }> = {
   Supplier: { icon: Truck, tint: "bg-amber-50 text-amber-600" },
   Stock: { icon: Package, tint: "bg-emerald-50 text-emerald-600" },
   Count: { icon: ClipboardCheck, tint: "bg-brand-50 text-brand-600" },
+  WriteOff: { icon: Package, tint: "bg-rose-50 text-rose-600" },
 };
 
 const ACTION_COLOR: Record<string, string> = {

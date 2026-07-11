@@ -1,29 +1,66 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Users, Plus, Store as StoreIcon } from "lucide-react";
+import { Building2, Users, Plus, Store as StoreIcon, Trash2 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
+import { canManageStaff } from "@/lib/access";
+import type { Role } from "@/lib/auth";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
 import { num, shortDate } from "@/lib/format";
 
 type StoreRow = { id: string; name: string; createdAt: string; users: number };
 type UserRow = { id: string; username: string; name: string; role: string; storeId: string; storeName: string };
 
-const ROLE_TONE: Record<string, "brand" | "violet" | "amber" | "emerald"> = {
+const ROLE_TONE: Record<string, "brand" | "violet" | "amber" | "emerald" | "rose" | "gold"> = {
   owner: "violet",
+  area_manager: "rose",
+  manager: "gold",
   accountant: "emerald",
   procurement: "brand",
   operations: "amber",
+};
+const ROLE_LABEL: Record<string, string> = {
+  owner: "Owner",
+  area_manager: "Area Manager",
+  manager: "Manager",
+  accountant: "Accountant",
+  procurement: "Procurement",
+  operations: "Operations",
 };
 
 export default function StoresPage() {
   const { data: stores, loading, error, reload } = useFetch<StoreRow[]>("/api/stores");
   const { data: users, reload: reloadUsers } = useFetch<UserRow[]>("/api/users");
+  const { data: session } = useFetch<{ user: { id: string; role: string } }>("/api/auth/session");
   const [addingStore, setAddingStore] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
 
   const storeList = stores || [];
   const userList = users || [];
+  // Creating a new store is reserved for the owner (the server enforces this too).
+  const role = (session?.user.role || "operations") as Role;
+  const isOwner = role === "owner";
+  const canManage = canManageStaff(role); // owner / manager / area manager may remove staff
+  const myId = session?.user.id;
+
+  async function removeUser(u: UserRow) {
+    if (
+      !(await confirmDialog({
+        title: "Remove employee",
+        message: `Remove ${u.name} (@${u.username})? They will no longer be able to sign in.`,
+        confirmText: "Remove",
+      }))
+    )
+      return;
+    try {
+      await api(`/api/users/${u.id}`, { method: "DELETE" });
+      reloadUsers();
+      reload();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
 
   return (
     <div>
@@ -35,9 +72,11 @@ export default function StoresPage() {
             <button className="btn-ghost" onClick={() => setAddingUser(true)}>
               <Users size={18} /> Add Employee
             </button>
-            <button className="btn-primary" onClick={() => setAddingStore(true)}>
-              <Plus size={18} /> Add Store
-            </button>
+            {isOwner && (
+              <button className="btn-primary" onClick={() => setAddingStore(true)}>
+                <Plus size={18} /> Add Store
+              </button>
+            )}
           </div>
         }
       />
@@ -91,17 +130,31 @@ export default function StoresPage() {
             <EmptyState title="No employees" />
           ) : (
             <ul className="divide-y divide-slate-50">
-              {userList.map((u) => (
-                <li key={u.id} className="flex items-center justify-between px-5 py-3">
-                  <div>
-                    <p className="font-semibold text-ink-800">
-                      {u.name} <span className="font-normal text-slate-400">@{u.username}</span>
-                    </p>
-                    <p className="text-xs text-slate-400">{u.storeName}</p>
-                  </div>
-                  <Badge tone={ROLE_TONE[u.role] || "slate"}>{u.role}</Badge>
-                </li>
-              ))}
+              {userList.map((u) => {
+                const deletable = canManage && u.id !== myId && (isOwner || u.role !== "owner");
+                return (
+                  <li key={u.id} className="flex items-center justify-between gap-2 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-ink-800">
+                        {u.name} <span className="font-normal text-slate-400">@{u.username}</span>
+                      </p>
+                      <p className="text-xs text-slate-400">{u.storeName}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={ROLE_TONE[u.role] || "slate"}>{ROLE_LABEL[u.role] || u.role}</Badge>
+                      {deletable && (
+                        <button
+                          onClick={() => removeUser(u)}
+                          title="Remove employee"
+                          className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -119,6 +172,7 @@ export default function StoresPage() {
       {addingUser && (
         <AddUserModal
           stores={storeList}
+          isOwner={isOwner}
           onClose={() => setAddingUser(false)}
           onDone={() => {
             setAddingUser(false);
@@ -179,10 +233,12 @@ function AddStoreModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
 
 function AddUserModal({
   stores,
+  isOwner,
   onClose,
   onDone,
 }: {
   stores: StoreRow[];
+  isOwner: boolean;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -246,7 +302,10 @@ function AddUserModal({
             <option value="operations">Operations</option>
             <option value="procurement">Procurement</option>
             <option value="accountant">Accountant</option>
-            <option value="owner">Owner (full access)</option>
+            <option value="manager">Manager (can remove staff)</option>
+            <option value="area_manager">Area Manager (can remove staff)</option>
+            {/* Only an owner can create another owner (no privilege escalation). */}
+            {isOwner && <option value="owner">Owner (full access)</option>}
           </select>
         </div>
         <div className="col-span-2">

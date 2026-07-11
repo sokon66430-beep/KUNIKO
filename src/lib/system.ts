@@ -27,7 +27,7 @@ export type SystemData = {
 
 // The default store keeps the existing ON Mart Tuol Kork demo data.
 export const DEFAULT_STORE_ID = "onmart-tk";
-export const DEFAULT_STORE_NAME = "ON Mart TK 592";
+export const DEFAULT_STORE_NAME = "ON Mart PP – Tuol Kork (Street 592)";
 
 let sysWriteChain: Promise<unknown> = Promise.resolve();
 

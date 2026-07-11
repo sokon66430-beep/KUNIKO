@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Save, Building2, PartyPopper } from "lucide-react";
+import { Save, Building2, PartyPopper, KeyRound, Sun, Moon } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
+import { useTheme } from "@/components/theme";
 
 type Business = DB["meta"]["business"];
 
@@ -82,6 +83,11 @@ export default function SettingsPage() {
       )}
 
       {error && <ErrorBox message={error} />}
+
+      <AppearanceCard />
+
+      <ChangePasswordCard />
+
       {saved && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           Store settings saved.
@@ -200,5 +206,117 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function AppearanceCard() {
+  const { theme, setTheme } = useTheme();
+  const options: { key: "light" | "dark"; label: string; icon: any; hint: string }[] = [
+    { key: "light", label: "Light", icon: Sun, hint: "Bright, white background" },
+    { key: "dark", label: "Dark", icon: Moon, hint: "Dark, easy on the eyes" },
+  ];
+  return (
+    <Card className="mb-6">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
+        {theme === "dark" ? <Moon size={16} className="text-brand-600" /> : <Sun size={16} className="text-brand-600" />}{" "}
+        Appearance
+      </h3>
+      <p className="mb-4 text-xs text-slate-500">
+        Switch the whole app between light and dark. Your choice is saved on this device.
+      </p>
+      <div className="grid max-w-md gap-3 sm:grid-cols-2">
+        {options.map((o) => {
+          const active = theme === o.key;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => setTheme(o.key)}
+              className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
+                active
+                  ? "border-brand-500 bg-brand-50/60 ring-2 ring-brand-500/20"
+                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              <span
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
+                  active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                <o.icon size={17} />
+              </span>
+              <span className="min-w-0">
+                <span className={`block text-sm font-bold ${active ? "text-brand-700" : "text-ink-900"}`}>
+                  {o.label}
+                </span>
+                <span className="block text-[11px] text-slate-500">{o.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function ChangePasswordCard() {
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function submit() {
+    if (next !== confirm) {
+      setMsg({ ok: false, text: "New passwords don't match" });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api("/api/auth/password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword: cur, newPassword: next }),
+      });
+      setMsg({ ok: true, text: "Password changed. Use it next time you sign in." });
+      setCur("");
+      setNext("");
+      setConfirm("");
+    } catch (e: any) {
+      setMsg({ ok: false, text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
+        <KeyRound size={16} className="text-brand-600" /> Change your password
+      </h3>
+      <p className="mb-4 text-xs text-slate-500">Change the password for the account you're signed in with.</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="label">Current password</label>
+          <input className="input" type="password" value={cur} onChange={(e) => setCur(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">New password</label>
+          <input className="input" type="password" value={next} onChange={(e) => setNext(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Confirm new password</label>
+          <input className="input" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <button className="btn-primary" disabled={busy || !cur || !next} onClick={submit}>
+          <KeyRound size={16} /> {busy ? "Changing…" : "Update password"}
+        </button>
+        {msg && (
+          <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+        )}
+      </div>
+    </Card>
   );
 }

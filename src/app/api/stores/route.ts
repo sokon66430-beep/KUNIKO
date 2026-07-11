@@ -9,9 +9,11 @@ const slug = (s: string) =>
 
 export async function GET() {
   const s = await getSession();
-  if (!s || s.role !== "owner") return NextResponse.json({ error: "Owners only" }, { status: 403 });
+  if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   const sys = await readSystem();
-  const list = sys.stores.map((st) => ({
+  // Owner sees every store; a store user sees only their own store.
+  const visible = s.role === "owner" ? sys.stores : sys.stores.filter((st) => st.id === s.storeId);
+  const list = visible.map((st) => ({
     ...st,
     users: sys.users.filter((u) => u.storeId === st.id).length,
   }));
@@ -25,15 +27,20 @@ export async function POST(req: Request) {
   const clean = String(name || "").trim();
   if (!clean) return NextResponse.json({ error: "Store name is required" }, { status: 400 });
 
-  const created = await mutateSystem((sys) => {
+  const result = await mutateSystem((sys) => {
+    // Store names must be unique (case-insensitive) so the switcher is clear.
+    if (sys.stores.some((st) => st.name.trim().toLowerCase() === clean.toLowerCase())) {
+      return { error: "A store with that name already exists" as const };
+    }
     const n = sys.nextStore++;
     let id = slug(clean) || `store-${n}`;
     if (sys.stores.some((st) => st.id === id)) id = `${id}-${n}`;
     const store: Store = { id, name: clean, createdAt: new Date().toISOString() };
     sys.stores.push(store);
-    return store;
+    return { store };
   });
+  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   // Its data file (with a clean profile named after the store) is created
   // lazily on first access by ensureStoreFile.
-  return NextResponse.json(created, { status: 201 });
+  return NextResponse.json(result.store, { status: 201 });
 }

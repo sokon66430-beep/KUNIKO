@@ -16,7 +16,7 @@ export async function GET() {
       ? sys.stores.map((st) => ({ id: st.id, name: st.name }))
       : sys.stores.filter((st) => st.id === s.storeId).map((st) => ({ id: st.id, name: st.name }));
   return NextResponse.json({
-    user: { name: s.name, role: s.role, storeId: s.storeId, storeName: s.storeName },
+    user: { id: s.uid, name: s.name, role: s.role, storeId: s.storeId, storeName: s.storeName },
     stores,
   });
 }

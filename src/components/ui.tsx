@@ -13,10 +13,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 className="text-[27px] font-extrabold leading-tight tracking-[-0.025em] text-ink-900">{title}</h1>
-        {subtitle && <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-500">{subtitle}</p>}
+        <h1 className="text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-ink-900">{title}</h1>
+        {subtitle && <p className="mt-2 text-sm leading-relaxed text-slate-500">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -41,24 +41,24 @@ export function StatCard({
   accent?: "brand" | "emerald" | "amber" | "violet" | "rose";
 }) {
   const accents: Record<string, string> = {
-    brand: "bg-brand-50 text-brand-600 ring-brand-100",
-    emerald: "bg-emerald-50 text-emerald-600 ring-emerald-100",
-    amber: "bg-amber-50 text-amber-600 ring-amber-100",
-    violet: "bg-violet-50 text-violet-600 ring-violet-100",
-    rose: "bg-rose-50 text-rose-600 ring-rose-100",
+    brand: "bg-brand-50 text-brand-600",
+    emerald: "bg-emerald-50 text-emerald-600",
+    amber: "bg-amber-50 text-amber-600",
+    violet: "bg-violet-50 text-violet-600",
+    rose: "bg-rose-50 text-rose-600",
   };
   return (
-    <div className="card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-soft">
+    <div className="card p-6 transition-colors duration-200 hover:ring-slate-300">
       <div className="flex items-center justify-between">
-        <p className="text-[12.5px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-[11.5px] font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p>
         {icon && (
-          <div className={`grid h-10 w-10 place-items-center rounded-xl ring-1 ${accents[accent]}`}>{icon}</div>
+          <div className={`grid h-8 w-8 place-items-center rounded-full ${accents[accent]}`}>{icon}</div>
         )}
       </div>
-      <p className="mt-4 text-[30px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-ink-900">
+      <p className="mt-5 text-[32px] font-extrabold leading-none tracking-[-0.035em] tabular-nums text-ink-900">
         {value}
       </p>
-      {sub && <p className="mt-2 text-xs text-slate-400">{sub}</p>}
+      {sub && <p className="mt-2.5 text-[13px] text-slate-400">{sub}</p>}
     </div>
   );
 }

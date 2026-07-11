@@ -2,7 +2,13 @@
 // available in both Edge middleware and Node route handlers. No `node:crypto`
 // and no `next/headers` imports here, so middleware can import this safely.
 
-export type Role = "owner" | "accountant" | "procurement" | "operations";
+export type Role =
+  | "owner"
+  | "area_manager"
+  | "manager"
+  | "accountant"
+  | "procurement"
+  | "operations";
 
 export type Session = {
   uid: string;

@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import type { PurchaseOrder, PurchaseRequest, GoodsReceipt, StockCount, Product, DB } from "./types";
+import type { PurchaseOrder, PurchaseRequest, GoodsReceipt, StockCount, WriteOff, Product, DB } from "./types";
 
 type Business = DB["meta"]["business"];
 
@@ -18,6 +18,28 @@ function ddmmyyyy(iso?: string): string {
   const p = (x: number) => x.toString().padStart(2, "0");
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
+
+function hhmm(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (x: number) => x.toString().padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// Columns shared by the write-off Excel and CSV exports.
+export const WRITE_OFF_COLUMNS: { header: string; get: (w: WriteOff) => string | number }[] = [
+  { header: "Date", get: (w) => ddmmyyyy(w.createdAt) },
+  { header: "Time", get: (w) => hhmm(w.createdAt) },
+  { header: "Barcode", get: (w) => w.barcode || "" },
+  { header: "SKU", get: (w) => w.sku },
+  { header: "Product", get: (w) => w.productName },
+  { header: "Category", get: (w) => w.category },
+  { header: "Quantity", get: (w) => w.quantity },
+  { header: "Unit", get: (w) => w.unit },
+  { header: "Reason", get: (w) => w.reason },
+  { header: "Notes", get: (w) => w.notes || "" },
+  { header: "User", get: (w) => w.createdBy },
+];
 
 const COLW = [13, 19.45, 58.54, 10.18, 10.82, 10.18, 15.45, 28.54, 15.18];
 
@@ -549,6 +571,131 @@ export function buildGRNReportWorkbook(
   val.border = allThin;
   tr.getCell(8).border = allThin;
 
+  return wb;
+}
+
+// ---------------------------------------------------------------------------
+// Write-Off export — one row per record, with a totals line.
+// ---------------------------------------------------------------------------
+export function buildWriteOffWorkbook(
+  writeoffs: WriteOff[],
+  business: Business,
+  filterNote: string,
+): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Write-Offs", {
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+  });
+  ws.columns = [
+    { width: 12 }, { width: 8 }, { width: 16 }, { width: 13 }, { width: 34 },
+    { width: 18 }, { width: 10 }, { width: 8 }, { width: 15 }, { width: 26 }, { width: 16 },
+  ];
+
+  let row = reportHeader(ws, "WRITE-OFF REPORT", [`${business.name} · ${business.branch}`, filterNote], WRITE_OFF_COLUMNS.length);
+  tableHead(
+    ws,
+    row,
+    WRITE_OFF_COLUMNS.map((c) => ({ label: c.header, align: c.header === "Quantity" ? ("right" as const) : undefined })),
+  );
+
+  const firstDataRow = row + 1;
+  let totalQty = 0;
+  writeoffs.forEach((w, i) => {
+    const r = ws.getRow(firstDataRow + i);
+    totalQty += w.quantity;
+    WRITE_OFF_COLUMNS.forEach((c, ci) => {
+      const cell = r.getCell(ci + 1);
+      cell.value = c.get(w) as ExcelJS.CellValue;
+      cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+      cell.alignment = { horizontal: c.header === "Quantity" ? "right" : "left", vertical: "middle" };
+      cell.border = allThin;
+    });
+  });
+
+  const totalRow = firstDataRow + writeoffs.length;
+  const tr = ws.getRow(totalRow);
+  const lbl = tr.getCell(6);
+  lbl.value = "TOTAL QTY";
+  lbl.font = { name: CALIBRI, size: 11, bold: true };
+  lbl.alignment = { horizontal: "right" };
+  lbl.border = allThin;
+  const val = tr.getCell(7);
+  val.value = round2(totalQty);
+  val.font = { name: CALIBRI, size: 11, bold: true };
+  val.alignment = { horizontal: "right" };
+  val.border = allThin;
+
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
+  return wb;
+}
+
+// ---------------------------------------------------------------------------
+// Product master export — round-trips with the import (same column headers), so
+// you can export, edit suppliers/prices in Excel, and re-import to update.
+// Empty supplier cells are highlighted yellow so gaps are easy to spot & fill.
+// ---------------------------------------------------------------------------
+export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Products", {
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+  });
+  ws.columns = [
+    { header: "Item ID", key: "sku", width: 14 },
+    { header: "Barcode", key: "barcode", width: 18 },
+    { header: "Product Name", key: "name", width: 42 },
+    { header: "Name KH", key: "nameKh", width: 30 },
+    { header: "Category", key: "category", width: 22 },
+    { header: "Unit", key: "unit", width: 8 },
+    { header: "Supplier Code", key: "supplierCode", width: 14 },
+    { header: "Supplier Name", key: "supplierName", width: 30 },
+    { header: "Cost", key: "cost", width: 10 },
+    { header: "Price", key: "price", width: 10 },
+    { header: "Stock", key: "stock", width: 8 },
+    { header: "Low Stock Alert", key: "reorderLevel", width: 14 },
+    { header: "Product Ranking", key: "ranking", width: 14 },
+    { header: "Shelf Life (day)", key: "shelfLifeDays", width: 13 },
+    { header: "Group Code", key: "groupCode", width: 11 },
+  ];
+
+  const head = ws.getRow(1);
+  head.height = 20;
+  head.eachCell((c) => {
+    c.font = { name: CALIBRI, size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } };
+    c.alignment = { horizontal: "left", vertical: "middle" };
+    c.border = allThin;
+  });
+
+  products.forEach((p) => {
+    const r = ws.addRow({
+      sku: p.sku,
+      barcode: p.barcode || "",
+      name: p.name,
+      nameKh: p.nameKh || "",
+      category: p.category || "",
+      unit: p.unit || "",
+      supplierCode: p.supplierCode || "",
+      supplierName: p.supplier && p.supplier !== "—" ? p.supplier : "",
+      cost: p.cost,
+      price: p.price,
+      stock: p.stock,
+      reorderLevel: p.reorderLevel,
+      ranking: p.ranking || "A",
+      shelfLifeDays: p.shelfLifeDays ?? "",
+      groupCode: p.groupCode || "",
+    });
+    r.eachCell((c) => {
+      c.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+      c.border = allThin;
+    });
+    // Highlight the two supplier cells when the product isn't linked yet.
+    if (!p.supplierCode) {
+      r.getCell(7).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
+      r.getCell(8).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
+    }
+  });
+
+  ws.views = [{ state: "frozen", ySplit: 1 }];
   return wb;
 }
 

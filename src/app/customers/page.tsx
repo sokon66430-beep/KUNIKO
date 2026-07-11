@@ -5,6 +5,7 @@ import { Search, UserPlus, Users, Crown, Star, Pencil, Trash2, Phone, Mail } fro
 import { useFetch, api } from "@/lib/client";
 import type { Customer } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
 import { usd, num, shortDate } from "@/lib/format";
 
 export default function CustomersPage() {
@@ -46,7 +47,14 @@ export default function CustomersPage() {
   }
 
   async function remove(c: Customer) {
-    if (!confirm(`Delete customer "${c.name}"?`)) return;
+    if (
+      !(await confirmDialog({
+        title: "Delete customer",
+        message: `Delete customer "${c.name}"?`,
+        confirmText: "Delete",
+      }))
+    )
+      return;
     await api(`/api/customers/${c.id}`, { method: "DELETE" });
     reload();
   }

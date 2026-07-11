@@ -22,6 +22,7 @@ import {
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
 import { usd, num, dateTime, shortDate } from "@/lib/format";
 
@@ -104,7 +105,15 @@ export default function PurchaseOrdersPage() {
     .reduce((s, p) => s + poTotal(p), 0);
 
   async function cancel(po: PurchaseOrder) {
-    if (!confirm(`Cancel ${po.poNo}?`)) return;
+    if (
+      !(await confirmDialog({
+        title: "Cancel purchase order",
+        message: `Cancel ${po.poNo}? It will no longer be sent to the supplier or received.`,
+        confirmText: "Cancel PO",
+        cancelText: "Keep it",
+      }))
+    )
+      return;
     await api(`/api/purchase-orders/${po.id}`, { method: "PATCH", body: JSON.stringify({ action: "cancel" }) });
     setViewing(null);
     reload();

@@ -6,13 +6,15 @@ import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const ROLES: Role[] = ["owner", "accountant", "procurement", "operations"];
+const ROLES: Role[] = ["owner", "area_manager", "manager", "accountant", "procurement", "operations"];
 
 export async function GET() {
   const s = await getSession();
-  if (!s || s.role !== "owner") return NextResponse.json({ error: "Owners only" }, { status: 403 });
+  if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   const sys = await readSystem();
-  const list = sys.users.map((u) => ({
+  // Owner sees every employee; a store user sees only their own store's team.
+  const visible = s.role === "owner" ? sys.users : sys.users.filter((u) => u.storeId === s.storeId);
+  const list = visible.map((u) => ({
     id: u.id,
     username: u.username,
     name: u.name,
@@ -25,13 +27,22 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const s = await getSession();
-  if (!s || s.role !== "owner") return NextResponse.json({ error: "Owners only" }, { status: 403 });
+  if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  const isOwner = s.role === "owner";
   const body = await req.json().catch(() => ({}));
   const username = String(body.username || "").trim().toLowerCase();
   const name = String(body.name || "").trim() || username;
   const password = String(body.password || "");
-  const role: Role = ROLES.includes(body.role) ? body.role : "operations";
-  const storeId = String(body.storeId || "");
+  let role: Role = ROLES.includes(body.role) ? body.role : "operations";
+  // A store user may only add employees to their OWN store, and can never mint
+  // an owner account (no privilege escalation). Owners may add to any store.
+  let storeId = String(body.storeId || "");
+  if (!isOwner) {
+    storeId = s.storeId;
+    if (role === "owner") {
+      return NextResponse.json({ error: "Only an owner can create an owner account" }, { status: 403 });
+    }
+  }
 
   if (!username || !password) {
     return NextResponse.json({ error: "Username and password are required" }, { status: 400 });

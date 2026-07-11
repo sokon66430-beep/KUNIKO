@@ -1,0 +1,151 @@
+"use client";
+
+import Link from "next/link";
+import {
+  BarChart3,
+  ClipboardList,
+  FileText,
+  PackageCheck,
+  PackageX,
+  ClipboardCheck,
+  ArrowRight,
+  FileSpreadsheet,
+  FileType2,
+  FileDown,
+} from "lucide-react";
+import { useFetch } from "@/lib/client";
+import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount } from "@/lib/types";
+import { PageHeader, Card } from "@/components/ui";
+import { num } from "@/lib/format";
+
+type Accent = "brand" | "violet" | "emerald" | "amber" | "rose" | "slate";
+const TINT: Record<Accent, string> = {
+  brand: "bg-brand-50 text-brand-600",
+  violet: "bg-violet-50 text-violet-600",
+  emerald: "bg-emerald-50 text-emerald-600",
+  amber: "bg-amber-50 text-amber-600",
+  rose: "bg-rose-50 text-rose-600",
+  slate: "bg-slate-100 text-slate-600",
+};
+
+// Every report offers the same three downloads. `base` already carries any
+// query (?), so we append format params with the right separator.
+function exportsFor(base: string) {
+  const sep = base.includes("?") ? "&" : "?";
+  return [
+    { label: "Excel", href: base, icon: FileSpreadsheet },
+    { label: "PDF", href: `${base}${sep}format=pdf`, icon: FileType2 },
+    { label: "CSV", href: `${base}${sep}format=csv`, icon: FileDown },
+  ];
+}
+
+export default function ReportsCenterPage() {
+  const { data: sales } = useFetch<Sale[]>("/api/sales?limit=100000");
+  const { data: pos } = useFetch<PurchaseOrder[]>("/api/purchase-orders");
+  const { data: prs } = useFetch<PurchaseRequest[]>("/api/purchase-requests");
+  const { data: grns } = useFetch<GoodsReceipt[]>("/api/goods-receipts");
+  const { data: wos } = useFetch<WriteOff[]>("/api/write-offs");
+  const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
+
+  const cards: {
+    icon: any;
+    accent: Accent;
+    title: string;
+    desc: string;
+    stat?: string;
+    open?: string;
+    exports?: { label: string; href: string; icon: any }[];
+  }[] = [
+    {
+      icon: BarChart3,
+      accent: "brand",
+      title: "Sales & Profit",
+      desc: "Revenue, profit, margin and best-selling products over any period.",
+      stat: sales ? `${num(sales.length)} sales` : undefined,
+      open: "/reports",
+      exports: exportsFor("/api/reports/sales/export"),
+    },
+    {
+      icon: ClipboardList,
+      accent: "violet",
+      title: "Purchase Orders",
+      desc: "PO activity, value ordered vs received, and outstanding amounts by supplier.",
+      stat: pos ? `${num(pos.length)} orders` : undefined,
+      open: "/procurement-reports",
+      exports: exportsFor("/api/reports/purchase-orders/export"),
+    },
+    {
+      icon: FileText,
+      accent: "brand",
+      title: "Purchase Requests",
+      desc: "Requests raised, approved, ordered or rejected — with estimated value.",
+      stat: prs ? `${num(prs.length)} requests` : undefined,
+      open: "/procurement-reports",
+      exports: exportsFor("/api/reports/purchase-requests/export"),
+    },
+    {
+      icon: PackageCheck,
+      accent: "emerald",
+      title: "Goods Receiving",
+      desc: "What was received, when, by whom — every goods receipt.",
+      stat: grns ? `${num(grns.length)} receipts` : undefined,
+      open: "/receiving",
+      exports: exportsFor("/api/reports/goods-receipts/export"),
+    },
+    {
+      icon: PackageX,
+      accent: "rose",
+      title: "Write-Offs",
+      desc: "Damaged, expired and missing stock — broken down by reason and category.",
+      stat: wos ? `${num(wos.length)} records` : undefined,
+      open: "/write-off-reports",
+      exports: exportsFor("/api/write-offs/export"),
+    },
+    {
+      icon: ClipboardCheck,
+      accent: "amber",
+      title: "Stock Counts",
+      desc: "Physical stocktakes and variances vs system stock, with a downloadable sheet.",
+      stat: counts ? `${num(counts.length)} counts` : undefined,
+      open: "/stock-count",
+      exports: exportsFor("/api/reports/stock-counts/export"),
+    },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Reports"
+        subtitle="Every report in one place — open the full view or download as Excel, PDF or CSV"
+      />
+
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map((c) => (
+          <Card key={c.title} className="flex flex-col p-5">
+            <div className="flex items-start justify-between">
+              <div className={`grid h-11 w-11 place-items-center rounded-xl ${TINT[c.accent]}`}>
+                <c.icon size={20} />
+              </div>
+              {c.stat && <span className="text-xs font-semibold text-slate-400">{c.stat}</span>}
+            </div>
+            <h3 className="mt-4 text-base font-bold text-ink-900">{c.title}</h3>
+            <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-500">{c.desc}</p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {c.open && (
+                <Link href={c.open} className="btn-primary !py-2 text-sm">
+                  Open <ArrowRight size={15} />
+                </Link>
+              )}
+              {c.exports?.map((e) => (
+                <a key={e.label} href={e.href} className="btn-ghost !py-2 text-sm">
+                  <e.icon size={15} /> {e.label}
+                </a>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -1,21 +1,42 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { resolveSupplier, supplierNotInSystem } from "@/lib/supplierLink";
 
 export const dynamic = "force-dynamic";
 
-const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel"]);
+const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays"]);
 // Explicit allow-list rather than `key in product` — optional fields like
 // supplierCode are dropped by JSON.stringify when undefined, so a product
 // that has never had a supplier linked genuinely lacks that key at runtime,
 // and `in` would wrongly refuse to ever set it for that record.
-const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "category", "supplier", "supplierCode", "unit", "barcode"]);
+const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json();
   const result = await mutateDB((db) => {
     const product = db.products.find((p) => p.id === params.id);
     if (!product) return null;
+
+    // If this edit touches the supplier, it must resolve to a real supplier.
+    // Legacy records whose supplier is unchanged pass through (grandfathered),
+    // so editing an unrelated field never gets blocked.
+    if ("supplier" in body || "supplierCode" in body) {
+      const sup = resolveSupplier(db.suppliers, body.supplier, body.supplierCode);
+      if (sup.status === "ok") {
+        body.supplier = sup.name;
+        body.supplierCode = sup.code;
+      } else if (sup.status === "none") {
+        body.supplier = "—";
+        body.supplierCode = undefined;
+      } else {
+        const unchanged =
+          (product.supplier || "") === (body.supplier || "") &&
+          (product.supplierCode || "") === (body.supplierCode || "");
+        if (!unchanged) return { error: supplierNotInSystem(sup.input) };
+      }
+    }
+
     const prevStock = product.stock;
     for (const [key, value] of Object.entries(body)) {
       if (key === "id") continue;
@@ -43,6 +64,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
 
   if (!result) return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   return NextResponse.json(result);
 }
 

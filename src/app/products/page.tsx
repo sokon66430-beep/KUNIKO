@@ -15,14 +15,21 @@ import {
   PackageCheck,
   Plus,
   FileSpreadsheet,
+  Download,
   Pencil,
   Trash2,
+  ScanLine,
+  Camera,
   X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
+import { CameraScanner } from "@/components/CameraScanner";
 import type { Product, Supplier, PurchaseOrder, GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
+import { SearchSelect } from "@/components/SearchSelect";
 import { ProductModal, EMPTY_PRODUCT } from "@/components/ProductModal";
+import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
 import { usd, num, shortDate, gpPercent } from "@/lib/format";
 
 type ImportResult = {
@@ -37,7 +44,7 @@ const PAGE_SIZE = 100;
 
 export default function ProductsPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products");
-  const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
+  const { data: suppliers, reload: reloadSuppliers } = useFetch<Supplier[]>("/api/suppliers");
   const { data: pos } = useFetch<PurchaseOrder[]>("/api/purchase-orders");
   const { data: grns } = useFetch<GoodsReceipt[]>("/api/goods-receipts");
   const [query, setQuery] = useState("");
@@ -45,7 +52,13 @@ export default function ProductsPage() {
   const [supplierFilter, setSupplierFilter] = useState("All");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [viewing, setViewing] = useState<Product | null>(null);
+  // Quick product lookup (scan / search → open full details), same concept as PR/PO.
+  const [scan, setScan] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
+  const [addingSupplier, setAddingSupplier] = useState(false);
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -69,8 +82,28 @@ export default function ProductsPage() {
     }
   }
 
+  async function saveSupplier(s: Partial<Supplier>) {
+    setBusy(true);
+    try {
+      await api("/api/suppliers", { method: "POST", body: JSON.stringify(s) });
+      setAddingSupplier(false);
+      reloadSuppliers();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removeProduct(p: Product) {
-    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+    if (
+      !(await confirmDialog({
+        title: "Delete product",
+        message: `Delete "${p.name}"? This cannot be undone.`,
+        confirmText: "Delete",
+      }))
+    )
+      return;
     try {
       await api(`/api/products/${p.id}`, { method: "DELETE" });
       setViewing(null);
@@ -101,6 +134,47 @@ export default function ProductsPage() {
 
   const list = products || [];
 
+  // Live suggestions (barcode · item code · name) as you scan / type.
+  const scanResults = useMemo(() => {
+    const q = scan.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const score = (p: Product) => {
+      if ((p.barcode || "").includes(q)) return 0;
+      if (p.sku.toLowerCase().includes(q)) return 1;
+      const n = p.name.toLowerCase();
+      if (n.startsWith(q)) return 2;
+      if (n.includes(q)) return 3;
+      return -1;
+    };
+    return list
+      .map((p) => ({ p, s: score(p) }))
+      .filter((x) => x.s >= 0)
+      .sort((a, b) => a.s - b.s || a.p.name.localeCompare(b.p.name))
+      .slice(0, 8)
+      .map((x) => x.p);
+  }, [scan, list]);
+
+  // Scan a barcode or press Enter → open the matching product's full details.
+  function lookup(codeArg?: string) {
+    const fromCamera = codeArg != null;
+    const code = (codeArg ?? scan).trim();
+    if (!code) return;
+    const lc = code.toLowerCase();
+    const match =
+      list.find((p) => p.barcode === code) ||
+      list.find((p) => p.sku.toLowerCase() === lc) ||
+      list.find((p) => p.name.toLowerCase() === lc) ||
+      scanResults[0];
+    if (match) {
+      setViewing(match);
+      setScan("");
+      setScanNotice(null);
+      if (fromCamera) setCameraOpen(false);
+    } else {
+      setScanNotice(`No product found for “${code}”.`);
+    }
+  }
+
   const categories = useMemo(() => {
     const set = new Set(list.map((p) => p.category));
     return ["All", ...Array.from(set).sort()];
@@ -114,7 +188,8 @@ export default function ProductsPage() {
   const filtered = useMemo(() => {
     let result = list;
     if (category !== "All") result = result.filter((p) => p.category === category);
-    if (supplierFilter !== "All") result = result.filter((p) => p.supplier === supplierFilter);
+    if (supplierFilter === "__unlinked__") result = result.filter((p) => !p.supplierCode);
+    else if (supplierFilter !== "All") result = result.filter((p) => p.supplier === supplierFilter);
     const q = query.trim().toLowerCase();
     if (q) {
       result = result.filter(
@@ -148,8 +223,17 @@ export default function ProductsPage() {
                 if (f) importExcel(f);
               }}
             />
+            <a
+              href={supplierFilter === "__unlinked__" ? "/api/products/export?unlinked=1" : "/api/products/export"}
+              className="btn-ghost"
+            >
+              <Download size={18} /> Export Excel
+            </a>
             <button className="btn-ghost" disabled={importing} onClick={() => fileRef.current?.click()}>
               <FileSpreadsheet size={18} /> {importing ? "Importing…" : "Import Excel"}
+            </button>
+            <button className="btn-ghost" onClick={() => setAddingSupplier(true)}>
+              <Truck size={18} /> Add Supplier
             </button>
             <button className="btn-primary" onClick={() => setEditing({ ...EMPTY_PRODUCT })}>
               <Plus size={18} /> Add Product
@@ -159,6 +243,72 @@ export default function ProductsPage() {
       />
 
       {error && <ErrorBox message={error} />}
+
+      {/* Quick product lookup — scan a barcode or search by name / Item ID (same
+          concept as Purchase Requests & Purchase Orders) to open full details. */}
+      <Card className="mb-6">
+        <label className="label flex items-center gap-1.5">
+          <ScanLine size={13} /> Check a product — scan or search
+        </label>
+        <div className="relative">
+          <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
+          <input
+            ref={scanRef}
+            className="input h-12 pl-10 pr-12 text-base"
+            placeholder="Scan / type barcode · Item ID · name"
+            value={scan}
+            onChange={(e) => {
+              setScan(e.target.value);
+              setScanNotice(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                lookup();
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setCameraOpen(true)}
+            title="Scan with camera"
+            className="absolute right-1.5 top-1/2 grid h-9 w-10 -translate-y-1/2 place-items-center rounded-lg bg-brand-600 text-white hover:bg-brand-700"
+          >
+            <Camera size={18} />
+          </button>
+          {scanResults.length > 0 && (
+            <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-soft">
+              {scanResults.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setViewing(p);
+                    setScan("");
+                    setScanNotice(null);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 border-b border-slate-50 px-3.5 py-2.5 text-left last:border-0 hover:bg-brand-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-ink-800">{p.name}</span>
+                    <span className="block truncate text-[11px] text-slate-400">
+                      {p.barcode || "no barcode"} · {p.sku} · {p.category}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-medium text-slate-500">
+                    {p.stock} {p.unit}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Scan a barcode or type a name / Item ID to open the product's full details — price, stock, supplier and
+          purchase history.
+        </p>
+        {scanNotice && <p className="mt-1 text-xs font-medium text-amber-600">{scanNotice}</p>}
+      </Card>
 
       {importResult && (
         <div className="mb-4 flex items-start justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -185,7 +335,7 @@ export default function ProductsPage() {
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Products" value={num(list.length)} icon={<Package size={18} />} accent="brand" />
         <StatCard label="With Barcode" value={num(withBarcode)} icon={<Barcode size={18} />} accent="emerald" />
-        <StatCard label="Linked to Supplier" value={num(linked)} icon={<Link2 size={18} />} accent="violet" />
+        <StatCard label="Linked to Supplier" value={num(linked)} sub={`${num(list.length - linked)} not linked`} icon={<Link2 size={18} />} accent="violet" />
         <StatCard label="Categories" value={num(categories.length - 1)} icon={<Layers size={18} />} accent="amber" />
       </div>
 
@@ -203,31 +353,28 @@ export default function ProductsPage() {
               }}
             />
           </div>
-          <select
-            className="input sm:w-44"
+          <SearchSelect
+            className="sm:w-52"
             value={category}
-            onChange={(e) => {
-              setCategory(e.target.value);
+            onChange={(v) => {
+              setCategory(v);
               setLimit(PAGE_SIZE);
             }}
-          >
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <select
-            className="input sm:w-56"
+            options={categories.map((c) => ({ value: c, label: c === "All" ? "All Categories" : c }))}
+          />
+          <SearchSelect
+            className="sm:w-60"
             value={supplierFilter}
-            onChange={(e) => {
-              setSupplierFilter(e.target.value);
+            onChange={(v) => {
+              setSupplierFilter(v);
               setLimit(PAGE_SIZE);
             }}
-          >
-            <option value="All">All Suppliers</option>
-            {supplierNames.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+            options={[
+              { value: "All", label: "All Suppliers" },
+              { value: "__unlinked__", label: "⚠ Not linked" },
+              ...supplierNames.map((s) => ({ value: s, label: s })),
+            ]}
+          />
         </div>
 
         {loading ? (
@@ -322,6 +469,18 @@ export default function ProductsPage() {
           onSave={saveProduct}
         />
       )}
+
+      {addingSupplier && (
+        <SupplierModal
+          initial={{ ...EMPTY_SUPPLIER }}
+          isNew
+          busy={busy}
+          onClose={() => setAddingSupplier(false)}
+          onSave={saveSupplier}
+        />
+      )}
+
+      <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => lookup(code)} />
     </div>
   );
 }

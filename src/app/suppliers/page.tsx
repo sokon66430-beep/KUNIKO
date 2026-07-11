@@ -16,24 +16,10 @@ import {
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, Supplier } from "@/lib/types";
-import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, EmptyState } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
+import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
 import { num } from "@/lib/format";
-
-const EMPTY: Partial<Supplier> = {
-  code: "",
-  name: "",
-  address: "",
-  city: "",
-  country: "",
-  contactPerson: "",
-  phone: "",
-  email: "",
-  deliverySchedule: "",
-  leadTime: 0,
-  minOrderAmount: 0,
-  taxId: "",
-  taxPct: 10,
-};
 
 export default function SuppliersPage() {
   const { data: suppliers, loading, error, reload } = useFetch<Supplier[]>("/api/suppliers");
@@ -79,7 +65,14 @@ export default function SuppliersPage() {
   }
 
   async function remove(s: Supplier) {
-    if (!confirm(`Delete supplier "${s.name}"?`)) return;
+    if (
+      !(await confirmDialog({
+        title: "Delete supplier",
+        message: `Delete supplier "${s.name}"?`,
+        confirmText: "Delete",
+      }))
+    )
+      return;
     try {
       await api(`/api/suppliers/${encodeURIComponent(s.code)}`, { method: "DELETE" });
       reload();
@@ -94,7 +87,7 @@ export default function SuppliersPage() {
         title="Suppliers"
         subtitle="Every supplier and what you can order from them"
         actions={
-          <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
+          <button className="btn-primary" onClick={() => setEditing({ ...EMPTY_SUPPLIER })}>
             <Plus size={18} /> Add Supplier
           </button>
         }
@@ -218,95 +211,5 @@ export default function SuppliersPage() {
         />
       )}
     </div>
-  );
-}
-
-function SupplierModal({
-  initial,
-  isNew,
-  busy,
-  onClose,
-  onSave,
-}: {
-  initial: Partial<Supplier>;
-  isNew: boolean;
-  busy: boolean;
-  onClose: () => void;
-  onSave: (s: Partial<Supplier>) => void;
-}) {
-  const [form, setForm] = useState<Partial<Supplier>>(initial);
-  const set = (k: keyof Supplier, v: any) => setForm((f) => ({ ...f, [k]: v }));
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={isNew ? "Add Supplier" : `Edit Supplier — ${initial.name}`}
-      footer={
-        <>
-          <button className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn-primary" disabled={busy || !form.name} onClick={() => onSave(form)}>
-            {busy ? "Saving…" : "Save"}
-          </button>
-        </>
-      }
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
-          <label className="label">Supplier name</label>
-          <input className="input" value={form.name || ""} onChange={(e) => set("name", e.target.value)} />
-        </div>
-        {isNew && (
-          <div>
-            <label className="label">Code</label>
-            <input
-              className="input"
-              placeholder="auto"
-              value={form.code || ""}
-              onChange={(e) => set("code", e.target.value)}
-            />
-          </div>
-        )}
-        <div>
-          <label className="label">Contact person</label>
-          <input className="input" value={form.contactPerson || ""} onChange={(e) => set("contactPerson", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Phone</label>
-          <input className="input" value={form.phone || ""} onChange={(e) => set("phone", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Email</label>
-          <input className="input" value={form.email || ""} onChange={(e) => set("email", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Delivery day</label>
-          <input
-            className="input"
-            placeholder="e.g. TUE"
-            value={form.deliverySchedule || ""}
-            onChange={(e) => set("deliverySchedule", e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="label">Lead time (days)</label>
-          <input className="input" type="number" value={form.leadTime ?? 0} onChange={(e) => set("leadTime", e.target.value)} />
-        </div>
-        <div className="col-span-2">
-          <label className="label">Address</label>
-          <input className="input" value={form.address || ""} onChange={(e) => set("address", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">City</label>
-          <input className="input" value={form.city || ""} onChange={(e) => set("city", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Tax ID</label>
-          <input className="input" value={form.taxId || ""} onChange={(e) => set("taxId", e.target.value)} />
-        </div>
-      </div>
-    </Modal>
   );
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { generateItemId } from "@/lib/itemId";
+import { resolveSupplier, supplierNotInSystem } from "@/lib/supplierLink";
 import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,10 @@ export async function POST(req: Request) {
   }
 
   const created = await mutateDB((db) => {
+    // A supplier can only be attached if it already exists in the system.
+    const sup = resolveSupplier(db.suppliers, body.supplier, body.supplierCode);
+    if (sup.status === "unknown") return { error: supplierNotInSystem(sup.input) };
+
     const idNum = db.products.reduce((max, p) => Math.max(max, parseInt(p.id.slice(1)) || 0), 0) + 1;
     // Item ID: keep an explicit one if given, else auto-generate a unique
     // 8-digit code from the sub-group + category codes.
@@ -29,9 +34,13 @@ export async function POST(req: Request) {
       subGroupCode: body.subGroupCode?.trim() || undefined,
       catCode: body.catCode?.trim() || undefined,
       name: body.name.trim(),
+      nameKh: body.nameKh?.trim() || undefined,
+      ranking: ["A", "B", "C", "D"].includes(body.ranking) ? body.ranking : "A",
+      shelfLifeDays: Math.max(0, Number(body.shelfLifeDays) || 0) || undefined,
+      groupCode: body.groupCode?.trim().toUpperCase() || undefined,
       category: body.category?.trim() || "Other",
-      supplier: body.supplier?.trim() || "—",
-      supplierCode: body.supplierCode?.trim() || undefined,
+      supplier: sup.status === "ok" ? sup.name : "—",
+      supplierCode: sup.status === "ok" ? sup.code : undefined,
       unit: body.unit?.trim() || "pcs",
       cost: Math.max(0, Number(body.cost) || 0),
       price: Math.max(0, Number(body.price) || 0),
@@ -41,8 +50,9 @@ export async function POST(req: Request) {
     };
     db.products.push(product);
     logAudit(db, { actor: "Admin", action: "Created", entityType: "Product", entity: product.name, detail: product.barcode || product.sku });
-    return product;
+    return { product };
   });
 
-  return NextResponse.json(created, { status: 201 });
+  if ("error" in created) return NextResponse.json({ error: created.error }, { status: 400 });
+  return NextResponse.json(created.product, { status: 201 });
 }

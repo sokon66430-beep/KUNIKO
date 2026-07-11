@@ -6,6 +6,8 @@ import { Search, Plus, Package, AlertTriangle, DollarSign, Pencil, Trash2, Packa
 import { useFetch, api } from "@/lib/client";
 import type { Product, Supplier } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
+import { SearchSelect } from "@/components/SearchSelect";
 import { ProductModal, EMPTY_PRODUCT as EMPTY } from "@/components/ProductModal";
 import { usd, num, gpPercent } from "@/lib/format";
 
@@ -98,7 +100,14 @@ export default function InventoryPage() {
   }
 
   async function remove(p: Product) {
-    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+    if (
+      !(await confirmDialog({
+        title: "Delete product",
+        message: `Delete "${p.name}"? This cannot be undone.`,
+        confirmText: "Delete",
+      }))
+    )
+      return;
     await api(`/api/products/${p.id}`, { method: "DELETE" });
     reload();
   }
@@ -135,19 +144,21 @@ export default function InventoryPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <select className="input sm:w-44" value={category} onChange={(e) => setCategory(e.target.value)}>
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <select className="input sm:w-56" value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}>
-            <option value="All">All Suppliers</option>
-            {supplierNames
-              .filter((s) => s !== "All")
-              .map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-          </select>
+          <SearchSelect
+            className="sm:w-52"
+            value={category}
+            onChange={setCategory}
+            options={categories.map((c) => ({ value: c, label: c === "All" ? "All Categories" : c }))}
+          />
+          <SearchSelect
+            className="sm:w-60"
+            value={supplierFilter}
+            onChange={setSupplierFilter}
+            options={[
+              { value: "All", label: "All Suppliers" },
+              ...supplierNames.filter((s) => s !== "All").map((s) => ({ value: s, label: s })),
+            ]}
+          />
         </div>
 
         {loading ? (

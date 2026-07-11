@@ -28,6 +28,19 @@ export function CameraScanner({
     if (!open) return;
     setError("");
     setCount(0);
+
+    // Browsers only allow the camera on a secure origin (https) or localhost.
+    // Over Wi-Fi the app is served on http://192.168.x.x, so the camera API is
+    // missing — show a clear reason instead of a raw "undefined" error.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(
+        typeof window !== "undefined" && window.isSecureContext === false
+          ? "Camera scanning needs a secure (https) link. On a phone over Wi-Fi this address is plain http, so the browser blocks the camera. Type the barcode in the box instead — or ask for an https link to enable the camera."
+          : "This browser doesn't support camera scanning. Type the barcode in the box instead.",
+      );
+      return;
+    }
+
     const reader = new BrowserMultiFormatReader();
     let controls: { stop: () => void } | undefined;
     let cancelled = false;

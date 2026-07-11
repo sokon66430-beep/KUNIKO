@@ -17,12 +17,14 @@ import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import type { Product, StockCount, StockCountItem } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
 import { num, dateTime, usd } from "@/lib/format";
 
 export default function StockCountPage() {
   const { data: counts, loading, error, reload } = useFetch<StockCount[]>("/api/stock-counts");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<StockCount | null>(null);
 
   async function newCount() {
     setCreating(true);
@@ -123,6 +125,13 @@ export default function StockCountPage() {
                           >
                             {c.status === "Posted" ? "View" : "Open"}
                           </button>
+                          <button
+                            onClick={() => setDeleteTarget(c)}
+                            title="Delete count (needs manager approval)"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-50"
+                          >
+                            <Trash2 size={14} /> Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -143,7 +152,91 @@ export default function StockCountPage() {
           }}
         />
       )}
+
+      {deleteTarget && (
+        <DeleteApproveModal
+          count={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDone={() => {
+            setDeleteTarget(null);
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Deleting a stock count is destructive, so it requires a manager / assistant
+// manager to approve it by entering their code (same approvers as elsewhere).
+function DeleteApproveModal({
+  count,
+  onClose,
+  onDone,
+}: {
+  count: StockCount;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!code.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/api/stock-counts/${count.id}`, { method: "DELETE", body: JSON.stringify({ code }) });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message || "Could not delete this count");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Delete stock count"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn bg-rose-600 font-bold text-white hover:bg-rose-700"
+            disabled={busy || !code.trim()}
+            onClick={submit}
+          >
+            {busy ? "Deleting…" : "Approve & delete"}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-slate-600">
+        You're about to permanently delete <span className="font-semibold text-ink-900">{count.countNo}</span> (
+        {count.items.length} item{count.items.length === 1 ? "" : "s"}). A manager must approve this.
+      </p>
+      <label className="label mt-4">Manager approval code</label>
+      <input
+        className="input tracking-widest"
+        type="password"
+        autoFocus
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="Enter approval code"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+      />
+      {err && <p className="mt-2 text-xs font-medium text-rose-600">{err}</p>}
+      <p className="mt-2 text-xs text-slate-400">
+        Ask a Manager or Assistant Manager to enter their code. Codes are managed in Store Settings.
+      </p>
+    </Modal>
   );
 }
 
@@ -157,12 +250,13 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // After each scan we pop up an amount prompt for that product.
+  const [countTarget, setCountTarget] = useState<Product | null>(null);
+  const [countValue, setCountValue] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
+  const promptRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  // A scanned product's row may only appear after the save round-trips, so we
-  // re-try focusing its quantity box whenever the item list changes.
-  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
 
   const costOf = useMemo(() => new Map((products || []).map((p) => [p.id, p.cost])), [products]);
 
@@ -170,14 +264,11 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const items = count?.items || [];
 
   useEffect(() => {
-    if (!pendingFocus) return;
-    const el = qtyRefs.current[pendingFocus];
-    if (el) {
-      el.focus();
-      el.select();
-      setPendingFocus(null);
+    if (countTarget) {
+      promptRef.current?.focus();
+      promptRef.current?.select();
     }
-  }, [pendingFocus, items]);
+  }, [countTarget]);
 
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -205,11 +296,30 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     reload();
   }
 
-  async function addProduct(p: Product) {
+  // Scan/pick a product → pop up the amount prompt (pre-filled if already counted).
+  function promptCount(p: Product) {
     setQuery("");
+    setNotice(null);
     const existing = items.find((x) => x.productId === p.id);
-    if (!existing) await setCounted(p.id, 0);
-    setPendingFocus(p.id); // focus its qty box (now, or once the row appears)
+    setCountValue(existing ? String(existing.countedQty) : "");
+    setCountTarget(p);
+  }
+
+  async function confirmCount() {
+    if (!countTarget) return;
+    const p = countTarget;
+    const qty = Math.max(0, Number(countValue) || 0);
+    setCountTarget(null);
+    setCountValue("");
+    await setCounted(p.id, qty);
+    setNotice({ tone: "ok", text: `${p.name} — counted ${qty}` });
+    scanRef.current?.focus(); // ready for the next scan
+  }
+
+  function cancelPrompt() {
+    setCountTarget(null);
+    setCountValue("");
+    scanRef.current?.focus();
   }
 
   // Barcode from the L3 scanner (types + Enter) or the phone camera. Matches on
@@ -230,8 +340,8 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
       products.find((p) => p.sku.toLowerCase() === lc) ||
       products.find((p) => p.name.toLowerCase() === lc);
     if (match) {
-      addProduct(match);
-      setNotice({ tone: "ok", text: match.name });
+      if (fromCamera) setCameraOpen(false); // reveal the amount prompt
+      promptCount(match);
     } else {
       setNotice({ tone: "warn", text: `Not found: ${code}` });
       if (!fromCamera) setQuery("");
@@ -268,7 +378,15 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   }
 
   async function post() {
-    if (!confirm("Post this count? Stock will be adjusted to the counted quantities.")) return;
+    if (
+      !(await confirmDialog({
+        title: "Post stock count",
+        message: "Post this count? Stock will be adjusted to the counted quantities.",
+        confirmText: "Post count",
+        tone: "brand",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api(`/api/stock-counts/${id}/post`, { method: "POST" });
@@ -335,6 +453,44 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">{msg}</div>
           )}
 
+          {/* Amount prompt — appears right after a scan */}
+          {!posted && countTarget && (
+            <div className="mb-4 rounded-xl border-2 border-brand-400 bg-brand-50 p-4 shadow-soft">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Enter counted amount</p>
+              <p className="mt-0.5 truncate text-[15px] font-bold text-ink-900">{countTarget.name}</p>
+              <p className="text-xs text-slate-500">
+                {countTarget.barcode || countTarget.sku} · system stock {countTarget.stock}
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  ref={promptRef}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={countValue}
+                  onChange={(e) => setCountValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmCount();
+                    } else if (e.key === "Escape") {
+                      cancelPrompt();
+                    }
+                  }}
+                  placeholder="0"
+                  className="w-28 rounded-xl border border-brand-300 bg-white px-3 py-2.5 text-center text-xl font-bold tabular-nums outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15"
+                />
+                <button className="btn-primary" onClick={confirmCount}>
+                  <CheckCircle2 size={16} /> Save
+                </button>
+                <button className="btn-ghost" onClick={cancelPrompt}>
+                  Cancel
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">Type the amount and press Enter — then scan the next item.</p>
+            </div>
+          )}
+
           {/* Scan (L3 / phone camera) or search to count on screen */}
           {!posted && (
             <div className="mb-4">
@@ -371,7 +527,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                         <button
                           key={p.id}
                           type="button"
-                          onClick={() => addProduct(p)}
+                          onClick={() => promptCount(p)}
                           className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3.5 py-2 text-left text-sm last:border-0 hover:bg-brand-50"
                         >
                           <span className="min-w-0">
@@ -394,7 +550,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-slate-400">Scan an item, then type the counted amount — Enter jumps back to scan the next.</p>
+              <p className="mt-1 text-xs text-slate-400">Scan an item → a box pops up → type the counted amount → Enter. Repeat for the next.</p>
             </div>
           )}
 

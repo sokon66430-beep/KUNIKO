@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return new NextResponse(buffer as ArrayBuffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${po.poNo}.xlsx"`,
+      "Content-Disposition": `attachment; filename="${po.poNo}-${new Date().toISOString().slice(0, 10)}.xlsx"`,
     },
   });
 }

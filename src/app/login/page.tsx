@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { Store, LogIn, Loader2 } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
 
 // Reads ?next= via useSearchParams — render at request time, not at build.
 export const dynamic = "force-dynamic";
@@ -38,17 +37,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 via-white to-brand-50/40 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-600 text-white shadow-brand-glow">
-            <Store size={26} />
+            <span className="text-[26px] font-extrabold leading-none tracking-tight">S</span>
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight text-ink-900">Stookii</h1>
+          <h1 className="mt-4 text-[26px] font-extrabold tracking-[-0.02em] text-ink-900">Stookii</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to your store</p>
         </div>
 
-        <form onSubmit={submit} className="card space-y-4 p-6">
+        <form onSubmit={submit} className="card space-y-4 p-7">
           {error && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
               {error}
@@ -81,13 +80,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-500">
-          New store?{" "}
-          <Link href="/register" className="font-semibold text-brand-600 hover:underline">
-            Create an account
-          </Link>
-        </p>
-        <p className="mt-4 text-center text-xs text-slate-400">Stookii · Retail Ordering</p>
+        <p className="mt-6 text-center text-xs text-slate-400">Stookii · Retail Ordering</p>
       </div>
     </div>
   );

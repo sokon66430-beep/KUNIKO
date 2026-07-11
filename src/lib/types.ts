@@ -4,6 +4,10 @@ export type Product = {
   subGroupCode?: string; // codes the Item ID is generated from
   catCode?: string;
   name: string;
+  nameKh?: string; // Khmer product name (printed on price labels)
+  ranking?: "A" | "B" | "C" | "D"; // product ranking (printed on price labels)
+  shelfLifeDays?: number; // shelf life in days (printed on price labels as S<days>D)
+  groupCode?: string; // product group, e.g. A01 RTE Food … A05 Non-food (printed on price labels)
   category: string;
   supplier: string;
   supplierCode?: string;
@@ -79,7 +83,7 @@ export type Sale = {
 // Procurement: Purchase Request → Purchase Order → Goods Receiving → Stock
 // ---------------------------------------------------------------------------
 
-export type PRStatus = "Draft" | "Submitted" | "Approved" | "Rejected" | "Converted";
+export type PRStatus = "Draft" | "Submitted" | "Approved" | "Rejected" | "Cancelled" | "Converted";
 export type POStatus = "Open" | "Partial" | "Received" | "Cancelled";
 
 export type PRItem = {
@@ -199,7 +203,51 @@ export type StockCount = {
   postedAt?: string;
 };
 
-export type AuditEntityType = "PR" | "PO" | "GRN" | "Product" | "Supplier" | "Stock" | "Count";
+// ---------------------------------------------------------------------------
+// Write-Off (damaged / expired / missing / unsellable stock removed from sale)
+// ---------------------------------------------------------------------------
+export type WriteOffUnitType = "unit" | "weight" | "volume";
+
+export const WRITE_OFF_REASONS = [
+  "Expired",
+  "Damaged",
+  "Broken",
+  "Missing",
+  "Quality Issue",
+  "Supplier Return",
+  "Internal Use",
+  "Other",
+] as const;
+
+export type WriteOffStatus = "Active" | "PendingCancel" | "Cancelled";
+
+export type WriteOff = {
+  id: string;
+  woNo: string; // WO-100001
+  productId: string;
+  sku: string;
+  barcode?: string;
+  productName: string;
+  category: string;
+  quantity: number;
+  unit: string; // e.g. "pcs", "kg", "L"
+  unitType: WriteOffUnitType;
+  cost: number; // unit cost at write-off time (for value reporting)
+  reason: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  updatedAt?: string;
+  // Cancelling needs a manager's approval; the record stays for auditing.
+  status?: WriteOffStatus; // undefined = "Active"
+  cancelRequestedBy?: string;
+  cancelRequestedAt?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+};
+
+export type AuditEntityType = "PR" | "PO" | "GRN" | "Product" | "Supplier" | "Stock" | "Count" | "WriteOff";
 
 export type AuditEvent = {
   id: string;
@@ -220,6 +268,7 @@ export type DB = {
   purchaseOrders: PurchaseOrder[];
   goodsReceipts: GoodsReceipt[];
   stockCounts: StockCount[];
+  writeOffs: WriteOff[];
   auditLog: AuditEvent[];
   meta: {
     nextInvoice: number;
@@ -227,6 +276,7 @@ export type DB = {
     nextPO: number;
     nextGRN: number;
     nextStockCount: number;
+    nextWriteOff: number;
     nextAudit: number;
     business: {
       name: string;

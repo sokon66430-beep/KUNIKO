@@ -13,7 +13,17 @@ const slug = (s: string) =>
 // Security guarantees enforced here (never trust the client for these):
 //   • the account is ALWAYS store-scoped ("procurement"), NEVER a global owner
 //   • a fresh store is created for them — they cannot attach to an existing store
+// Public self sign-up is disabled: employees are added by the owner in
+// Stores & Employees so everyone joins one store instead of creating duplicates.
+const SIGNUP_ENABLED = false;
+
 export async function POST(req: Request) {
+  if (!SIGNUP_ENABLED) {
+    return NextResponse.json(
+      { error: "Sign-up is off. Ask the owner to add you in Stores & Employees." },
+      { status: 403 },
+    );
+  }
   const body = await req.json().catch(() => ({}));
   const storeName = String(body.storeName || "").trim();
   const username = String(body.username || "").trim().toLowerCase();
@@ -29,6 +39,9 @@ export async function POST(req: Request) {
   const result = await mutateSystem((sys) => {
     if (sys.users.some((u) => u.username.toLowerCase() === username)) {
       return { error: "That username is already taken" } as const;
+    }
+    if (sys.stores.some((st) => st.name.trim().toLowerCase() === storeName.toLowerCase())) {
+      return { error: "A store with that name already exists — pick a different name" } as const;
     }
     // Create the store.
     const n = sys.nextStore++;

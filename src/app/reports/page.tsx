@@ -18,6 +18,7 @@ import { useFetch, api } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import type { Sale } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
 import { usd, num, pct, dateTime } from "@/lib/format";
 
 const RANGES: { key: RangeKey; label: string }[] = [
@@ -36,7 +37,14 @@ export default function ReportsPage() {
   const [resetting, setResetting] = useState(false);
 
   async function resetDemo() {
-    if (!confirm("Reset all demo data back to the seeded sample? Your changes will be lost.")) return;
+    if (
+      !(await confirmDialog({
+        title: "Reset demo data",
+        message: "Reset all demo data back to the seeded sample? Your changes will be lost.",
+        confirmText: "Reset",
+      }))
+    )
+      return;
     setResetting(true);
     try {
       await api("/api/reset", { method: "POST" });

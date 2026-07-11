@@ -5,17 +5,23 @@
   "description": "Monakom Pro - all-in-one retail business management system (POS, Inventory, Customers, Reports)",
   "scripts": {
     "dev": "next dev -p 3200",
+    "dev:https": "next dev --experimental-https -p 3200",
     "build": "next build",
     "start": "next start -p 3200",
     "lint": "next lint"
   },
   "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.2.8",
+    "@fontsource/battambang": "^5.2.8",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "bakong-khqr": "^1.0.20",
     "exceljs": "^4.4.0",
+    "html-to-image": "^1.11.13",
+    "jsbarcode": "^3.12.3",
     "lucide-react": "0.417.0",
     "next": "^14.2.35",
+    "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",

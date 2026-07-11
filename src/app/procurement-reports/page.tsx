@@ -20,6 +20,7 @@ const PR_TONE: Record<PRStatus, "slate" | "amber" | "emerald" | "rose" | "brand"
   Submitted: "amber",
   Approved: "emerald",
   Rejected: "rose",
+  Cancelled: "slate",
   Converted: "brand",
 };
 

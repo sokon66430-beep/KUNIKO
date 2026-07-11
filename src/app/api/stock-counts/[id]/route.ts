@@ -70,14 +70,33 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(result.count);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const ok = await mutateDB((db) => {
+// Delete a stock count — but only with a valid Manager / Assistant-Manager
+// approval code (same approver list as receipt-edit & write-off cancellations).
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  const body = await req.json().catch(() => ({}));
+  const code = String(body?.code || "").trim();
+  const session = await getSession();
+
+  const result = await mutateDB((db) => {
     const idx = db.stockCounts.findIndex((c) => c.id === params.id);
-    if (idx === -1) return false;
+    if (idx === -1) return { error: "not_found" as const };
+    const approver = (db.meta.business.approvers || []).find((a) => a.code && a.code === code);
+    if (!approver) return { error: "bad_code" as const };
     const [removed] = db.stockCounts.splice(idx, 1);
-    logAudit(db, { actor: "Admin", action: "Deleted", entityType: "Count", entity: removed.countNo });
-    return true;
+    const approverName = `${approver.role}${approver.name ? ` (${approver.name})` : ""}`;
+    logAudit(db, {
+      actor: approverName,
+      action: "Deleted",
+      entityType: "Count",
+      entity: removed.countNo,
+      detail: `approved deletion${session?.name ? ` · requested by ${session.name}` : ""}`,
+    });
+    return { ok: true as const };
   });
-  if (!ok) return NextResponse.json({ error: "Count not found" }, { status: 404 });
+
+  if ("error" in result) {
+    if (result.error === "not_found") return NextResponse.json({ error: "Count not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid approval code" }, { status: 403 });
+  }
   return NextResponse.json({ ok: true });
 }

@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
 // ("ADD Supplier.xlsx") and simple hand-made sheets.
 const ALIASES: Record<string, string[]> = {
   name: ["product name", "name", "item name"],
+  nameKh: ["name kh", "khmer name", "product name kh", "name khmer"],
+  ranking: ["product ranking", "ranking"],
+  shelfLifeDays: ["self life (day)", "shelf life (day)", "shelf life (days)", "shelf life"],
+  groupCode: ["group code", "product group"],
   barcode: ["default barcodes", "barcode", "barcodes", "default barcode"],
   category: ["category name", "category"],
   cost: ["cost", "unit cost", "cost price", "cost ($)"],
@@ -17,7 +21,7 @@ const ALIASES: Record<string, string[]> = {
   supplierCode: ["supplier code"],
   supplierName: ["supplier name", "supplier"],
   unit: ["default uom", "uom", "unit"],
-  sku: ["system product code", "sku", "product code"],
+  sku: ["item id", "item code", "system product code", "sku", "product code"],
   stock: ["stock", "qty on hand", "quantity", "on hand", "opening stock"],
   reorderLevel: ["low stock alert", "reorder level", "min stock", "minimum stock"],
   trackStock: ["track stock?", "track stock"],
@@ -75,7 +79,9 @@ export async function POST(req: Request) {
       }
       return 0;
     };
-    if (find("name") && (find("cost") || find("price"))) {
+    // A header row needs a name column plus at least one other known column
+    // (price/cost for a full sheet, or barcode/item-id for a supplier-only edit).
+    if (find("name") && (find("cost") || find("price") || find("barcode") || find("sku"))) {
       headerRow = r;
       for (const key of Object.keys(ALIASES)) {
         const c = find(key);
@@ -121,17 +127,24 @@ export async function POST(req: Request) {
 
     for (const row of rows) {
       // Resolve the supplier link: code wins, then exact name (canonical master).
+      // A supplier named in the sheet but NOT in the system is never guessed /
+      // free-texted — the row is skipped so the user adds the supplier first.
       let supplierCode: string | undefined;
       let supplierName: string | undefined;
-      if (row.supplierCode && supByCode.has(row.supplierCode)) {
-        supplierCode = row.supplierCode;
-        supplierName = supByCode.get(row.supplierCode)!.name;
-      } else if (row.supplierName && supByName.has(row.supplierName.toLowerCase())) {
-        const s = supByName.get(row.supplierName.toLowerCase())!;
+      const rawSupCode = (row.supplierCode || "").trim();
+      const rawSupName = (row.supplierName || "").trim();
+      if (rawSupCode && supByCode.has(rawSupCode)) {
+        supplierCode = rawSupCode;
+        supplierName = supByCode.get(rawSupCode)!.name;
+      } else if (rawSupName && supByName.has(rawSupName.toLowerCase())) {
+        const s = supByName.get(rawSupName.toLowerCase())!;
         supplierCode = s.code;
         supplierName = s.name;
-      } else if (row.supplierName) {
-        supplierName = row.supplierName; // free text, unlinked
+      } else if (rawSupCode || rawSupName) {
+        errors.push(
+          `Row ${row.rowNum}: supplier "${rawSupName || rawSupCode}" is not in the system — add it under Suppliers first; row skipped`,
+        );
+        continue;
       }
 
       // Match an existing product: barcode first (only if unambiguous), then SKU.
@@ -160,6 +173,11 @@ export async function POST(req: Request) {
         // Update only the fields present in the sheet — never blank out data
         // just because a column is missing from this particular file.
         target.name = row.name!;
+        if (row.nameKh) target.nameKh = row.nameKh;
+        if (row.ranking && ["A", "B", "C", "D"].includes(row.ranking.toUpperCase()))
+          target.ranking = row.ranking.toUpperCase() as Product["ranking"];
+        if (row.shelfLifeDays) target.shelfLifeDays = num(row.shelfLifeDays) || undefined;
+        if (row.groupCode) target.groupCode = row.groupCode.toUpperCase();
         if (row.barcode) target.barcode = row.barcode;
         if (row.category) target.category = row.category;
         if (row.unit) target.unit = row.unit;
@@ -179,6 +197,12 @@ export async function POST(req: Request) {
           id,
           sku: row.sku || `SKU-${id.slice(1)}`,
           name: row.name!,
+          nameKh: row.nameKh || undefined,
+          ranking: (["A", "B", "C", "D"].includes((row.ranking || "").toUpperCase())
+            ? (row.ranking!.toUpperCase() as Product["ranking"])
+            : "A"),
+          shelfLifeDays: row.shelfLifeDays ? num(row.shelfLifeDays) || undefined : undefined,
+          groupCode: row.groupCode ? row.groupCode.toUpperCase() : undefined,
           category: row.category || "Uncategorized",
           supplier: supplierName || "—",
           supplierCode,

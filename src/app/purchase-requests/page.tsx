@@ -13,10 +13,12 @@ import {
   ChevronRight,
   ScanLine,
   PackageCheck,
+  Ban,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseRequest, PRStatus } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
 import { usd, num, dateTime } from "@/lib/format";
 
@@ -35,8 +37,11 @@ type Suggestion = {
 const prTotal = (pr: PurchaseRequest) => pr.items.reduce((s, i) => s + i.cost * i.qty, 0);
 
 // Draft → Submitted → Approved → Ordered progress trail (Rejected shown apart)
+const CANCELLABLE: PRStatus[] = ["Draft", "Submitted", "Approved"];
+
 function StatusTrail({ status }: { status: PRStatus }) {
   if (status === "Rejected") return <Badge tone="rose">Rejected</Badge>;
+  if (status === "Cancelled") return <Badge tone="slate">Cancelled</Badge>;
   const idx = status === "Draft" ? 0 : status === "Submitted" ? 1 : status === "Approved" ? 2 : 3;
   const labels = ["Draft", "Submitted", "Approved", "Ordered"];
   return (
@@ -106,8 +111,28 @@ export default function PurchaseRequestsPage() {
     }
   }
 
+  async function cancelPR(pr: PurchaseRequest) {
+    if (
+      !(await confirmDialog({
+        title: "Cancel purchase request",
+        message: `Cancel ${pr.prNo}? It won't be ordered.`,
+        confirmText: "Cancel PR",
+        cancelText: "Keep it",
+      }))
+    )
+      return;
+    await setStatus(pr, "Cancelled");
+  }
+
   async function remove(pr: PurchaseRequest) {
-    if (!confirm(`Delete ${pr.prNo}?`)) return;
+    if (
+      !(await confirmDialog({
+        title: "Delete purchase request",
+        message: `Delete ${pr.prNo}?`,
+        confirmText: "Delete",
+      }))
+    )
+      return;
     await api(`/api/purchase-requests/${pr.id}`, { method: "DELETE" });
     reload();
   }
@@ -246,7 +271,16 @@ export default function PurchaseRequestsPage() {
                         <Send size={13} /> Submit
                       </button>
                     )}
-                    {(pr.status === "Draft" || pr.status === "Rejected") && (
+                    {CANCELLABLE.includes(pr.status) && (
+                      <button
+                        title="Cancel this request"
+                        onClick={() => cancelPR(pr)}
+                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+                      >
+                        <Ban size={15} />
+                      </button>
+                    )}
+                    {(pr.status === "Draft" || pr.status === "Rejected" || pr.status === "Cancelled") && (
                       <button
                         title="Delete"
                         onClick={() => remove(pr)}
@@ -288,6 +322,7 @@ export default function PurchaseRequestsPage() {
           busy={busy}
           onClose={() => setViewing(null)}
           onSubmit={() => setStatus(viewing, "Submitted")}
+          onCancel={() => cancelPR(viewing)}
         />
       )}
     </div>
@@ -378,11 +413,13 @@ function ViewPRModal({
   busy,
   onClose,
   onSubmit,
+  onCancel,
 }: {
   pr: PurchaseRequest;
   busy: boolean;
   onClose: () => void;
   onSubmit: () => void;
+  onCancel: () => void;
 }) {
   const total = prTotal(pr);
   return (
@@ -397,6 +434,11 @@ function ViewPRModal({
             <a href={`/api/purchase-requests/${pr.id}/export`} className="btn-ghost">
               <FileSpreadsheet size={16} /> Export Excel
             </a>
+            {CANCELLABLE.includes(pr.status) && (
+              <button className="btn-danger" disabled={busy} onClick={onCancel}>
+                <Ban size={16} /> Cancel PR
+              </button>
+            )}
             {pr.status === "Draft" && (
               <button className="btn-primary" disabled={busy} onClick={onSubmit}>
                 <Send size={16} /> Submit for Approval

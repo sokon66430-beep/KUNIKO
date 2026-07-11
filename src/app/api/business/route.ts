@@ -15,8 +15,8 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   const s = await getSession();
-  if (!s || (s.role !== "owner" && s.role !== "procurement")) {
-    return NextResponse.json({ error: "Only owners or procurement can edit the store profile" }, { status: 403 });
+  if (!s) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
   const body = await req.json().catch(() => ({}));
 

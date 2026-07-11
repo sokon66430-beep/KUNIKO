@@ -5,7 +5,7 @@ import type { PRStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const STATUSES: PRStatus[] = ["Draft", "Submitted", "Approved", "Rejected", "Converted"];
+const STATUSES: PRStatus[] = ["Draft", "Submitted", "Approved", "Rejected", "Cancelled", "Converted"];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json();
@@ -15,7 +15,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (body.status && STATUSES.includes(body.status) && body.status !== pr.status) {
       pr.status = body.status;
-      if (body.status === "Approved" || body.status === "Rejected") {
+      if (body.status === "Approved" || body.status === "Rejected" || body.status === "Cancelled") {
         pr.decidedAt = new Date().toISOString();
       }
       // Approvals/rejections are a procurement decision; submit is the requester.
