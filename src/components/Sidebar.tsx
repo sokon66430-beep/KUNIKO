@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { canAccessPage } from "@/lib/access";
 import { useTheme } from "@/components/theme";
+import { NotificationBell } from "@/components/NotificationBell";
 import type { Role } from "@/lib/auth";
 import {
   LayoutDashboard,
@@ -179,12 +180,13 @@ export default function Sidebar() {
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-white shadow-brand-glow">
           <span className="text-[17px] font-black leading-none tracking-tight">S</span>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className={`text-[15.5px] font-extrabold leading-none tracking-tight ${t.brandTitle}`}>Stookii</p>
           <p className={`mt-1.5 truncate text-[11px] font-medium ${t.storeSub}`}>
             {session?.user.storeName || "Retail Ordering"}
           </p>
         </div>
+        <NotificationBell align="left" />
       </div>
 
       {/* Store switcher (owner) — switch the active store, or add more. */}
@@ -329,6 +331,7 @@ export default function Sidebar() {
           <Menu size={22} />
         </button>
         <div className="flex items-center gap-2.5">
+          <NotificationBell />
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white">
             <span className="text-[15px] font-black leading-none tracking-tight">S</span>
           </div>
