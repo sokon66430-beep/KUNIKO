@@ -20,6 +20,7 @@ import { useFetch, api } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num } from "@/lib/format";
+import { SearchSelect } from "@/components/SearchSelect";
 
 type CartLine = { product: Product; qty: number; seq: number };
 
@@ -736,7 +737,13 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
   ];
 
   // Only categories that actually sold — pick one to focus the item list.
-  const categories = useMemo(() => (data ? data.byCategory.map((c) => c.category) : []), [data]);
+  const categoryOptions = useMemo(
+    () => [
+      { value: "All", label: "All categories" },
+      ...(data ? data.byCategory.map((c) => ({ value: c.category, label: c.category, hint: `${c.qty}` })) : []),
+    ],
+    [data],
+  );
   const ql = q.trim().toLowerCase();
   const items = useMemo(() => {
     if (!data) return [];
@@ -791,16 +798,15 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <>
-              {/* Filters: one category dropdown + item search (no long category list) */}
+              {/* Filters: a searchable category picker + item search (no raw dropdown) */}
               <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-                <select value={cat} onChange={(e) => setCat(e.target.value)} className="input sm:max-w-[240px]">
-                  <option value="All">All categories</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect
+                  value={cat}
+                  options={categoryOptions}
+                  onChange={setCat}
+                  placeholder="All categories"
+                  className="sm:w-[240px]"
+                />
                 <div className="relative flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
