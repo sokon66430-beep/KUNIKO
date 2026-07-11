@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BarChart3,
@@ -47,6 +48,17 @@ export default function ReportsCenterPage() {
   const { data: wos } = useFetch<WriteOff[]>("/api/write-offs");
   const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
 
+  // Receiving report can be narrowed to one supplier.
+  const [grnSupplier, setGrnSupplier] = useState("All");
+  const grnSuppliers = useMemo(
+    () => Array.from(new Set((grns || []).map((g) => g.supplier).filter(Boolean))).sort(),
+    [grns],
+  );
+  const grnBase =
+    grnSupplier === "All"
+      ? "/api/reports/goods-receipts/export"
+      : `/api/reports/goods-receipts/export?supplier=${encodeURIComponent(grnSupplier)}`;
+
   const cards: {
     icon: any;
     accent: Accent;
@@ -55,6 +67,7 @@ export default function ReportsCenterPage() {
     stat?: string;
     open?: string;
     exports?: { label: string; href: string; icon: any }[];
+    filterNode?: React.ReactNode;
   }[] = [
     {
       icon: BarChart3,
@@ -87,10 +100,29 @@ export default function ReportsCenterPage() {
       icon: PackageCheck,
       accent: "emerald",
       title: "Goods Receiving",
-      desc: "What was received, when, by whom — every goods receipt.",
+      desc: "What was received, when, by whom — item cost detail and total, filterable by supplier.",
       stat: grns ? `${num(grns.length)} receipts` : undefined,
       open: "/receiving",
-      exports: exportsFor("/api/reports/goods-receipts/export"),
+      exports: exportsFor(grnBase),
+      filterNode: (
+        <label className="mt-3 block">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Supplier
+          </span>
+          <select
+            value={grnSupplier}
+            onChange={(e) => setGrnSupplier(e.target.value)}
+            className="input !py-2 text-sm"
+          >
+            <option value="All">All suppliers</option>
+            {grnSuppliers.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+      ),
     },
     {
       icon: PackageX,
@@ -130,6 +162,8 @@ export default function ReportsCenterPage() {
             </div>
             <h3 className="mt-4 text-base font-bold text-ink-900">{c.title}</h3>
             <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-500">{c.desc}</p>
+
+            {c.filterNode}
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {c.open && (

@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Camera,
   FileSpreadsheet,
+  FileType2,
   Pencil,
   Clock,
   ShieldCheck,
@@ -175,21 +176,37 @@ export default function ReceivingPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-600">{g.receivedBy}</td>
                       <td className="px-4 py-3 text-right">
-                        {pending ? (
-                          <button
-                            onClick={() => setReviewing(g)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                        <div className="flex items-center justify-end gap-1">
+                          <a
+                            href={`/api/goods-receipts/${g.id}/export`}
+                            title="Download this receipt as Excel"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
                           >
-                            <ShieldCheck size={14} /> Review &amp; approve
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setEditing(g)}
-                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                            <FileSpreadsheet size={14} /> Excel
+                          </a>
+                          <a
+                            href={`/api/goods-receipts/${g.id}/export?format=pdf`}
+                            title="Download this receipt as PDF"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
                           >
-                            <Pencil size={14} /> Edit
-                          </button>
-                        )}
+                            <FileType2 size={14} /> PDF
+                          </a>
+                          {pending ? (
+                            <button
+                              onClick={() => setReviewing(g)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                            >
+                              <ShieldCheck size={14} /> Review &amp; approve
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setEditing(g)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              <Pencil size={14} /> Edit
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -252,7 +269,9 @@ function EditReceiptModal({
   const [qty, setQty] = useState<Record<string, number>>(() =>
     Object.fromEntries(grn.items.map((i) => [i.productId, i.qtyReceived])),
   );
-  const [requestedBy, setRequestedBy] = useState(grn.receivedBy || "Receiving Desk");
+  // The person requesting the correction is always the signed-in user.
+  const { data: session } = useFetch<{ user?: { name?: string } }>("/api/auth/session");
+  const requestedBy = session?.user?.name || "—";
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -345,8 +364,12 @@ function EditReceiptModal({
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="label">Requested by</label>
-          <input className="input" value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} />
+          <label className="label flex items-center gap-1.5">
+            <ShieldCheck size={13} /> Requested by
+          </label>
+          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-ink-800">
+            {requestedBy}
+          </div>
         </div>
         <div>
           <label className="label">Reason (optional)</label>
@@ -502,7 +525,9 @@ function ReceiveModal({
   }, [po]);
   const [now, setNow] = useState<Record<string, number>>(initial);
   const [scan, setScan] = useState("");
-  const [receivedBy, setReceivedBy] = useState("Receiving Desk");
+  // "Received by" is always the signed-in user — recorded automatically, not editable.
+  const { data: session } = useFetch<{ user?: { name?: string } }>("/api/auth/session");
+  const receivedBy = session?.user?.name || "—";
   const [flash, setFlash] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<typeof po.items | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -763,8 +788,13 @@ function ReceiveModal({
       </div>
 
       <div className="mt-4">
-        <label className="label">Received by</label>
-        <input className="input" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
+        <label className="label flex items-center gap-1.5">
+          <ShieldCheck size={13} /> Received by
+        </label>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm">
+          <span className="font-semibold text-ink-800">{receivedBy}</span>
+          <span className="text-xs text-slate-400">· recorded automatically (signed-in user)</span>
+        </div>
       </div>
 
       <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => handleScan(code)} />
