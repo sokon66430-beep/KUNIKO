@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
+import { InvoiceCamera } from "@/components/InvoiceCamera";
 import type { PurchaseOrder, GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { num, dateTime, shortDate } from "@/lib/format";
@@ -675,6 +676,7 @@ function ReceiveModal({
   // Supplier invoice photo — REQUIRED before the receipt can be submitted.
   // Compressed client-side so uploads stay small even from a phone camera.
   const [invoice, setInvoice] = useState<string>("");
+  const [invoiceCamOpen, setInvoiceCamOpen] = useState(false);
   const invoiceRef = useRef<HTMLInputElement>(null);
   function pickInvoice(file: File) {
     const img = new Image();
@@ -906,20 +908,31 @@ function ReceiveModal({
               <p className="text-sm font-semibold text-emerald-700">Invoice attached ✓</p>
               <p className="text-xs text-slate-500">Accounting will review it after you confirm.</p>
             </div>
-            <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => invoiceRef.current?.click()}>
+            <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => setInvoiceCamOpen(true)}>
               Retake
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => invoiceRef.current?.click()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-4 text-sm font-semibold text-slate-500 transition hover:border-brand-400 hover:text-brand-600"
-          >
-            <Camera size={17} /> Scan / photograph the supplier&apos;s invoice (required)
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setInvoiceCamOpen(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-4 text-sm font-semibold text-slate-500 transition hover:border-brand-400 hover:text-brand-600"
+            >
+              <Camera size={17} /> Open camera &amp; scan the invoice (required)
+            </button>
+            <button
+              type="button"
+              onClick={() => invoiceRef.current?.click()}
+              className="mt-1.5 text-xs font-semibold text-slate-400 hover:text-brand-600 hover:underline"
+            >
+              …or upload a photo from the gallery
+            </button>
+          </>
         )}
       </div>
+
+      <InvoiceCamera open={invoiceCamOpen} onClose={() => setInvoiceCamOpen(false)} onCapture={(d) => setInvoice(d)} />
 
       <div className="mt-4">
         <label className="label flex items-center gap-1.5">
