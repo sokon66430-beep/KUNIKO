@@ -12,6 +12,7 @@ export async function GET(req: Request) {
   const to = url.searchParams.get("to") || undefined;
   const format = url.searchParams.get("format") || "xlsx";
   const catOf = new Map(db.products.map((p) => [p.id, p.category] as const));
+  const barcodeOf = new Map(db.products.map((p) => [p.id, p.barcode || ""] as const));
 
   const inRange = (iso: string) => {
     const d = (iso || "").slice(0, 10);
@@ -20,14 +21,16 @@ export async function GET(req: Request) {
     return true;
   };
 
-  const items = new Map<string, { category: string; sku: string; name: string; qty: number; revenue: number; cost: number }>();
+  const items = new Map<string, { category: string; sku: string; barcode: string; name: string; qty: number; revenue: number; cost: number }>();
   for (const sale of db.sales) {
     if (!inRange(sale.createdAt)) continue;
     for (const it of sale.items) {
       const category = catOf.get(it.productId) || "Uncategorized";
       const e =
         items.get(it.productId) ??
-        items.set(it.productId, { category, sku: it.sku, name: it.name, qty: 0, revenue: 0, cost: 0 }).get(it.productId)!;
+        items
+          .set(it.productId, { category, sku: it.sku, barcode: barcodeOf.get(it.productId) || "", name: it.name, qty: 0, revenue: 0, cost: 0 })
+          .get(it.productId)!;
       e.qty += it.qty;
       e.revenue += it.price * it.qty;
       e.cost += it.cost * it.qty;
@@ -48,6 +51,7 @@ export async function GET(req: Request) {
     cols: [
       { header: "Category", get: (r: any) => r.category, width: 1.5 },
       { header: "Item Code", get: (r: any) => r.sku },
+      { header: "Barcode", get: (r: any) => r.barcode },
       { header: "Item Name", get: (r: any) => r.name, width: 2 },
       { header: "Qty Sold", get: (r: any) => r.qty, num: true },
       { header: "Revenue", get: (r: any) => r.revenue, money: true },
