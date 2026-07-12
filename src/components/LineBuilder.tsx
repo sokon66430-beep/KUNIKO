@@ -19,11 +19,12 @@ export type Suggestion = {
 type Velocity = { d3: number; d7: number; dow: number[] };
 const DOW_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
-// Recommended order quantity: cover ~1 week of recent sales, minus what's on
-// hand. Falls back to the reorder-level gap when there's no recent sales data.
-function recommendQty(p: Product, v?: Velocity): number {
+// Recommended order quantity: enough to cover `coverDays` days of recent sales
+// (daily rate from the last 7 days), minus what's on hand. Falls back to the
+// reorder-level gap when there's no recent sales data.
+function recommendQty(p: Product, v: Velocity | undefined, coverDays: number): number {
   if (v && v.d7 > 0) {
-    const target = Math.ceil((v.d7 / 7) * 7); // ~7 days of cover
+    const target = Math.ceil((v.d7 / 7) * coverDays);
     return Math.max(target - p.stock, 1);
   }
   if (p.reorderLevel > 0) return Math.max(p.reorderLevel * 2 - p.stock, 1);
@@ -86,6 +87,8 @@ export function LineBuilder({
   const [ambiguous, setAmbiguous] = useState<Product[] | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const { data: velocity } = useFetch<Record<string, Velocity>>("/api/product-velocity");
+  // How many days of sales the recommendation should cover — the user picks.
+  const [coverDays, setCoverDays] = useState(7);
   const scanRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // After a product is added, jump the cursor into ITS quantity box so the qty
@@ -122,7 +125,7 @@ export function LineBuilder({
         if (!focus) return prev.map((l) => (l.product.id === p.id ? updated : l));
         return [updated, ...prev.filter((l) => l.product.id !== p.id)];
       }
-      const newQty = qty ?? recommendQty(p, velocity?.[p.id]);
+      const newQty = qty ?? recommendQty(p, velocity?.[p.id], coverDays);
       return focus ? [{ product: p, qty: newQty }, ...prev] : [...prev, { product: p, qty: newQty }];
     });
     if (focus) setFocusQty((f) => ({ id: p.id, tick: (f?.tick || 0) + 1 }));
@@ -373,6 +376,33 @@ export function LineBuilder({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* The buyer chooses how many days the recommendation should cover. */}
+        <div className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-2.5 py-1.5 ring-1 ring-slate-200">
+          <span className="text-xs font-semibold text-slate-500">Recommend for:</span>
+          <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+            {[3, 7, 14, 30].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setCoverDays(n)}
+                className={`rounded-md px-2 py-1 text-xs font-semibold transition ${
+                  coverDays === n ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {n}d
+              </button>
+            ))}
+          </div>
+          <input
+            type="number"
+            min={1}
+            value={coverDays}
+            onChange={(e) => setCoverDays(Math.max(1, Number(e.target.value) || 1))}
+            className="h-7 w-14 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-bold text-ink-900 outline-none focus:border-brand-500"
+            title="Days of sales the recommended quantity should cover"
+          />
+          <span className="text-xs text-slate-400">days of sales</span>
+        </div>
         {suggestions && suggestions.length > 0 && (
           <button type="button" onClick={autofillLowStock} className="btn-ghost !py-2 text-xs">
             <Sparkles size={14} /> Auto-fill {suggestions.length} low-stock
@@ -440,7 +470,7 @@ export function LineBuilder({
                     className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                   />
                   {(() => {
-                    const rec = recommendQty(l.product, velocity?.[l.product.id]);
+                    const rec = recommendQty(l.product, velocity?.[l.product.id], coverDays);
                     return rec === l.qty ? (
                       <p className="mt-1 text-center text-[10px] font-semibold text-emerald-600">✓ Rec {rec}</p>
                     ) : (
