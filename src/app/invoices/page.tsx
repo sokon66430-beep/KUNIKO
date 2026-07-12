@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ReceiptText, CheckCircle2, XCircle, Clock, X } from "lucide-react";
+import { ReceiptText, CheckCircle2, XCircle, Clock, X, Printer } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { InvoiceReview } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, EmptyState } from "@/components/ui";
@@ -136,6 +136,24 @@ function ReviewModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
   const [note, setNote] = useState(row.invoice.reviewNote || "");
   const [busy, setBusy] = useState(false);
 
+  // Print just the invoice image on its own page.
+  function printInvoice() {
+    const url = `/api/invoice-image/${row.invoice.image}`;
+    const w = window.open("", "PRINT", "width=820,height=1040");
+    if (!w) {
+      window.print();
+      return;
+    }
+    w.document.write(
+      `<!doctype html><html><head><title>Invoice ${row.grnNo} — ${row.poNo}</title>` +
+        `<style>@page{margin:10mm}body{margin:0;font-family:system-ui,sans-serif}` +
+        `.h{font-size:12px;color:#555;padding:6px 2px}img{width:100%;height:auto;display:block}</style></head>` +
+        `<body><div class="h">${row.grnNo} · ${row.poNo} · ${row.supplier}</div>` +
+        `<img src="${url}" onload="window.focus();window.print();"></body></html>`,
+    );
+    w.document.close();
+  }
+
   async function decide(status: "Approved" | "Rejected") {
     setBusy(true);
     try {
@@ -188,6 +206,9 @@ function ReviewModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <button className="btn-ghost mr-auto" onClick={printInvoice}>
+              <Printer size={16} /> Print
+            </button>
             <button className="btn-ghost" onClick={onClose}>
               Close
             </button>
