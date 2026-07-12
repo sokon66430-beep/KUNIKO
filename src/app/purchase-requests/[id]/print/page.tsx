@@ -77,7 +77,7 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
         <div className="mb-5 flex flex-col items-center">
           {business.logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={business.logo} alt="Logo" style={{ maxHeight: 84, maxWidth: 280, objectFit: "contain", marginBottom: 8 }} />
+            <img src={business.logo} alt="Logo" style={{ maxHeight: 56, maxWidth: 190, objectFit: "contain", marginBottom: 6 }} />
           )}
           <h1 style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }} className="text-center">
             PURCHASE REQUEST
