@@ -51,7 +51,13 @@ function toDayKey(cellValue: any, text: string): string | null {
   if (cellValue && typeof cellValue === "object" && (cellValue as any).result instanceof Date) {
     cellValue = (cellValue as any).result;
   }
-  if (cellValue instanceof Date && !isNaN(cellValue.getTime())) return cellValue.toISOString().slice(0, 10);
+  if (cellValue instanceof Date && !isNaN(cellValue.getTime())) {
+    // A spreadsheet date carries no timezone — it's just a calendar day. Read
+    // its own year/month/day (NOT via toISOString, which converts to UTC and
+    // can slip the day backward one when the file and server disagree on zone).
+    const p = (x: number) => String(x).padStart(2, "0");
+    return `${cellValue.getFullYear()}-${p(cellValue.getMonth() + 1)}-${p(cellValue.getDate())}`;
+  }
   const t = (text || "").trim();
   if (!t) return null;
   // yyyy-mm-dd or yyyy/mm/dd
@@ -61,7 +67,9 @@ function toDayKey(cellValue: any, text: string): string | null {
   m = t.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   const d = new Date(t);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  if (isNaN(d.getTime())) return null;
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 export async function POST(req: Request) {
@@ -132,7 +140,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // A daily sales report MUST carry the date so every sale is recorded on the
+  // day it happened. Without a Date column the import would silently pile the
+  // whole file onto today's date and quietly corrupt the report — so we refuse.
+  if (!colOf.date) {
+    return NextResponse.json(
+      {
+        error:
+          'No "Date" column found — a sales report must include a Date column so each sale is recorded on the day it happened.',
+      },
+      { status: 400 },
+    );
+  }
 
   // Summary/footer rows ("Total ON MART TOUL KORK 592", "Grand Total",
   // "Subtotal …") aren't items — they're skipped without complaint. A row
@@ -169,14 +188,10 @@ export async function POST(req: Request) {
       problems.push({ row: r, message: `missing or invalid Qty for "${sku || barcode || name}"` });
       continue;
     }
-    let day = today;
-    if (colOf.date) {
-      const parsed = toDayKey(dateCellValue, dateText);
-      if (!parsed) {
-        problems.push({ row: r, message: `unreadable Date "${dateText || "(blank)"}"` });
-        continue;
-      }
-      day = parsed;
+    const day = toDayKey(dateCellValue, dateText);
+    if (!day) {
+      problems.push({ row: r, message: `unreadable Date "${dateText || "(blank)"}"` });
+      continue;
     }
     rows.push({
       day,
