@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Truck } from "lucide-react";
+import { Check, Truck, Tag, Sparkles } from "lucide-react";
 import type { Product, Supplier } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import { itemIdPrefix } from "@/lib/itemId";
@@ -26,12 +26,14 @@ export const EMPTY_PRODUCT: Partial<Product> = {
 export function ProductModal({
   initial,
   suppliers,
+  categories = [],
   busy,
   onClose,
   onSave,
 }: {
   initial: Partial<Product>;
   suppliers: Supplier[];
+  categories?: string[];
   busy: boolean;
   onClose: () => void;
   onSave: (p: Partial<Product>) => void;
@@ -79,6 +81,23 @@ export function ProductModal({
       : suppliers;
     return base.slice(0, 8);
   }, [suppliers, form.supplier]);
+
+  // Category: searchable dropdown of existing categories. Picking an existing
+  // one avoids typos/duplicates; typing a brand-new one is allowed (there's no
+  // separate category master to add to), but flagged so it's a deliberate choice.
+  const cleanCategories = useMemo(
+    () => Array.from(new Set(categories.filter((c) => c && c !== "All" && c !== "Uncategorized"))).sort(),
+    [categories],
+  );
+  const [catOpen, setCatOpen] = useState(false);
+  const catTyped = (form.category || "").trim();
+  const linkedCategory = cleanCategories.some((c) => c.toLowerCase() === catTyped.toLowerCase());
+  const isNewCategory = !!catTyped && !linkedCategory;
+  const catMatches = useMemo(() => {
+    const q = catTyped.toLowerCase();
+    const base = q ? cleanCategories.filter((c) => c.toLowerCase().includes(q)) : cleanCategories;
+    return base.slice(0, 10);
+  }, [cleanCategories, catTyped]);
 
   return (
     <Modal
@@ -156,9 +175,57 @@ export function ProductModal({
             {idPreview === "auto" ? "" : ` (${idPreview})`} from the sub‑group + category codes.
           </p>
         </div>
-        <div className="col-span-2">
+        <div className="relative col-span-2">
           <label className="label">Category</label>
-          <input className="input" value={form.category || ""} onChange={(e) => set("category", e.target.value)} />
+          <input
+            className={`input ${linkedCategory ? "pr-8" : ""}`}
+            value={form.category || ""}
+            onFocus={() => setCatOpen(true)}
+            onBlur={() => setTimeout(() => setCatOpen(false), 150)}
+            onChange={(e) => {
+              set("category", e.target.value);
+              setCatOpen(true);
+            }}
+            placeholder="Search a category…"
+          />
+          {linkedCategory && (
+            <Check size={15} className="pointer-events-none absolute right-3 top-[34px] text-emerald-500" />
+          )}
+          {catOpen && catMatches.length > 0 && (
+            <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-xl bg-white shadow-lift ring-1 ring-slate-900/[0.08]">
+              {catMatches.map((c) => {
+                const active = c.toLowerCase() === catTyped.toLowerCase();
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      set("category", c);
+                      setCatOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2.5 border-b border-slate-50 px-3 py-2 text-left last:border-0 ${
+                      active ? "bg-brand-50/70" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md ${active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-400"}`}>
+                      <Tag size={12} />
+                    </span>
+                    <span className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? "font-semibold text-brand-700" : "font-medium text-ink-800"}`}>
+                      {c}
+                    </span>
+                    {active && <Check size={14} className="shrink-0 text-brand-600" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {isNewCategory && (
+            <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-600">
+              <Sparkles size={12} /> New category — “{catTyped}” doesn’t exist yet. Pick from the list to avoid duplicates,
+              or keep it to create a new one.
+            </p>
+          )}
         </div>
         <div className="relative">
           <label className="label">Supplier</label>

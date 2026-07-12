@@ -495,6 +495,7 @@ export default function ProductsPage() {
         <ProductModal
           initial={editing}
           suppliers={suppliers || []}
+          categories={categories}
           busy={busy}
           onClose={() => setEditing(null)}
           onSave={saveProduct}
