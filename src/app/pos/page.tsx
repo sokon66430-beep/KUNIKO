@@ -64,7 +64,9 @@ export default function PosPage() {
   const [importIssue, setImportIssue] = useState<{
     message: string;
     skippedItems: { code?: string; barcode?: string; name?: string; rows?: number; units?: number }[];
-    problems: { row: number; product: string; issue: string; qty: number }[];
+    // `message` is the legacy single-field shape — kept so an in-flight deploy
+    // (new page, old server) still shows the reason instead of a blank cell.
+    problems: { row: number; product?: string; issue?: string; qty?: number; message?: string }[];
     totalProblems: number;
     duplicateDates: string[];
   } | null>(null);
@@ -287,9 +289,9 @@ export default function PosPage() {
                 {importIssue.problems.map((p, i) => (
                   <div key={i} className="grid grid-cols-[3rem_1fr_1fr_3rem] gap-3 py-1">
                     <span className="tabular-nums">{p.row}</span>
-                    <span className="truncate" title={p.product}>{p.product}</span>
-                    <span>{p.issue}</span>
-                    <span className="text-right tabular-nums">{p.qty}</span>
+                    <span className="truncate" title={p.product || ""}>{p.product || "—"}</span>
+                    <span>{p.issue || p.message || ""}</span>
+                    <span className="text-right tabular-nums">{p.qty ?? ""}</span>
                   </div>
                 ))}
               </div>
