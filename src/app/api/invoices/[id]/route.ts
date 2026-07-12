@@ -6,14 +6,14 @@ import { logAudit } from "@/lib/audit";
 export const dynamic = "force-dynamic";
 
 // Accounting decision on a receipt's invoice: Approve, or Reject with an
-// optional note explaining why. Accountants, managers and the owner may review.
-const REVIEW_ROLES = new Set(["accountant", "owner", "manager", "area_manager"]);
+// optional note explaining why. Only Accounting reviews invoices (owner oversees).
+const REVIEW_ROLES = new Set(["accountant", "owner"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (!REVIEW_ROLES.has(s.role)) {
-    return NextResponse.json({ error: "Only Accounting (or a manager/owner) can review invoices" }, { status: 403 });
+    return NextResponse.json({ error: "Only Accounting can review invoices" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));

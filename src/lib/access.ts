@@ -15,6 +15,12 @@ const ROLE_DENIED: Partial<Record<Role, string[]>> = {
   operations: ["/purchase-orders"],
 };
 
+// Pages only specific roles may use (the owner always can). Invoices are for
+// Accounting to review, so no other department sees them.
+const ROLE_ONLY: Record<string, Role[]> = {
+  "/invoices": ["accountant"],
+};
+
 function matches(pathname: string, base: string): boolean {
   return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
 }
@@ -24,6 +30,10 @@ export function canAccessPage(role: Role, pathname: string): boolean {
   if (OWNER_ONLY.some((p) => matches(pathname, p))) return false;
   const denied = ROLE_DENIED[role];
   if (denied && denied.some((p) => matches(pathname, p))) return false;
+  // Role-restricted pages: if the page is listed, only the named roles may open it.
+  for (const [base, roles] of Object.entries(ROLE_ONLY)) {
+    if (matches(pathname, base) && !roles.includes(role)) return false;
+  }
   return true; // all departments see every other function
 }
 
