@@ -8,6 +8,7 @@ import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import { useTheme } from "@/components/theme";
 import { confirmDialog } from "@/components/confirm";
+import { SearchSelect } from "@/components/SearchSelect";
 
 type Business = DB["meta"]["business"];
 
@@ -208,26 +209,22 @@ export default function SettingsPage() {
                 const usedByOthers = new Set(
                   (form.approvers || []).filter((_, j) => j !== i).map((o) => o.role),
                 );
-                const roleOptions = Array.from(new Set([...APPROVER_ROLES, a.role])).filter(Boolean);
+                // Only offer roles that aren't already taken by another row
+                // (keep this row's own role so it stays selected/visible).
+                const roleOptions = Array.from(new Set([...APPROVER_ROLES, a.role]))
+                  .filter((r) => r && (r === a.role || !usedByOthers.has(r)))
+                  .map((r) => ({ value: r, label: r }));
                 const nameMissing = approverError && !a.name?.trim();
                 return (
                   <div key={i} className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
                     <div>
                       <label className="label">Role</label>
-                      <select
-                        className="input"
+                      <SearchSelect
                         value={a.role}
-                        onChange={(e) => setApprover(i, "role", e.target.value)}
-                      >
-                        <option value="" disabled>
-                          Select role…
-                        </option>
-                        {roleOptions.map((r) => (
-                          <option key={r} value={r} disabled={usedByOthers.has(r)}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
+                        options={roleOptions}
+                        onChange={(v) => setApprover(i, "role", v)}
+                        placeholder="Select role…"
+                      />
                     </div>
                     <div>
                       <label className="label">Name</label>
