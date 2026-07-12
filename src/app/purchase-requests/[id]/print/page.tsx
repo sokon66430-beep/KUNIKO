@@ -83,7 +83,10 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
               style={{ position: "absolute", top: -8, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
             />
           )}
-          <h1 style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }} className="text-center">
+          <h1
+            style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1, marginTop: 38 }}
+            className="text-center"
+          >
             PURCHASE REQUEST
           </h1>
         </div>
