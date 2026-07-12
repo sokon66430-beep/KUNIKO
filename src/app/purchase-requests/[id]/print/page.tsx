@@ -80,7 +80,7 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
             <img
               src={business.logo}
               alt="Logo"
-              style={{ position: "absolute", top: -8, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
+              style={{ position: "absolute", top: -27, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
             />
           )}
           <h1
@@ -96,7 +96,9 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
           className="mb-4"
           style={{
             display: "grid",
-            gridTemplateColumns: "96px minmax(0,1fr) 118px minmax(0,1fr)",
+            // Right-hand label/value pair starts at the same x-position as the
+            // "EST. UNIT COST" column in the table below (72% across).
+            gridTemplateColumns: "14% 58% 10% 18%",
             columnGap: 12,
             rowGap: 8,
             paddingBottom: 14,
