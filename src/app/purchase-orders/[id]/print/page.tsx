@@ -90,11 +90,15 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
 
       {/* A4 sheet */}
       <div className="po-sheet bg-white p-8 text-black shadow-card" style={{ fontFamily: CALIBRI }}>
-        {/* Logo centered directly above the title */}
-        <div className="mb-5 flex flex-col items-center">
+        {/* Logo pinned to the top-left corner; title stays centered on the sheet */}
+        <div className="mb-5" style={{ position: "relative" }}>
           {business.logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={business.logo} alt="Logo" style={{ maxHeight: 56, maxWidth: 190, objectFit: "contain", marginBottom: 6 }} />
+            <img
+              src={business.logo}
+              alt="Logo"
+              style={{ position: "absolute", top: 0, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
+            />
           )}
           <h1 style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }} className="text-center">
             PURCHASE ORDER
