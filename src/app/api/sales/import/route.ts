@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
-import { mutateDB } from "@/lib/db";
+import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import type { Sale, SaleItem } from "@/lib/types";
 
@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic";
 //   Date · Item Code (or Barcode) · Qty · Price (optional)
 // Rows are grouped by date into one sale per day. Stock is NOT changed — this is
 // historical data, not a live sale.
+//
+// Validation is all-or-nothing: if any row can't be fully read (no matching
+// product, missing qty, or — when a Date column is present — an unreadable
+// date), nothing is imported. If any date in the file already has sales on
+// record, nothing is imported either, so a day's figures can never be
+// double-counted by importing the same report twice.
 const ALIASES: Record<string, string[]> = {
   date: ["date", "sale date", "sold date", "invoice date"],
   sku: ["item code", "item id", "sku", "product code", "system product code"],
@@ -96,17 +102,44 @@ export async function POST(req: Request) {
     );
   }
 
-  type Row = { day: string | null; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Pass 1: read every row strictly. A row with SOME content but missing a
+  // required field is a problem (not silently skipped) — only a fully blank
+  // row (trailing spreadsheet padding) is ignored outright.
+  type Row = { day: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
   const rows: Row[] = [];
+  const problems: string[] = [];
   for (let r = headerRow + 1; r <= ws.rowCount; r++) {
-    const dateCell = colOf.date ? ws.getRow(r).getCell(colOf.date).value : null;
-    const qty = colOf.qty ? num(cellText(r, colOf.qty)) : 0;
+    const dateText = colOf.date ? cellText(r, colOf.date) : "";
+    const dateCellValue = colOf.date ? ws.getRow(r).getCell(colOf.date).value : null;
+    const qtyText = colOf.qty ? cellText(r, colOf.qty) : "";
     const sku = colOf.sku ? cellText(r, colOf.sku) : "";
     const barcode = colOf.barcode ? cellText(r, colOf.barcode) : "";
     const name = colOf.name ? cellText(r, colOf.name) : "";
-    if (qty <= 0 || (!sku && !barcode && !name)) continue;
+    if (!dateText && !qtyText && !sku && !barcode && !name) continue; // fully blank row
+
+    const qty = num(qtyText);
+    const hasProductRef = !!(sku || barcode || name);
+    if (!hasProductRef) {
+      problems.push(`Row ${r}: no Item Code, Barcode, or Item Name`);
+      continue;
+    }
+    if (qty <= 0) {
+      problems.push(`Row ${r}: missing or invalid Qty for "${sku || barcode || name}"`);
+      continue;
+    }
+    let day = today;
+    if (colOf.date) {
+      const parsed = toDayKey(dateCellValue, dateText);
+      if (!parsed) {
+        problems.push(`Row ${r}: unreadable Date "${dateText || "(blank)"}"`);
+        continue;
+      }
+      day = parsed;
+    }
     rows.push({
-      day: toDayKey(dateCell, colOf.date ? cellText(r, colOf.date) : ""),
+      day,
       sku,
       barcode,
       name,
@@ -115,62 +148,93 @@ export async function POST(req: Request) {
       rowNum: r,
     });
   }
-  if (rows.length === 0) {
+  if (rows.length === 0 && problems.length === 0) {
     return NextResponse.json({ error: "No sale rows found under the header" }, { status: 400 });
   }
 
-  const result = await mutateDB((db) => {
-    const byBarcode = new Map<string, any>();
-    const bySku = new Map<string, any>();
-    const byName = new Map<string, any>();
-    for (const p of db.products) {
-      if (p.barcode) byBarcode.set(p.barcode, p);
-      if (p.sku) bySku.set(p.sku.toLowerCase(), p);
-      byName.set(p.name.toLowerCase(), p);
-    }
+  // Pass 2: every row must match a real product — no partial imports.
+  const db = await readDB();
+  const byBarcode = new Map<string, any>();
+  const bySku = new Map<string, any>();
+  const byName = new Map<string, any>();
+  for (const p of db.products) {
+    if (p.barcode) byBarcode.set(p.barcode, p);
+    if (p.sku) bySku.set(p.sku.toLowerCase(), p);
+    byName.set(p.name.toLowerCase(), p);
+  }
 
-    // Group rows into one sale per day (undated rows fall under "today").
-    const today = new Date().toISOString().slice(0, 10);
-    const byDay = new Map<string, SaleItem[]>();
-    let matched = 0;
-    const errors: string[] = [];
-    // Skipped items, de-duplicated: one entry per unique code/barcode/name, with
-    // how many times it appeared and the total units that couldn't be counted.
-    const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
-
-    for (const row of rows) {
-      const p =
-        (row.barcode && byBarcode.get(row.barcode)) ||
-        (row.sku && bySku.get(row.sku.toLowerCase())) ||
-        (row.name && byName.get(row.name.toLowerCase()));
-      if (!p) {
-        errors.push(`Row ${row.rowNum}: no product for ${row.sku || row.barcode || row.name}; skipped`);
-        const key = (row.barcode || row.sku || row.name).toLowerCase();
-        const ex = skippedMap.get(key);
-        if (ex) {
-          ex.rows += 1;
-          ex.units += row.qty;
-        } else {
-          skippedMap.set(key, { code: row.sku, barcode: row.barcode, name: row.name, rows: 1, units: row.qty });
-        }
-        continue;
+  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string };
+  const matched: Matched[] = [];
+  const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
+  for (const row of rows) {
+    const p =
+      (row.barcode && byBarcode.get(row.barcode)) ||
+      (row.sku && bySku.get(row.sku.toLowerCase())) ||
+      (row.name && byName.get(row.name.toLowerCase()));
+    if (!p) {
+      problems.push(`Row ${row.rowNum}: no product found for "${row.sku || row.barcode || row.name}"`);
+      const key = (row.barcode || row.sku || row.name).toLowerCase();
+      const ex = skippedMap.get(key);
+      if (ex) {
+        ex.rows += 1;
+        ex.units += row.qty;
+      } else {
+        skippedMap.set(key, { code: row.sku, barcode: row.barcode, name: row.name, rows: 1, units: row.qty });
       }
-      const day = row.day || today;
-      const items = byDay.get(day) ?? byDay.set(day, []).get(day)!;
-      items.push({
-        productId: p.id,
-        sku: p.sku,
-        name: p.name,
-        qty: row.qty,
-        price: row.price || p.price,
-        cost: p.cost,
-      });
-      matched++;
+      continue;
+    }
+    matched.push({
+      productId: p.id,
+      sku: p.sku,
+      name: p.name,
+      qty: row.qty,
+      price: row.price || p.price,
+      cost: p.cost,
+      day: row.day,
+    });
+  }
+
+  if (problems.length > 0) {
+    const skippedItems = [...skippedMap.values()].sort((a, b) => b.rows - a.rows);
+    return NextResponse.json(
+      {
+        error: `${problems.length} row${problems.length === 1 ? "" : "s"} could not be read in full — nothing was imported. Fix these and re-upload.`,
+        problems: problems.slice(0, 40),
+        totalProblems: problems.length,
+        skippedItems,
+      },
+      { status: 400 },
+    );
+  }
+
+  // Every date in the file must be new — re-importing a day (by accident or
+  // because the same report was uploaded twice) would double-count it.
+  const daysInFile = [...new Set(matched.map((m) => m.day))];
+  const existingDays = new Set(db.sales.map((s) => s.createdAt.slice(0, 10)));
+  const duplicateDates = daysInFile.filter((d) => existingDays.has(d)).sort();
+  if (duplicateDates.length > 0) {
+    return NextResponse.json(
+      {
+        error: `${duplicateDates.length} date${duplicateDates.length === 1 ? "" : "s"} already ${
+          duplicateDates.length === 1 ? "has" : "have"
+        } sales on record — nothing was imported. Remove ${
+          duplicateDates.length === 1 ? "it" : "them"
+        } from the file, or delete the existing sales for that day first.`,
+        duplicateDates,
+      },
+      { status: 400 },
+    );
+  }
+
+  const result = await mutateDB((db) => {
+    const byDay = new Map<string, SaleItem[]>();
+    for (const row of matched) {
+      const items = byDay.get(row.day) ?? byDay.set(row.day, []).get(row.day)!;
+      items.push({ productId: row.productId, sku: row.sku, name: row.name, qty: row.qty, price: row.price, cost: row.cost });
     }
 
     let salesCreated = 0;
     for (const [day, items] of byDay) {
-      if (items.length === 0) continue;
       const subtotal = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
       const cost = round2(items.reduce((s, it) => s + it.cost * it.qty, 0));
       const tax = round2(subtotal * db.meta.business.vatRate);
@@ -201,17 +265,9 @@ export async function POST(req: Request) {
       action: "Imported",
       entityType: "Sale",
       entity: file.name || "Excel file",
-      detail: `${matched} lines · ${salesCreated} day-sales · ${errors.length} skipped`,
+      detail: `${matched.length} lines · ${salesCreated} day-sales`,
     });
-    const skippedItems = [...skippedMap.values()].sort((a, b) => b.rows - a.rows);
-    return {
-      matched,
-      salesCreated,
-      skipped: skippedItems.length, // unique items skipped (deduped)
-      skippedRows: errors.length, // total rows skipped
-      skippedItems,
-      totalRows: rows.length,
-    };
+    return { matched: matched.length, salesCreated, totalRows: rows.length };
   });
 
   return NextResponse.json(result);

@@ -57,21 +57,38 @@ export default function PosPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [skipped, setSkipped] = useState<{ code?: string; barcode?: string; name?: string; rows?: number; units?: number }[]>([]);
+  // Import is all-or-nothing: nothing lands until every row is fully readable
+  // and none of its dates are already on record. This holds whatever the
+  // server rejected the file for, so the banner can explain and (for
+  // unmatched products) offer a fixable download.
+  const [importIssue, setImportIssue] = useState<{
+    message: string;
+    skippedItems: { code?: string; barcode?: string; name?: string; rows?: number; units?: number }[];
+    problems: string[];
+    totalProblems: number;
+    duplicateDates: string[];
+  } | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
   async function importSales(file: File) {
     setImporting(true);
+    setImportIssue(null);
     try {
       const form = new FormData();
       form.append("file", file);
       const res = await fetch("/api/sales/import", { method: "POST", body: form });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      setSkipped(data.skippedItems || []);
-      setToast(
-        `Imported ${data.matched} sale lines (${data.salesCreated} days)${data.skipped ? ` · ${data.skipped} items skipped` : ""}`,
-      );
+      if (!res.ok) {
+        setImportIssue({
+          message: data.error || "Import failed — nothing was imported.",
+          skippedItems: data.skippedItems || [],
+          problems: data.problems || [],
+          totalProblems: data.totalProblems || 0,
+          duplicateDates: data.duplicateDates || [],
+        });
+        return;
+      }
+      setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)`);
       reload();
     } catch (e: any) {
       setToast(e.message);
@@ -81,13 +98,14 @@ export default function PosPage() {
     }
   }
 
-  // Download the skipped items (things the import couldn't match) as an Excel file.
+  // Download the unmatched-product rows (things the import couldn't match) as an Excel file.
   async function downloadSkipped() {
+    if (!importIssue) return;
     try {
       const res = await fetch("/api/sales/skipped-export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: skipped }),
+        body: JSON.stringify({ items: importIssue.skippedItems }),
       });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -231,22 +249,40 @@ export default function PosPage() {
 
       {error && <ErrorBox message={error} />}
 
-      {skipped.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="flex-1 text-sm text-amber-800">
-            <b>{skipped.length}</b> item{skipped.length === 1 ? "" : "s"} in your import couldn&apos;t be matched to a product and
-            were skipped. Download the list to fix the codes or add the products.
-          </p>
-          <button className="btn-primary !py-2 text-sm" onClick={downloadSkipped}>
-            <FileSpreadsheet size={16} /> Download skipped (Excel)
-          </button>
-          <button
-            className="grid h-8 w-8 place-items-center rounded-lg text-amber-500 hover:bg-amber-100"
-            onClick={() => setSkipped([])}
-            title="Dismiss"
-          >
-            <X size={16} />
-          </button>
+      {importIssue && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex flex-wrap items-start gap-3">
+            <p className="flex-1 text-sm font-medium text-amber-800">{importIssue.message}</p>
+            <div className="flex items-center gap-2">
+              {importIssue.skippedItems.length > 0 && (
+                <button className="btn-primary !py-2 text-sm" onClick={downloadSkipped}>
+                  <FileSpreadsheet size={16} /> Download unmatched items (Excel)
+                </button>
+              )}
+              <button
+                className="grid h-8 w-8 place-items-center rounded-lg text-amber-500 hover:bg-amber-100"
+                onClick={() => setImportIssue(null)}
+                title="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+          {importIssue.duplicateDates.length > 0 && (
+            <p className="mt-2 text-xs text-amber-700">
+              Already on record: {importIssue.duplicateDates.join(", ")}
+            </p>
+          )}
+          {importIssue.problems.length > 0 && (
+            <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs text-amber-700">
+              {importIssue.problems.map((p, i) => (
+                <li key={i}>· {p}</li>
+              ))}
+              {importIssue.totalProblems > importIssue.problems.length && (
+                <li>· …and {importIssue.totalProblems - importIssue.problems.length} more</li>
+              )}
+            </ul>
+          )}
         </div>
       )}
 
