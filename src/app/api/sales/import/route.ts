@@ -169,7 +169,8 @@ export async function POST(req: Request) {
   // items, so they're skipped like blank rows — but a real item row missing
   // its qty/date is still a hard problem, never silently dropped.
   type Row = { day: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
-  type Problem = { row: number; message: string };
+  // Structured so the UI can lay it out as a table (Row · Product · Issue · Qty).
+  type Problem = { row: number; product: string; issue: string; qty: number };
   const rows: Row[] = [];
   const problems: Problem[] = [];
   for (let r = headerRow + 1; r <= ws.rowCount; r++) {
@@ -185,12 +186,12 @@ export async function POST(req: Request) {
     const hasProductRef = !!(sku || barcode || name);
     if (!hasProductRef || isSummaryRow(r)) continue; // not an item row
     if (qty <= 0) {
-      problems.push({ row: r, message: `missing or invalid Qty for "${sku || barcode || name}"` });
+      problems.push({ row: r, product: sku || barcode || name, issue: "Missing or invalid quantity", qty });
       continue;
     }
     const day = toDayKey(dateCellValue, dateText);
     if (!day) {
-      problems.push({ row: r, message: `unreadable Date "${dateText || "(blank)"}"` });
+      problems.push({ row: r, product: sku || barcode || name, issue: `Unreadable date "${dateText || "(blank)"}"`, qty });
       continue;
     }
     rows.push({
@@ -227,7 +228,7 @@ export async function POST(req: Request) {
       (row.sku && bySku.get(cleanSku(row.sku))) ||
       (row.name && byName.get(cleanName(row.name)));
     if (!p) {
-      problems.push({ row: row.rowNum, message: `no product found for "${row.sku || row.barcode || row.name}"` });
+      problems.push({ row: row.rowNum, product: row.name || row.sku || row.barcode, issue: "No product found", qty: row.qty });
       const key = (row.barcode || row.sku || row.name).toLowerCase();
       const ex = skippedMap.get(key);
       if (ex) {
@@ -255,7 +256,8 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: `${problems.length} row${problems.length === 1 ? "" : "s"} could not be read in full — nothing was imported. Fix these and re-upload.`,
-        problems: problems.slice(0, 40),
+        // Return them all (up to a safety cap) so the list can show everything.
+        problems: problems.slice(0, 2000),
         totalProblems: problems.length,
         skippedItems,
       },

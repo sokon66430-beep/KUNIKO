@@ -64,7 +64,7 @@ export default function PosPage() {
   const [importIssue, setImportIssue] = useState<{
     message: string;
     skippedItems: { code?: string; barcode?: string; name?: string; rows?: number; units?: number }[];
-    problems: { row: number; message: string }[];
+    problems: { row: number; product: string; issue: string; qty: number }[];
     totalProblems: number;
     duplicateDates: string[];
   } | null>(null);
@@ -274,16 +274,22 @@ export default function PosPage() {
             </p>
           )}
           {importIssue.problems.length > 0 && (
-            <div className="mt-2 max-h-40 overflow-y-auto text-xs">
-              <div className="flex gap-4 pb-1 font-semibold text-amber-800">
-                <span className="w-12 shrink-0">Row</span>
+            <div className="mt-3 max-h-72 overflow-y-auto text-xs">
+              {/* Clean, borderless table — Row · Product · Issue · Qty — with a
+                  frozen header that stays put while the list scrolls. */}
+              <div className="sticky top-0 grid grid-cols-[3rem_1fr_1fr_3rem] gap-3 bg-amber-50 pb-1.5 font-semibold text-amber-800">
+                <span>Row</span>
+                <span>Product</span>
                 <span>Issue</span>
+                <span className="text-right">Qty</span>
               </div>
-              <div className="space-y-1 text-amber-700">
+              <div className="text-amber-700">
                 {importIssue.problems.map((p, i) => (
-                  <div key={i} className="flex gap-4">
-                    <span className="w-12 shrink-0 tabular-nums">{p.row}</span>
-                    <span>{p.message}</span>
+                  <div key={i} className="grid grid-cols-[3rem_1fr_1fr_3rem] gap-3 py-1">
+                    <span className="tabular-nums">{p.row}</span>
+                    <span className="truncate" title={p.product}>{p.product}</span>
+                    <span>{p.issue}</span>
+                    <span className="text-right tabular-nums">{p.qty}</span>
                   </div>
                 ))}
               </div>
