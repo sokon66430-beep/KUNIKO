@@ -10,15 +10,12 @@ const OWNER_ONLY = ["/all-stores"];
 
 // Pages a specific role may NOT use. Operations staff run the shop floor: they
 // CAN raise Purchase Requests (ask for stock) but not create Purchase Orders
-// (that's Procurement's job).
+// (that's Procurement's job), and they don't see Accounting's invoice review.
+// Accountant is scoped to invoice review + reports only — not the day-to-day
+// ordering/receiving/write-off workflow (that's Operations/Procurement's job).
 const ROLE_DENIED: Partial<Record<Role, string[]>> = {
-  operations: ["/purchase-orders"],
-};
-
-// Pages only specific roles may use (the owner always can). Invoices are for
-// Accounting to review, so no other department sees them.
-const ROLE_ONLY: Record<string, Role[]> = {
-  "/invoices": ["accountant"],
+  operations: ["/purchase-orders", "/invoices"],
+  accountant: ["/purchase-requests", "/purchase-orders", "/receiving", "/write-offs"],
 };
 
 function matches(pathname: string, base: string): boolean {
@@ -30,10 +27,6 @@ export function canAccessPage(role: Role, pathname: string): boolean {
   if (OWNER_ONLY.some((p) => matches(pathname, p))) return false;
   const denied = ROLE_DENIED[role];
   if (denied && denied.some((p) => matches(pathname, p))) return false;
-  // Role-restricted pages: if the page is listed, only the named roles may open it.
-  for (const [base, roles] of Object.entries(ROLE_ONLY)) {
-    if (matches(pathname, base) && !roles.includes(role)) return false;
-  }
   return true; // all departments see every other function
 }
 
