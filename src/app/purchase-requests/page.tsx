@@ -14,6 +14,7 @@ import {
   ScanLine,
   PackageCheck,
   Ban,
+  Pencil,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseRequest, PRStatus } from "@/lib/types";
@@ -68,6 +69,7 @@ export default function PurchaseRequestsPage() {
   const { data: suggestions } = useFetch<Suggestion[]>("/api/reorder-suggestions");
   const [creating, setCreating] = useState(false);
   const [initialLines, setInitialLines] = useState<Line[]>([]);
+  const [editingPR, setEditingPR] = useState<PurchaseRequest | null>(null); // draft being continued
   const [viewing, setViewing] = useState<PurchaseRequest | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -80,6 +82,21 @@ export default function PurchaseRequestsPage() {
 
   function startRequest(lines: Line[] = []) {
     setInitialLines(lines);
+    setEditingPR(null);
+    setCreating(true);
+  }
+
+  // Reopen a DRAFT to continue ordering — rebuild its lines from the product
+  // master so quantities stay adjustable (items no longer in the master are kept
+  // out; they'd have nothing to link to).
+  function startEdit(pr: PurchaseRequest) {
+    const lines: Line[] = [];
+    for (const it of pr.items) {
+      const p = productById.get(it.productId);
+      if (p) lines.push({ product: p, qty: it.qty });
+    }
+    setInitialLines(lines);
+    setEditingPR(pr);
     setCreating(true);
   }
 
@@ -248,7 +265,7 @@ export default function PurchaseRequestsPage() {
               <div
                 key={pr.id}
                 className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
-                onClick={() => setViewing(pr)}
+                onClick={() => (pr.status === "Draft" ? startEdit(pr) : setViewing(pr))}
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-ink-900">
@@ -267,9 +284,14 @@ export default function PurchaseRequestsPage() {
                   <StatusTrail status={pr.status} />
                   <div className="flex items-center gap-1">
                     {pr.status === "Draft" && (
-                      <button onClick={() => setStatus(pr, "Submitted")} className="btn-primary !px-3 !py-1.5 text-xs">
-                        <Send size={13} /> Submit
-                      </button>
+                      <>
+                        <button onClick={() => startEdit(pr)} className="btn-ghost !px-3 !py-1.5 text-xs">
+                          <Pencil size={13} /> Continue
+                        </button>
+                        <button onClick={() => setStatus(pr, "Submitted")} className="btn-primary !px-3 !py-1.5 text-xs">
+                          <Send size={13} /> Submit
+                        </button>
+                      </>
                     )}
                     {CANCELLABLE.includes(pr.status) && (
                       <button
@@ -308,6 +330,7 @@ export default function PurchaseRequestsPage() {
           products={products || []}
           suggestions={suggestions || []}
           initialLines={initialLines}
+          editing={editingPR}
           onClose={() => setCreating(false)}
           onCreated={() => {
             setCreating(false);
@@ -333,40 +356,50 @@ function CreatePRModal({
   products,
   suggestions,
   initialLines,
+  editing,
   onClose,
   onCreated,
 }: {
   products: Product[];
   suggestions: { productId: string; suggestedQty: number }[];
   initialLines: Line[];
+  editing?: PurchaseRequest | null; // set = continuing a saved draft
   onClose: () => void;
   onCreated: () => void;
 }) {
   const [lines, setLines] = useState<Line[]>(initialLines);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(editing?.note || "");
   const [busy, setBusy] = useState(false);
 
   async function save(submit: boolean) {
     if (lines.length === 0) return;
     setBusy(true);
     try {
-      await api("/api/purchase-requests", {
-        method: "POST",
-        body: JSON.stringify({
-          status: submit ? "Submitted" : "Draft",
-          note,
-          items: lines.map((l) => ({
-            productId: l.product.id,
-            sku: l.product.sku,
-            name: l.product.name,
-            supplier: l.product.supplier,
-            unit: l.product.unit,
-            qty: l.qty,
-            cost: l.product.cost,
-            barcode: l.product.barcode,
-          })),
-        }),
-      });
+      const payload = {
+        note,
+        items: lines.map((l) => ({
+          productId: l.product.id,
+          sku: l.product.sku,
+          name: l.product.name,
+          supplier: l.product.supplier,
+          unit: l.product.unit,
+          qty: l.qty,
+          cost: l.product.cost,
+          barcode: l.product.barcode,
+        })),
+      };
+      if (editing) {
+        // Continuing a draft: update its lines/note, submit only if asked.
+        await api(`/api/purchase-requests/${editing.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(submit ? { ...payload, status: "Submitted" } : payload),
+        });
+      } else {
+        await api("/api/purchase-requests", {
+          method: "POST",
+          body: JSON.stringify({ status: submit ? "Submitted" : "Draft", ...payload }),
+        });
+      }
       onCreated();
     } catch (e: any) {
       alert(e.message);
@@ -379,7 +412,7 @@ function CreatePRModal({
     <Modal
       open
       onClose={onClose}
-      title="New Purchase Request"
+      title={editing ? `Continue ${editing.prNo} (draft)` : "New Purchase Request"}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>

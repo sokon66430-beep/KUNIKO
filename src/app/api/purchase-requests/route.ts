@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
+import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 import type { PurchaseRequest, PRItem } from "@/lib/types";
 
@@ -20,13 +21,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "At least one line item is required" }, { status: 400 });
   }
 
+  // The requester is always the signed-in user — recorded automatically.
+  const session = await getSession();
+  const requestedBy = session?.name || body.requestedBy?.trim() || "Store";
+
   const created = await mutateDB((db) => {
     const n = db.meta.nextPR++;
     const pr: PurchaseRequest = {
       id: `pr${n}`,
       prNo: `PR-${n}`,
       status: body.status === "Submitted" ? "Submitted" : "Draft",
-      requestedBy: body.requestedBy?.trim() || "Store L3",
+      requestedBy,
       note: body.note?.trim() || undefined,
       items: items.map((it) => ({
         productId: it.productId,
