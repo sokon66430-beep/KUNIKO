@@ -90,18 +90,15 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
 
       {/* A4 sheet */}
       <div className="po-sheet bg-white p-8 text-black shadow-card" style={{ fontFamily: CALIBRI }}>
-        {/* Logo top-left, title centered (logo width reserved on the right for balance) */}
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <div style={{ width: 150, flexShrink: 0 }}>
-            {business.logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={business.logo} alt="Logo" style={{ maxHeight: 64, maxWidth: 150, objectFit: "contain" }} />
-            ) : null}
-          </div>
+        {/* Logo centered directly above the title */}
+        <div className="mb-5 flex flex-col items-center">
+          {business.logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={business.logo} alt="Logo" style={{ maxHeight: 56, maxWidth: 200, objectFit: "contain", marginBottom: 6 }} />
+          )}
           <h1 style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }} className="text-center">
             PURCHASE ORDER
           </h1>
-          <div style={{ width: 150, flexShrink: 0 }} />
         </div>
 
         {/* Header block — 4 rows, two label/value blocks, thin rule underneath */}
