@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import type { PurchaseOrder, PurchaseRequest, GoodsReceipt, StockCount, WriteOff, Product, DB } from "./types";
+import type { PurchaseOrder, PurchaseRequest, GoodsReceipt, StockCount, WriteOff, Product, Sale, DB } from "./types";
 
 type Business = DB["meta"]["business"];
 
@@ -731,6 +731,210 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
   });
 
   ws.views = [{ state: "frozen", ySplit: 1 }];
+  return wb;
+}
+
+// ---------------------------------------------------------------------------
+// Sales report workbook — three sheets from the same filtered sales:
+//   1. Invoices    — one row per sale (matches the old single-sheet export)
+//   2. By Item     — units, revenue (& profit) aggregated per product
+//   3. By Category — the same, rolled up to category
+// Aggregation mirrors /api/sales-report exactly (revenue = price·qty,
+// cost = cost·qty, profit = revenue − cost) so the figures match the on-screen
+// Sales Report. Cost/Profit columns are dropped entirely when showProfit=false.
+// ---------------------------------------------------------------------------
+type SalesCol = {
+  label: string;
+  align?: "right" | "center" | "left";
+  money?: boolean;
+  num?: boolean;
+  total?: boolean; // summed into the TOTAL row
+  width: number;
+};
+
+function salesSheet(
+  wb: ExcelJS.Workbook,
+  sheetName: string,
+  title: string,
+  meta: string[],
+  cols: SalesCol[],
+  rows: ExcelJS.CellValue[][],
+) {
+  const ws = wb.addWorksheet(sheetName, {
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+  });
+  ws.columns = cols.map((c) => ({ width: c.width }));
+
+  let row = reportHeader(ws, title, meta, cols.length);
+  tableHead(
+    ws,
+    row,
+    cols.map((c) => ({ label: c.label, align: c.align === "left" ? undefined : c.align })),
+  );
+
+  const firstDataRow = row + 1;
+  const totals = cols.map(() => 0);
+  rows.forEach((cells, i) => {
+    const r = ws.getRow(firstDataRow + i);
+    cols.forEach((c, ci) => {
+      const cell = r.getCell(ci + 1);
+      const val = cells[ci];
+      cell.value = val;
+      cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+      cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
+      cell.border = allThin;
+      if (c.money) cell.numFmt = MONEY;
+      else if (c.num) cell.numFmt = "#,##0";
+      if (c.total && typeof val === "number") totals[ci] += val;
+    });
+  });
+
+  // TOTAL row
+  const totalRow = firstDataRow + rows.length;
+  const tr = ws.getRow(totalRow);
+  cols.forEach((c, ci) => {
+    const cell = tr.getCell(ci + 1);
+    if (ci === 0) cell.value = "TOTAL";
+    else if (c.total) {
+      cell.value = c.money ? round2(totals[ci]) : totals[ci];
+      cell.numFmt = c.money ? MONEY : "#,##0";
+    }
+    cell.font = { name: CALIBRI, size: 11, bold: true, color: { argb: "FF0C1322" } };
+    cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
+    cell.border = allThin;
+  });
+
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
+}
+
+export function buildSalesReportWorkbook(
+  sales: Sale[],
+  products: Product[],
+  business: Business,
+  filterNote: string,
+  showProfit = true,
+): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const meta = [`${business.name} · ${business.branch}`, filterNote];
+  const profitCols: SalesCol[] = showProfit
+    ? [
+        { label: "Cost", align: "right", money: true, total: true, width: 12 },
+        { label: "Profit", align: "right", money: true, total: true, width: 12 },
+      ]
+    : [];
+
+  // --- Sheet 1: Invoices (one row per sale) --------------------------------
+  const invCols: SalesCol[] = [
+    { label: "No", align: "center", width: 6 },
+    { label: "Date", align: "center", width: 12 },
+    { label: "Time", align: "center", width: 8 },
+    { label: "Invoice", width: 14 },
+    { label: "Customer", width: 20 },
+    { label: "Items", align: "right", num: true, total: true, width: 8 },
+    { label: "Subtotal", align: "right", money: true, total: true, width: 12 },
+    { label: "Discount", align: "right", money: true, total: true, width: 12 },
+    { label: "Tax", align: "right", money: true, total: true, width: 11 },
+    { label: "Total", align: "right", money: true, total: true, width: 13 },
+    ...profitCols,
+    { label: "Payment", align: "center", width: 12 },
+  ];
+  const invRows: ExcelJS.CellValue[][] = sales.map((s, i) => [
+    i + 1,
+    ddmmyyyy(s.createdAt),
+    hhmm(s.createdAt),
+    s.invoiceNo,
+    s.customerName || "Walk-in",
+    s.items.length,
+    round2(s.subtotal),
+    round2(s.discount),
+    round2(s.tax),
+    round2(s.total),
+    ...(showProfit ? [round2(s.cost), round2(s.profit)] : []),
+    s.paymentMethod,
+  ]);
+  salesSheet(wb, "Invoices", "SALES REPORT — INVOICES", meta, invCols, invRows);
+
+  // --- Aggregate item + category figures (mirrors /api/sales-report) -------
+  const catOf = new Map(products.map((p) => [p.id, p.category] as const));
+  const barcodeOf = new Map(products.map((p) => [p.id, p.barcode || ""] as const));
+  type Agg = { qty: number; revenue: number; cost: number };
+  const items = new Map<string, Agg & { sku: string; name: string; category: string; barcode: string }>();
+  const cats = new Map<string, Agg & { category: string; products: Set<string> }>();
+  for (const sale of sales) {
+    for (const it of sale.items) {
+      const category = catOf.get(it.productId) || "Uncategorized";
+      const revenue = it.price * it.qty;
+      const cost = it.cost * it.qty;
+      const ie =
+        items.get(it.productId) ??
+        items
+          .set(it.productId, {
+            sku: it.sku,
+            name: it.name,
+            category,
+            barcode: barcodeOf.get(it.productId) || "",
+            qty: 0,
+            revenue: 0,
+            cost: 0,
+          })
+          .get(it.productId)!;
+      ie.qty += it.qty;
+      ie.revenue += revenue;
+      ie.cost += cost;
+      const ce =
+        cats.get(category) ??
+        cats.set(category, { category, products: new Set(), qty: 0, revenue: 0, cost: 0 }).get(category)!;
+      ce.qty += it.qty;
+      ce.revenue += revenue;
+      ce.cost += cost;
+      ce.products.add(it.productId);
+    }
+  }
+
+  // --- Sheet 2: By Item (best-selling first) -------------------------------
+  const byItem = [...items.values()].sort((a, b) => b.qty - a.qty);
+  const itemCols: SalesCol[] = [
+    { label: "No", align: "center", width: 6 },
+    { label: "Item Code", width: 14 },
+    { label: "Barcode", width: 16 },
+    { label: "Item Name", width: 40 },
+    { label: "Category", width: 22 },
+    { label: "Qty Sold", align: "right", num: true, total: true, width: 10 },
+    { label: "Revenue", align: "right", money: true, total: true, width: 13 },
+    ...profitCols,
+  ];
+  const itemRows: ExcelJS.CellValue[][] = byItem.map((it, i) => [
+    i + 1,
+    it.sku,
+    it.barcode,
+    it.name,
+    it.category,
+    it.qty,
+    round2(it.revenue),
+    ...(showProfit ? [round2(it.cost), round2(it.revenue - it.cost)] : []),
+  ]);
+  salesSheet(wb, "By Item", "SALES REPORT — BY ITEM", meta, itemCols, itemRows);
+
+  // --- Sheet 3: By Category (top revenue first) ----------------------------
+  const byCat = [...cats.values()].sort((a, b) => b.revenue - a.revenue);
+  const catCols: SalesCol[] = [
+    { label: "No", align: "center", width: 6 },
+    { label: "Category", width: 30 },
+    { label: "Products", align: "right", num: true, total: true, width: 10 },
+    { label: "Qty Sold", align: "right", num: true, total: true, width: 10 },
+    { label: "Revenue", align: "right", money: true, total: true, width: 14 },
+    ...profitCols,
+  ];
+  const catRows: ExcelJS.CellValue[][] = byCat.map((c, i) => [
+    i + 1,
+    c.category,
+    c.products.size,
+    c.qty,
+    round2(c.revenue),
+    ...(showProfit ? [round2(c.cost), round2(c.revenue - c.cost)] : []),
+  ]);
+  salesSheet(wb, "By Category", "SALES REPORT — BY CATEGORY", meta, catCols, catRows);
+
   return wb;
 }
 

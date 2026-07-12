@@ -6,6 +6,7 @@ import {
   buildPOReportWorkbook,
   buildPRReportWorkbook,
   buildGRNReportWorkbook,
+  buildSalesReportWorkbook,
 } from "./excelExport";
 import { parseQuery, filterPOs, filterPRs, filterGRNs, filterNote, type ReportQuery } from "./reportFilter";
 
@@ -305,6 +306,9 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery, showProfit
         filename: "Sales-Report",
         subtitle,
         rows,
+        // xlsx gets a 3-sheet workbook (Invoices · By Item · By Category);
+        // CSV/PDF keep the flat invoice list defined by `cols` below.
+        fancyXlsx: async () => buildSalesReportWorkbook(rows, db.products, db.meta.business, note, showProfit),
         cols: [
           { header: "Date", get: (s) => ddmmyyyy(s.createdAt) },
           { header: "Time", get: (s) => hhmm(s.createdAt) },
