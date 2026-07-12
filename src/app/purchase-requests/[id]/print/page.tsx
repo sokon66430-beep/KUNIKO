@@ -295,7 +295,9 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
                   <p style={{ fontWeight: 700, fontSize: 11, marginTop: 8 }}>
                     Name: {idx === 0 ? pr.requestedBy : ""}
                   </p>
-                  <p style={{ fontSize: 11, marginTop: 6 }}>Date:</p>
+                  <p style={{ fontSize: 11, marginTop: 6 }}>
+                    Date: {idx === 0 ? ddmmyyyy(pr.createdAt) : pr.decidedAt ? ddmmyyyy(pr.decidedAt) : ""}
+                  </p>
                 </div>
               ))}
             </div>
