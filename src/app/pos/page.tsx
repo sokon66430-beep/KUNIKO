@@ -64,7 +64,7 @@ export default function PosPage() {
   const [importIssue, setImportIssue] = useState<{
     message: string;
     skippedItems: { code?: string; barcode?: string; name?: string; rows?: number; units?: number }[];
-    problems: string[];
+    problems: { row: number; message: string }[];
     totalProblems: number;
     duplicateDates: string[];
   } | null>(null);
@@ -274,14 +274,25 @@ export default function PosPage() {
             </p>
           )}
           {importIssue.problems.length > 0 && (
-            <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs text-amber-700">
-              {importIssue.problems.map((p, i) => (
-                <li key={i}>· {p}</li>
-              ))}
+            <div className="mt-2 max-h-40 overflow-y-auto text-xs">
+              <div className="flex gap-4 pb-1 font-semibold text-amber-800">
+                <span className="w-12 shrink-0">Row</span>
+                <span>Issue</span>
+              </div>
+              <div className="space-y-1 text-amber-700">
+                {importIssue.problems.map((p, i) => (
+                  <div key={i} className="flex gap-4">
+                    <span className="w-12 shrink-0 tabular-nums">{p.row}</span>
+                    <span>{p.message}</span>
+                  </div>
+                ))}
+              </div>
               {importIssue.totalProblems > importIssue.problems.length && (
-                <li>· …and {importIssue.totalProblems - importIssue.problems.length} more</li>
+                <p className="mt-1 text-amber-600">
+                  …and {importIssue.totalProblems - importIssue.problems.length} more
+                </p>
               )}
-            </ul>
+            </div>
           )}
         </div>
       )}

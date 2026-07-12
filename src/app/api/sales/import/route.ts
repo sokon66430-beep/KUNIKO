@@ -67,7 +67,13 @@ export async function POST(req: Request) {
 
   const cellText = (r: number, c: number) => {
     const cell = ws.getRow(r).getCell(c);
-    const t = (cell.text || "").trim();
+    // ExcelJS's `.text` isn't always a plain string (rich text / formula-error
+    // cells can return an object) — fall back to the raw value so a stray
+    // cell never renders as the literal text "[object Object]".
+    let raw: any = cell.text;
+    if (raw && typeof raw === "object") raw = cell.value;
+    if (raw && typeof raw === "object") raw = (raw as any).result ?? (raw as any).text ?? (raw as any).richText?.map((p: any) => p.text).join("") ?? "";
+    const t = String(raw ?? "").trim();
     if (/^\d(\.\d+)?e\+\d+$/i.test(t)) {
       const v: any = cell.value;
       const n = typeof v === "number" ? v : v && typeof v === "object" && typeof v.result === "number" ? v.result : NaN;
@@ -108,8 +114,9 @@ export async function POST(req: Request) {
   // required field is a problem (not silently skipped) — only a fully blank
   // row (trailing spreadsheet padding) is ignored outright.
   type Row = { day: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
+  type Problem = { row: number; message: string };
   const rows: Row[] = [];
-  const problems: string[] = [];
+  const problems: Problem[] = [];
   for (let r = headerRow + 1; r <= ws.rowCount; r++) {
     const dateText = colOf.date ? cellText(r, colOf.date) : "";
     const dateCellValue = colOf.date ? ws.getRow(r).getCell(colOf.date).value : null;
@@ -122,18 +129,18 @@ export async function POST(req: Request) {
     const qty = num(qtyText);
     const hasProductRef = !!(sku || barcode || name);
     if (!hasProductRef) {
-      problems.push(`Row ${r}: no Item Code, Barcode, or Item Name`);
+      problems.push({ row: r, message: "no Item Code, Barcode, or Item Name" });
       continue;
     }
     if (qty <= 0) {
-      problems.push(`Row ${r}: missing or invalid Qty for "${sku || barcode || name}"`);
+      problems.push({ row: r, message: `missing or invalid Qty for "${sku || barcode || name}"` });
       continue;
     }
     let day = today;
     if (colOf.date) {
       const parsed = toDayKey(dateCellValue, dateText);
       if (!parsed) {
-        problems.push(`Row ${r}: unreadable Date "${dateText || "(blank)"}"`);
+        problems.push({ row: r, message: `unreadable Date "${dateText || "(blank)"}"` });
         continue;
       }
       day = parsed;
@@ -172,7 +179,7 @@ export async function POST(req: Request) {
       (row.sku && bySku.get(row.sku.toLowerCase())) ||
       (row.name && byName.get(row.name.toLowerCase()));
     if (!p) {
-      problems.push(`Row ${row.rowNum}: no product found for "${row.sku || row.barcode || row.name}"`);
+      problems.push({ row: row.rowNum, message: `no product found for "${row.sku || row.barcode || row.name}"` });
       const key = (row.barcode || row.sku || row.name).toLowerCase();
       const ex = skippedMap.get(key);
       if (ex) {
@@ -195,6 +202,7 @@ export async function POST(req: Request) {
   }
 
   if (problems.length > 0) {
+    problems.sort((a, b) => a.row - b.row);
     const skippedItems = [...skippedMap.values()].sort((a, b) => b.rows - a.rows);
     return NextResponse.json(
       {
