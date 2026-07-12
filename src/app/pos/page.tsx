@@ -814,19 +814,41 @@ type SalesReportData = {
 };
 
 function SalesReportModal({ onClose }: { onClose: () => void }) {
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  // Local-timezone yyyy-mm-dd so the calendar pickers never slip a day.
+  const toKey = (dt: Date) => {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+  };
+  const today = toKey(new Date());
+  const yesterday = toKey(new Date(Date.now() - 86_400_000));
+
   const [mode, setMode] = useState<"day" | "range">("day");
   const [day, setDay] = useState(yesterday); // sales are ~1 day behind, so default to yesterday
-  const [days, setDays] = useState(7); // range length
+  const [rangeFrom, setRangeFrom] = useState(() => toKey(new Date(Date.now() - 6 * 86_400_000)));
+  const [rangeTo, setRangeTo] = useState(today);
   const [cat, setCat] = useState("All");
   const [q, setQ] = useState("");
 
-  const from = mode === "day" ? day : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-  const to = mode === "day" ? day : undefined;
-  const query = `from=${from}${to ? `&to=${to}` : ""}`;
+  const from = mode === "day" ? day : rangeFrom;
+  const to = mode === "day" ? day : rangeTo;
+  const query = `from=${from}&to=${to}`;
   const { data, loading } = useFetch<SalesReportData>(`/api/sales-report?${query}`);
   const exportHref = (fmt: string) => `/api/sales-report/export?format=${fmt}&${query}`;
-  const ranges = [7, 14, 30, 90];
+  // Quick presets just set the From/To dates; the user can then fine-tune either.
+  const presets = [
+    { label: "7 days", days: 7 },
+    { label: "14 days", days: 14 },
+    { label: "30 days", days: 30 },
+    { label: "90 days", days: 90 },
+  ];
+  const applyPreset = (n: number) => {
+    setRangeTo(today);
+    setRangeFrom(toKey(new Date(Date.now() - (n - 1) * 86_400_000)));
+  };
+  const activePreset =
+    rangeTo === today
+      ? presets.find((p) => rangeFrom === toKey(new Date(Date.now() - (p.days - 1) * 86_400_000)))?.days ?? 0
+      : 0;
   const role = useRole();
   const showProfit = role == null || canSeeProfit(role);
 
@@ -906,20 +928,41 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
             {mode === "day" ? (
-              <input type="date" value={day} max={yesterday} onChange={(e) => setDay(e.target.value)} className="input !w-auto !py-2 text-sm" />
+              <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className="input !w-auto !py-2 text-sm" />
             ) : (
-              <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
-                {ranges.map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setDays(n)}
-                    className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                      days === n ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    {n} days
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+                  {presets.map((p) => (
+                    <button
+                      key={p.days}
+                      onClick={() => applyPreset(p.days)}
+                      className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                        activePreset === p.days ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
+                  <span>From</span>
+                  <input
+                    type="date"
+                    value={rangeFrom}
+                    max={rangeTo}
+                    onChange={(e) => setRangeFrom(e.target.value)}
+                    className="input !w-auto !py-2 text-sm"
+                  />
+                  <span>to</span>
+                  <input
+                    type="date"
+                    value={rangeTo}
+                    min={rangeFrom}
+                    max={today}
+                    onChange={(e) => setRangeTo(e.target.value)}
+                    className="input !w-auto !py-2 text-sm"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -928,7 +971,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
             <div className="grid h-40 place-items-center text-sm text-slate-400">Loading…</div>
           ) : data.totals.sales === 0 ? (
             <div className="grid h-40 place-items-center px-6 text-center text-sm text-slate-400">
-              No sales {mode === "day" ? `on ${day}` : "in this period"}. Pick another date, or import that day&apos;s sales.
+              No sales {mode === "day" ? `on ${day}` : `from ${rangeFrom} to ${rangeTo}`}. Pick another date, or import that day&apos;s sales.
             </div>
           ) : (
             <>
