@@ -13,10 +13,12 @@ export const dynamic = "force-dynamic";
 // Rows are grouped by date into one sale per day. Stock is NOT changed — this is
 // historical data, not a live sale.
 //
-// Validation is all-or-nothing: if any row can't be fully read (no matching
-// product, missing qty, or — when a Date column is present — an unreadable
-// date), nothing is imported. If any date in the file already has sales on
-// record, nothing is imported either, so a day's figures can never be
+// Validation is all-or-nothing: if any ITEM row can't be fully read (no
+// matching product, missing qty, or — when a Date column is present — an
+// unreadable date), nothing is imported. Summary rows ("Total …",
+// "Grand Total") and rows with no product reference at all aren't items and
+// are skipped without complaint. If any date in the file already has sales
+// on record, nothing is imported either, so a day's figures can never be
 // double-counted by importing the same report twice.
 const ALIASES: Record<string, string[]> = {
   date: ["date", "sale date", "sold date", "invoice date"],
@@ -33,8 +35,12 @@ const num = (v: any) => {
   return isFinite(n) ? n : 0;
 };
 
-// Best-effort date parse → yyyy-mm-dd. Accepts Excel Date cells and common text.
+// Best-effort date parse → yyyy-mm-dd. Accepts Excel Date cells (including a
+// formula cell whose computed result is a Date) and common text.
 function toDayKey(cellValue: any, text: string): string | null {
+  if (cellValue && typeof cellValue === "object" && (cellValue as any).result instanceof Date) {
+    cellValue = (cellValue as any).result;
+  }
   if (cellValue instanceof Date && !isNaN(cellValue.getTime())) return cellValue.toISOString().slice(0, 10);
   const t = (text || "").trim();
   if (!t) return null;
@@ -72,7 +78,12 @@ export async function POST(req: Request) {
     // cell never renders as the literal text "[object Object]".
     let raw: any = cell.text;
     if (raw && typeof raw === "object") raw = cell.value;
-    if (raw && typeof raw === "object") raw = (raw as any).result ?? (raw as any).text ?? (raw as any).richText?.map((p: any) => p.text).join("") ?? "";
+    if (raw && typeof raw === "object" && !(raw instanceof Date)) {
+      raw = (raw as any).result ?? (raw as any).text ?? (raw as any).richText?.map((p: any) => p.text).join("") ?? "";
+    }
+    if (raw instanceof Date) raw = isNaN(raw.getTime()) ? "" : raw.toISOString().slice(0, 10);
+    // Still an object (e.g. a formula-error result)? There's no readable text.
+    if (raw && typeof raw === "object") raw = "";
     const t = String(raw ?? "").trim();
     if (/^\d(\.\d+)?e\+\d+$/i.test(t)) {
       const v: any = cell.value;
@@ -110,9 +121,21 @@ export async function POST(req: Request) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Pass 1: read every row strictly. A row with SOME content but missing a
-  // required field is a problem (not silently skipped) — only a fully blank
-  // row (trailing spreadsheet padding) is ignored outright.
+  // Summary/footer rows ("Total ON MART TOUL KORK 592", "Grand Total",
+  // "Subtotal …") aren't items — they're skipped without complaint. A row
+  // counts as a summary row when any cell starts with a total-style label.
+  const TOTAL_LABEL = /^\s*(grand\s+|sub\s*)?totals?\b/i;
+  const isSummaryRow = (r: number) => {
+    for (let c = 1; c <= maxCol; c++) {
+      if (TOTAL_LABEL.test(cellText(r, c))) return true;
+    }
+    return false;
+  };
+
+  // Pass 1: read every ITEM row strictly. Rows with no product reference at
+  // all (spacer rows, section footers holding only summed numbers) aren't
+  // items, so they're skipped like blank rows — but a real item row missing
+  // its qty/date is still a hard problem, never silently dropped.
   type Row = { day: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
   type Problem = { row: number; message: string };
   const rows: Row[] = [];
@@ -128,10 +151,7 @@ export async function POST(req: Request) {
 
     const qty = num(qtyText);
     const hasProductRef = !!(sku || barcode || name);
-    if (!hasProductRef) {
-      problems.push({ row: r, message: "no Item Code, Barcode, or Item Name" });
-      continue;
-    }
+    if (!hasProductRef || isSummaryRow(r)) continue; // not an item row
     if (qty <= 0) {
       problems.push({ row: r, message: `missing or invalid Qty for "${sku || barcode || name}"` });
       continue;
