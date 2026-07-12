@@ -39,33 +39,30 @@ function SalesMini({ v, stock }: { v?: Velocity; stock: number }) {
   const dow = v?.dow ?? [0, 0, 0, 0, 0, 0, 0];
   const max = Math.max(1, ...dow);
   const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
-  const noData = d7 === 0 && dow.every((n) => n === 0);
+  // Always show the weekday breakdown — a day with no sales reads as a clear 0
+  // (rather than hiding the whole row), so every day is accounted for.
   return (
     <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1 text-[11px] text-slate-500">
       <span>
         Sold <b className="text-ink-700">3d {d3}</b> · <b className="text-ink-700">7d {d7}</b>
       </span>
       <span className="text-slate-400">on hand {stock}</span>
-      {noData ? (
-        <span className="text-slate-300">no recent sales</span>
-      ) : (
-        <span className="flex items-end gap-[3px]" title="Units sold per weekday (last 4 weeks)">
-          {dow.map((n, i) => (
-            <span key={i} className="flex w-3 flex-col items-center">
-              <span className="text-[9px] leading-none text-slate-400">{n}</span>
-              <span
-                className={`mt-0.5 block w-2 rounded-sm ${i === todayIdx ? "bg-brand-500" : "bg-slate-300"}`}
-                style={{ height: `${3 + Math.round((n / max) * 12)}px` }}
-              />
-              <span
-                className={`text-[9px] leading-none ${i === todayIdx ? "font-bold text-brand-600" : "text-slate-400"}`}
-              >
-                {DOW_LABELS[i]}
-              </span>
+      <span className="flex items-end gap-[3px]" title="Units sold per weekday (last 4 weeks)">
+        {dow.map((n, i) => (
+          <span key={i} className="flex w-3 flex-col items-center">
+            <span className="text-[9px] leading-none text-slate-400">{n}</span>
+            <span
+              className={`mt-0.5 block w-2 rounded-sm ${i === todayIdx ? "bg-brand-500" : "bg-slate-300"}`}
+              style={{ height: `${3 + Math.round((n / max) * 12)}px` }}
+            />
+            <span
+              className={`text-[9px] leading-none ${i === todayIdx ? "font-bold text-brand-600" : "text-slate-400"}`}
+            >
+              {DOW_LABELS[i]}
             </span>
-          ))}
-        </span>
-      )}
+          </span>
+        ))}
+      </span>
     </div>
   );
 }
