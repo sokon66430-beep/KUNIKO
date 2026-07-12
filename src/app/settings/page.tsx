@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon, Plus } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useRole } from "@/lib/client";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import { useTheme } from "@/components/theme";
+import { confirmDialog } from "@/components/confirm";
 
 type Business = DB["meta"]["business"];
 
@@ -116,6 +117,8 @@ export default function SettingsPage() {
       <AppearanceCard />
 
       <ChangePasswordCard />
+
+      <ClearSalesCard />
 
       {saved && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -334,6 +337,59 @@ function AppearanceCard() {
             </button>
           );
         })}
+      </div>
+    </Card>
+  );
+}
+
+// Owner-only: wipe this store's sales history so a fresh set can be re-imported.
+// Products, stock and everything else are untouched — only the sales go.
+function ClearSalesCard() {
+  const role = useRole();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (role !== "owner") return null;
+
+  async function clearSales() {
+    const ok = await confirmDialog({
+      title: "Clear all sales?",
+      message:
+        "This permanently deletes ALL sales history for this store so you can re-import. It cannot be undone. Products and stock levels are not changed.",
+      confirmText: "Delete all sales",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ removed: number }>("/api/sales", { method: "DELETE" });
+      setMsg({ ok: true, text: `Cleared ${r.removed} sale${r.removed === 1 ? "" : "s"}. You can import again now.` });
+    } catch (e: any) {
+      setMsg({ ok: false, text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6 border-rose-200">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-rose-700">
+        <Trash2 size={16} /> Clear sales history
+      </h3>
+      <p className="mb-4 text-xs text-slate-500">
+        Delete every sale for this store so you can re-import a fresh set. This does not touch products or stock — only
+        the sales report data. Owner only, and it cannot be undone.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+          disabled={busy}
+          onClick={clearSales}
+        >
+          <Trash2 size={16} /> {busy ? "Clearing…" : "Clear all sales"}
+        </button>
+        {msg && (
+          <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+        )}
       </div>
     </Card>
   );

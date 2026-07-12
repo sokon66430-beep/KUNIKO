@@ -3,6 +3,8 @@ import { readDB, mutateDB } from "@/lib/db";
 import type { Sale, SaleItem } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { canSeeProfit } from "@/lib/access";
+import { logAudit } from "@/lib/audit";
+import { currentActor } from "@/lib/actor";
 
 export const dynamic = "force-dynamic";
 
@@ -108,4 +110,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
   return NextResponse.json(result.sale, { status: 201 });
+}
+
+// Clear ALL sales for the current store so a fresh set can be re-imported.
+// Owner-only and irreversible. Stock is left untouched: imported (historical)
+// sales never changed stock, and silently adding units back from live sales
+// would inflate on-hand counts — so this only wipes the sales history.
+export async function DELETE() {
+  const session = await getSession();
+  if (!session || session.role !== "owner") {
+    return NextResponse.json({ error: "Only the owner can clear sales." }, { status: 403 });
+  }
+  const actor = await currentActor();
+  const result = await mutateDB((db) => {
+    const removed = db.sales.length;
+    db.sales = [];
+    logAudit(db, {
+      actor,
+      action: "Cleared",
+      entityType: "Sale",
+      entity: "All sales",
+      detail: `${removed} sale${removed === 1 ? "" : "s"} deleted`,
+    });
+    return { removed };
+  });
+  return NextResponse.json(result);
 }
