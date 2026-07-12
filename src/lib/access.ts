@@ -12,8 +12,13 @@ const OWNER_ONLY = ["/all-stores", "/permissions"];
 // Baseline used until the owner customizes access on /permissions (and as the
 // floor middleware enforces, since it can't read the live per-store config —
 // see /permissions page for the dynamic, owner-editable version of this).
+// Area Manager and Manager sit under the Operations department, so by default
+// they share Operations' restrictions rather than seeing everything.
+const OPERATIONS_DENIED = ["/purchase-orders", "/invoices"];
 export const DEFAULT_ROLE_DENIED: Partial<Record<Role, string[]>> = {
-  operations: ["/purchase-orders", "/invoices"],
+  operations: OPERATIONS_DENIED,
+  manager: OPERATIONS_DENIED,
+  area_manager: OPERATIONS_DENIED,
   accountant: ["/purchase-requests", "/purchase-orders", "/receiving", "/write-offs"],
 };
 
