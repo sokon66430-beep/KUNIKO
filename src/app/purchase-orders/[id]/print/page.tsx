@@ -23,17 +23,18 @@ function ddmmyyyy(iso?: string) {
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
 
-// Column widths as % of the Excel char-unit widths (A..I)
-const COLW = ["7.17%", "10.73%", "32.28%", "5.61%", "5.96%", "5.61%", "8.52%", "15.74%", "8.37%"];
+// Column widths (must total 100 for the fixed table layout). Numeric columns get
+// enough room for their header to wrap cleanly instead of overflowing.
+const COLW = ["5%", "12%", "31%", "8%", "6%", "7%", "11%", "11%", "9%"];
 const HEADERS = [
   "NO",
-  "BARCODE UNIT",
+  "BARCODE",
   "ITEM NAME",
-  "UOM (SIZE)",
-  "QTY(Units)",
+  "UOM (Size)",
+  "QTY (Units)",
   "UOM Type",
-  "Unit Price (EX VAT)",
-  "Box Price (EX VAT)",
+  "Unit Price (ex VAT)",
+  "Box Price (ex VAT)",
   "Amount",
 ];
 
@@ -53,8 +54,22 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
 
   const HeaderCell = ({ label, value, bold }: { label: string; value: string; bold?: boolean }) => (
     <>
-      <div style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 11 }}>{label}</div>
-      <div style={{ fontFamily: CALIBRI, fontWeight: bold ? 700 : 400, fontSize: 11 }}>{value}</div>
+      <div
+        style={{
+          fontFamily: CALIBRI,
+          fontWeight: 700,
+          fontSize: 9,
+          letterSpacing: 0.5,
+          color: "#6B7280",
+          textTransform: "uppercase",
+          alignSelf: "center",
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontFamily: CALIBRI, fontWeight: bold ? 700 : 500, fontSize: 11, color: "#111", alignSelf: "center" }}>
+        {value}
+      </div>
     </>
   );
 
@@ -76,20 +91,22 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
       {/* A4 sheet */}
       <div className="po-sheet bg-white p-8 text-black shadow-card" style={{ fontFamily: CALIBRI }}>
         <h1
-          style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 34 }}
-          className="mb-4 text-center tracking-wide"
+          style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }}
+          className="mb-5 text-center"
         >
           PURCHASE ORDER
         </h1>
 
-        {/* Header block — 4 rows, two label/value blocks, no borders */}
+        {/* Header block — 4 rows, two label/value blocks, thin rule underneath */}
         <div
           className="mb-4"
           style={{
             display: "grid",
-            gridTemplateColumns: "108px minmax(0,1fr) 130px minmax(0,1fr)",
-            columnGap: 10,
-            rowGap: 4,
+            gridTemplateColumns: "96px minmax(0,1fr) 118px minmax(0,1fr)",
+            columnGap: 12,
+            rowGap: 8,
+            paddingBottom: 14,
+            borderBottom: "1px solid #D1D5DB",
           }}
         >
           <HeaderCell label="SUPPLIER" value={po.supplier} bold />
@@ -117,15 +134,18 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                   style={{
                     fontFamily: CALIBRI,
                     fontWeight: 700,
-                    fontSize: 12,
+                    fontSize: 10.5,
                     textAlign: "center",
                     verticalAlign: "middle",
-                    padding: "6px 4px",
+                    padding: "8px 4px",
+                    background: "#F2F3F5",
                     borderTop: borderMed,
-                    borderBottom: border,
+                    borderBottom: borderMed,
                     borderLeft: i === 0 ? borderMed : border,
                     borderRight: i === HEADERS.length - 1 ? borderMed : border,
-                    lineHeight: 1.1,
+                    lineHeight: 1.15,
+                    overflowWrap: "break-word",
+                    wordBreak: "break-word",
                   }}
                 >
                   {h}
@@ -139,7 +159,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                 border,
                 borderLeft: i2 === 0 ? borderMed : border,
                 borderRight: i2 === 8 ? borderMed : border,
-                padding: "5px 5px",
+                padding: "6px 6px",
                 fontSize: 11,
                 verticalAlign: "middle",
                 ...extra,
@@ -147,7 +167,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
               return (
                 <tr key={it.productId + i}>
                   <td style={cell({ fontFamily: CALIBRI, textAlign: "center" }, 0)}>{i + 1}</td>
-                  <td style={cell({ fontFamily: ARIAL, textAlign: "center", wordBreak: "break-all" }, 1)}>
+                  <td style={cell({ fontFamily: ARIAL, textAlign: "center", fontSize: 9.5, letterSpacing: 0 }, 1)}>
                     {it.barcode || ""}
                   </td>
                   <td style={cell({ fontFamily: ARIAL, textAlign: "left" }, 2)}>{it.name}</td>
