@@ -15,6 +15,7 @@ import {
   PackageCheck,
   Ban,
   Pencil,
+  Printer,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseRequest, PRStatus } from "@/lib/types";
@@ -464,6 +465,9 @@ function ViewPRModal({
         <div className="flex w-full items-center justify-between">
           <StatusTrail status={pr.status} />
           <div className="flex gap-2">
+            <a href={`/purchase-requests/${pr.id}/print`} target="_blank" rel="noreferrer" className="btn-ghost">
+              <Printer size={16} /> Print
+            </a>
             <a href={`/api/purchase-requests/${pr.id}/export`} className="btn-ghost">
               <FileSpreadsheet size={16} /> Export Excel
             </a>

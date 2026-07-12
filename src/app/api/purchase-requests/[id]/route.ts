@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/actor";
-import { mutateDB } from "@/lib/db";
+import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import type { PRStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const STATUSES: PRStatus[] = ["Draft", "Submitted", "Approved", "Rejected", "Cancelled", "Converted"];
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const db = await readDB();
+  const pr = db.purchaseRequests.find((r) => r.id === params.id);
+  if (!pr) return NextResponse.json({ error: "Purchase request not found" }, { status: 404 });
+  return NextResponse.json({ pr, business: db.meta.business });
+}
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const actor = await currentActor();

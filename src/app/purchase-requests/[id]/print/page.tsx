@@ -3,15 +3,13 @@
 import Link from "next/link";
 import { Printer, ArrowLeft } from "lucide-react";
 import { useFetch } from "@/lib/client";
-import type { PurchaseOrder, DB } from "@/lib/types";
+import type { PurchaseRequest, DB } from "@/lib/types";
 import { Spinner, ErrorBox } from "@/components/ui";
 
 type Business = DB["meta"]["business"];
 
-// Font stacks matching the Excel (Windows fonts, present when printing on the store PC)
 const CALIBRI = "'Calibri','Segoe UI',system-ui,sans-serif";
 const ARIAL = "Arial,'Helvetica Neue',sans-serif";
-const TAHOMA = "Tahoma,'Segoe UI',sans-serif";
 
 const money = (n: number) =>
   `$${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -23,34 +21,19 @@ function ddmmyyyy(iso?: string) {
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
 
-// Column widths (must total 100 for the fixed table layout). Numeric columns get
-// enough room for their header to wrap cleanly instead of overflowing.
-const COLW = ["5%", "12%", "31%", "8%", "6%", "7%", "11%", "11%", "9%"];
-const HEADERS = [
-  "NO",
-  "BARCODE",
-  "ITEM NAME",
-  "UOM (Size)",
-  "QTY (Units)",
-  "UOM Type",
-  "Unit Price (ex VAT)",
-  "Box Price (ex VAT)",
-  "Amount",
-];
+const COLW = ["5%", "12%", "31%", "16%", "8%", "10%", "18%"];
+const HEADERS = ["NO", "BARCODE", "ITEM NAME", "SUPPLIER", "QTY", "EST. UNIT COST", "EST. AMOUNT"];
 
-export default function POPrintPage({ params }: { params: { id: string } }) {
-  const { data, loading, error } = useFetch<{ po: PurchaseOrder; business: Business }>(
-    `/api/purchase-orders/${params.id}`,
+export default function PRPrintPage({ params }: { params: { id: string } }) {
+  const { data, loading, error } = useFetch<{ pr: PurchaseRequest; business: Business }>(
+    `/api/purchase-requests/${params.id}`,
   );
 
-  if (loading) return <Spinner label="Loading purchase order…" />;
+  if (loading) return <Spinner label="Loading purchase request…" />;
   if (error || !data) return <ErrorBox message={error || "Not found"} />;
 
-  const { po, business } = data;
-  const vatRate = business.vatRate ?? 0.1;
-  const subtotal = po.items.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
-  const vat = subtotal * vatRate;
-  const grand = subtotal + vat;
+  const { pr, business } = data;
+  const total = pr.items.reduce((s, i) => s + i.cost * i.qty, 0);
 
   const HeaderCell = ({ label, value, bold }: { label: string; value: string; bold?: boolean }) => (
     <>
@@ -80,7 +63,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
     <div className="mx-auto max-w-[960px]">
       {/* Toolbar — hidden when printing */}
       <div className="no-print mb-4 flex items-center justify-between">
-        <Link href="/purchase-orders" className="btn-ghost">
+        <Link href="/purchase-requests" className="btn-ghost">
           <ArrowLeft size={16} /> Back
         </Link>
         <button className="btn-primary" onClick={() => window.print()}>
@@ -97,11 +80,11 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             <img src={business.logo} alt="Logo" style={{ maxHeight: 84, maxWidth: 280, objectFit: "contain", marginBottom: 8 }} />
           )}
           <h1 style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }} className="text-center">
-            PURCHASE ORDER
+            PURCHASE REQUEST
           </h1>
         </div>
 
-        {/* Header block — 4 rows, two label/value blocks, thin rule underneath */}
+        {/* Header block */}
         <div
           className="mb-4"
           style={{
@@ -113,15 +96,23 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             borderBottom: "1px solid #D1D5DB",
           }}
         >
-          <HeaderCell label="SUPPLIER" value={po.supplier} bold />
-          <HeaderCell label="PO NUMBER" value={po.poNo} />
+          <HeaderCell label="PR NUMBER" value={pr.prNo} bold />
+          <HeaderCell label="STATUS" value={pr.status} />
           <HeaderCell label="BRANCH" value={business.branch} />
-          <HeaderCell label="ORDER DATE" value={ddmmyyyy(po.createdAt)} />
-          <HeaderCell label="SHIP TO" value={business.shipTo} />
-          <HeaderCell label="EST. ARRIVAL" value={ddmmyyyy(po.expectedDate)} />
-          <HeaderCell label="RECEIVED BY" value={business.receivedBy} />
-          <HeaderCell label="Requested By" value={business.authorizedBy} />
+          <HeaderCell label="DATE" value={ddmmyyyy(pr.createdAt)} />
+          <HeaderCell label="REQUESTED BY" value={pr.requestedBy} />
+          {pr.decidedAt && <HeaderCell label="DECIDED" value={ddmmyyyy(pr.decidedAt)} />}
         </div>
+
+        {pr.note && (
+          <div
+            className="mb-4"
+            style={{ fontFamily: ARIAL, fontSize: 12, background: "#F9FAFB", border: `1px solid #E5E7EB`, borderRadius: 8, padding: "8px 12px" }}
+          >
+            <span style={{ fontWeight: 700 }}>Note: </span>
+            {pr.note}
+          </div>
+        )}
 
         {/* Line-item table */}
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
@@ -158,11 +149,11 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             </tr>
           </thead>
           <tbody>
-            {po.items.map((it, i) => {
+            {pr.items.map((it, i) => {
               const cell = (extra: React.CSSProperties, i2: number): React.CSSProperties => ({
                 border,
                 borderLeft: i2 === 0 ? borderMed : border,
-                borderRight: i2 === 8 ? borderMed : border,
+                borderRight: i2 === HEADERS.length - 1 ? borderMed : border,
                 padding: "6px 6px",
                 fontSize: 11,
                 verticalAlign: "middle",
@@ -175,84 +166,60 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                     {it.barcode || ""}
                   </td>
                   <td style={cell({ fontFamily: ARIAL, textAlign: "left" }, 2)}>{it.name}</td>
-                  <td style={cell({ fontFamily: CALIBRI, textAlign: "center" }, 3)}>{it.uomSize || "-"}</td>
-                  <td style={cell({ fontFamily: TAHOMA, textAlign: "center" }, 4)}>{it.qtyOrdered}</td>
-                  <td style={cell({ fontFamily: CALIBRI, textAlign: "center" }, 5)}>unit</td>
-                  <td style={cell({ fontFamily: CALIBRI, textAlign: "right" }, 6)}>{money(it.cost)}</td>
-                  <td style={cell({ fontFamily: CALIBRI, textAlign: "center" }, 7)}>-</td>
-                  <td style={cell({ fontFamily: CALIBRI, textAlign: "right" }, 8)}>
-                    {money(it.cost * it.qtyOrdered)}
+                  <td style={cell({ fontFamily: ARIAL, textAlign: "left" }, 3)}>{it.supplier}</td>
+                  <td style={cell({ fontFamily: CALIBRI, textAlign: "center" }, 4)}>
+                    {it.qty} {it.unit}
                   </td>
+                  <td style={cell({ fontFamily: CALIBRI, textAlign: "right" }, 5)}>{money(it.cost)}</td>
+                  <td style={cell({ fontFamily: CALIBRI, textAlign: "right" }, 6)}>{money(it.cost * it.qty)}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
-            {[
-              { label: "Subtotal (EX VAT)", value: money(subtotal), yellow: false },
-              { label: `VAT (${Math.round(vatRate * 100)}%)`, value: money(vat), yellow: false },
-              { label: "GRAND TOTAL", value: money(grand), yellow: true },
-            ].map((row) => (
-              <tr key={row.label}>
-                <td colSpan={7} style={{ border: "none" }} />
-                <td
-                  style={{
-                    border,
-                    padding: "6px 6px",
-                    fontFamily: CALIBRI,
-                    fontWeight: 700,
-                    fontSize: 13,
-                    textAlign: "left",
-                    background: row.yellow ? "#FFFF00" : undefined,
-                  }}
-                >
-                  {row.label}
-                </td>
-                <td
-                  style={{
-                    border,
-                    padding: "6px 6px",
-                    fontFamily: CALIBRI,
-                    fontWeight: 700,
-                    fontSize: 13,
-                    textAlign: "right",
-                    background: row.yellow ? "#FFFF00" : undefined,
-                  }}
-                >
-                  {row.value}
-                </td>
-              </tr>
-            ))}
+            <tr>
+              <td colSpan={5} style={{ border: "none" }} />
+              <td
+                style={{
+                  border,
+                  padding: "6px 6px",
+                  fontFamily: CALIBRI,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  textAlign: "left",
+                  background: "#FFFF00",
+                }}
+              >
+                TOTAL EST.
+              </td>
+              <td
+                style={{
+                  border,
+                  padding: "6px 6px",
+                  fontFamily: CALIBRI,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  textAlign: "right",
+                  background: "#FFFF00",
+                }}
+              >
+                {money(total)}
+              </td>
+            </tr>
           </tfoot>
         </table>
 
-        {/* Notes — Arial */}
-        <div style={{ fontFamily: ARIAL, fontSize: 13, lineHeight: 1.5 }} className="mt-6">
-          <p style={{ fontWeight: 700 }}>Notes:</p>
-          {business.poNotes?.map((n, i) => (
-            <p key={i}>{n}</p>
-          ))}
-          {business.invoiceTo?.map((n, i) => (
-            <p key={`inv-${i}`}>{i === 0 ? `4. ${n}` : n}</p>
-          ))}
-        </div>
-
-        {/* Remark + signature box */}
+        {/* Signature box */}
         <div
           className="mt-6"
           style={{
             display: "grid",
-            gridTemplateColumns: "51.6% 17.7% 30.7%",
+            gridTemplateColumns: "1fr 1fr",
             border: borderMed,
             fontFamily: CALIBRI,
           }}
         >
-          {/* Remark */}
-          <div style={{ borderRight: borderMed, padding: 8, minHeight: 150 }}>
-            <span style={{ fontWeight: 700, fontSize: 11 }}>Remark:</span>
-          </div>
-          {/* Approved / Received */}
-          {["APPROVED BY", "RECEIVED BY"].map((role, idx) => (
+          {["REQUESTED BY", "APPROVED BY"].map((role, idx) => (
             <div
               key={role}
               style={{
@@ -260,6 +227,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                 padding: 8,
                 display: "flex",
                 flexDirection: "column",
+                minHeight: 110,
               }}
             >
               <span style={{ fontWeight: 700, fontSize: 11 }}>{role}</span>
@@ -274,7 +242,9 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
               >
                 Signature
               </div>
-              <p style={{ fontWeight: 700, fontSize: 11, marginTop: 8 }}>Name:</p>
+              <p style={{ fontWeight: 700, fontSize: 11, marginTop: 8 }}>
+                Name: {idx === 0 ? pr.requestedBy : ""}
+              </p>
               <p style={{ fontSize: 11, marginTop: 6 }}>Date:</p>
             </div>
           ))}
