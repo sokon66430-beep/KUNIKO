@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
+import { PdfViewer } from "@/components/PdfViewer";
 import type { Product, StockCount, StockCountItem } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
@@ -26,6 +27,26 @@ export default function StockCountPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StockCount | null>(null);
+  const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+
+  // Open a count sheet's PDF inside the app so it can be viewed and printed here.
+  async function openPdf(c: StockCount) {
+    setPdfLoading(c.id);
+    try {
+      const res = await fetch(`/api/stock-counts/${c.id}/export?format=pdf`);
+      const blob = await res.blob();
+      setPdfView({ url: URL.createObjectURL(blob), title: c.countNo });
+    } catch {
+      alert("Could not open the PDF.");
+    } finally {
+      setPdfLoading(null);
+    }
+  }
+  function closePdf() {
+    if (pdfView) URL.revokeObjectURL(pdfView.url);
+    setPdfView(null);
+  }
 
   async function newCount() {
     setCreating(true);
@@ -82,74 +103,67 @@ export default function StockCountPage() {
         ) : list.length === 0 ? (
           <EmptyState title="No stock counts yet" hint="Start a count, hand the Excel sheet to your accountant, then import it back." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Count</th>
-                  <th className="px-4 py-3 font-semibold">Counted by</th>
-                  <th className="px-4 py-3 text-center font-semibold">Items</th>
-                  <th className="px-4 py-3 text-center font-semibold">Net Variance</th>
-                  <th className="px-4 py-3 text-center font-semibold">Status</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((c) => {
-                  const net = c.items.reduce((s, i) => s + (i.countedQty - i.systemQty), 0);
-                  return (
-                    <tr key={c.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-ink-800">{c.countNo}</p>
-                        <p className="text-xs text-slate-400">{dateTime(c.createdAt)}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{c.countedBy}</td>
-                      <td className="px-4 py-3 text-center text-slate-600">{c.items.length}</td>
-                      <td className={`px-4 py-3 text-center font-semibold ${net === 0 ? "text-slate-500" : net > 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                        {net > 0 ? `+${net}` : net}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge tone={c.status === "Posted" ? "emerald" : "amber"}>{c.status}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <a
-                            href={`/api/stock-counts/${c.id}/export`}
-                            title="Download count sheet (Excel)"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
-                          >
-                            <FileSpreadsheet size={14} /> Excel
-                          </a>
-                          <a
-                            href={`/api/stock-counts/${c.id}/export?format=pdf`}
-                            title="Download count sheet (PDF)"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                          >
-                            <FileType2 size={14} /> PDF
-                          </a>
-                          <button
-                            onClick={() => setActiveId(c.id)}
-                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
-                          >
-                            {c.status === "Posted" ? "View" : "Open"}
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(c)}
-                            title="Delete count (needs manager approval)"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-50"
-                          >
-                            <Trash2 size={14} /> Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div>
+            {list.map((c) => {
+              const net = c.items.reduce((s, i) => s + (i.countedQty - i.systemQty), 0);
+              return (
+                <div
+                  key={c.id}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                >
+                  <div className="min-w-0 cursor-pointer" onClick={() => setActiveId(c.id)}>
+                    <p className="font-semibold text-ink-900">
+                      {c.countNo}
+                      <span className="ml-2 text-xs font-normal text-slate-400">{dateTime(c.createdAt)}</span>
+                    </p>
+                    <p className="mt-0.5 text-sm text-slate-500">
+                      {c.countedBy} · {c.items.length} item{c.items.length === 1 ? "" : "s"} ·{" "}
+                      <span className={`font-semibold ${net === 0 ? "text-slate-500" : net > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                        {net > 0 ? `+${net}` : net} variance
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge tone={c.status === "Posted" ? "emerald" : "amber"}>{c.status}</Badge>
+                    <div className="flex items-center gap-1">
+                      <a
+                        href={`/api/stock-counts/${c.id}/export`}
+                        title="Download count sheet (Excel)"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-emerald-600 hover:bg-emerald-50"
+                      >
+                        <FileSpreadsheet size={15} />
+                      </a>
+                      <button
+                        onClick={() => openPdf(c)}
+                        disabled={pdfLoading === c.id}
+                        title="View / print count sheet (PDF)"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <FileType2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => setActiveId(c.id)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-100"
+                      >
+                        {c.status === "Posted" ? "View" : "Open"}
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(c)}
+                        title="Delete count (needs manager approval)"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
+
+      {pdfView && <PdfViewer url={pdfView.url} title={pdfView.title} heading={`Stock Count ${pdfView.title}`} onClose={closePdf} />}
 
       {activeId && (
         <CountDetail
@@ -268,6 +282,26 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   // Track scan order so the most-recently-counted item floats to the top row.
   const [scanOrder, setScanOrder] = useState<Record<string, number>>({});
   const seqRef = useRef(0);
+  const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  async function openPdf() {
+    if (!count) return;
+    setPdfLoading(true);
+    try {
+      const res = await fetch(`/api/stock-counts/${count.id}/export?format=pdf`);
+      const blob = await res.blob();
+      setPdfView({ url: URL.createObjectURL(blob), title: count.countNo });
+    } catch {
+      alert("Could not open the PDF.");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+  function closePdf() {
+    if (pdfView) URL.revokeObjectURL(pdfView.url);
+    setPdfView(null);
+  }
 
   const costOf = useMemo(() => new Map((products || []).map((p) => [p.id, p.cost])), [products]);
 
@@ -427,6 +461,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const varValue = items.reduce((s, i) => s + (i.countedQty - i.systemQty) * (costOf.get(i.productId) || 0), 0);
 
   return (
+    <>
     <Modal
       open
       onClose={onClose}
@@ -460,9 +495,9 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <a href={`/api/stock-counts/${id}/export`} className="btn-ghost !py-1.5 text-xs">
                 <FileSpreadsheet size={15} /> Download count sheet (all products)
               </a>
-              <a href={`/api/stock-counts/${id}/export?format=pdf`} className="btn-ghost !py-1.5 text-xs">
-                <FileType2 size={15} /> PDF (view / print only)
-              </a>
+              <button className="btn-ghost !py-1.5 text-xs" disabled={pdfLoading} onClick={openPdf}>
+                <FileType2 size={15} /> {pdfLoading ? "Opening…" : "View / Print PDF"}
+              </button>
               {!posted && (
                 <>
                   <button className="btn-ghost !py-1.5 text-xs" disabled={importing} onClick={() => fileRef.current?.click()}>
@@ -690,5 +725,9 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
         </>
       )}
     </Modal>
+    {pdfView && (
+      <PdfViewer url={pdfView.url} title={pdfView.title} heading={`Stock Count ${pdfView.title}`} onClose={closePdf} />
+    )}
+    </>
   );
 }

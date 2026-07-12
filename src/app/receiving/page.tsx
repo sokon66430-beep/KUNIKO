@@ -15,12 +15,11 @@ import {
   Pencil,
   Clock,
   ShieldCheck,
-  Printer,
-  X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
+import { PdfViewer } from "@/components/PdfViewer";
 import type { PurchaseOrder, GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { num, dateTime, shortDate } from "@/lib/format";
@@ -356,43 +355,9 @@ export default function ReceivingPage() {
         />
       )}
 
-      {pdfView && <PdfViewer url={pdfView.url} title={pdfView.title} onClose={closePdf} />}
-    </div>
-  );
-}
-
-// In-app PDF viewer with Print + Download. Used to preview a goods receipt.
-function PdfViewer({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  function print() {
-    const w = frameRef.current?.contentWindow;
-    if (w) {
-      w.focus();
-      w.print();
-    }
-  }
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-ink-900/70 p-3 backdrop-blur-sm sm:p-6">
-      <div className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-lift">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <h3 className="text-sm font-bold text-ink-900">Receipt {title}</h3>
-          <div className="flex items-center gap-2">
-            <button onClick={print} className="btn-primary !py-2 text-sm">
-              <Printer size={15} /> Print
-            </button>
-            <a href={url} download={`${title}.pdf`} className="btn-ghost !py-2 text-sm">
-              <FileType2 size={15} /> Download
-            </a>
-            <button
-              onClick={onClose}
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            >
-              <X size={17} />
-            </button>
-          </div>
-        </div>
-        <iframe ref={frameRef} src={url} title={`Receipt ${title}`} className="w-full flex-1" />
-      </div>
+      {pdfView && (
+        <PdfViewer url={pdfView.url} title={pdfView.title} heading={`Receipt ${pdfView.title}`} onClose={closePdf} />
+      )}
     </div>
   );
 }
