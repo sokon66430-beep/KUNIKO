@@ -461,6 +461,7 @@ export function buildPOReportWorkbook(
   val.border = allThin;
   tr.getCell(9).border = allThin;
 
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;
 }
 
@@ -514,6 +515,7 @@ export function buildPRReportWorkbook(prs: PurchaseRequest[], business: Business
   val.alignment = { horizontal: "right" };
   val.border = allThin;
 
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;
 }
 
@@ -1008,5 +1010,6 @@ export function buildStockCountWorkbook(
     byCell.border = allThin;
   });
 
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;
 }
