@@ -189,6 +189,13 @@ export async function POST(req: Request) {
       if (!target) {
         const nameMatches = byName.get(row.name!.toLowerCase()) || [];
         if (nameMatches.length === 1) target = nameMatches[0];
+        else if (nameMatches.length > 1) {
+          // Ambiguous name and no code to disambiguate — creating a product
+          // here would add yet another copy (this is how duplicates balloon
+          // across repeated imports). Skip the row instead.
+          errors.push(`${rowLabel}: name matches ${nameMatches.length} products — add a Barcode or Item ID column to say which one; skipped`);
+          continue;
+        }
       }
 
       if (target) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon, Plus } from "lucide-react";
+import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon, Plus, Copy } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
@@ -120,6 +120,8 @@ export default function SettingsPage() {
       <ChangePasswordCard />
 
       <ClearSalesCard />
+
+      <CleanupDuplicatesCard />
 
       {saved && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -383,6 +385,65 @@ function ClearSalesCard() {
           onClick={clearSales}
         >
           <Trash2 size={16} /> {busy ? "Clearing…" : "Clear all sales"}
+        </button>
+        {msg && (
+          <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// Owner-only: remove duplicate products left behind by past imports. Only
+// auto-coded (SKU-1234) copies of a real product that are referenced nowhere
+// are deleted — the real master record always stays.
+function CleanupDuplicatesCard() {
+  const role = useRole();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (role !== "owner") return null;
+
+  async function cleanup() {
+    const ok = await confirmDialog({
+      title: "Remove duplicate products?",
+      message:
+        "This deletes import-created copies of products (placeholder Item IDs like SKU-1234) when the real product exists and the copy is used nowhere. The real products are kept. This cannot be undone.",
+      confirmText: "Remove duplicates",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ removed: number; remaining: number }>("/api/products/cleanup-duplicates", {
+        method: "POST",
+      });
+      setMsg({
+        ok: true,
+        text:
+          r.removed === 0
+            ? "No duplicates found — your product list is clean."
+            : `Removed ${r.removed} duplicate${r.removed === 1 ? "" : "s"} — ${r.remaining} products remain.`,
+      });
+    } catch (e: any) {
+      setMsg({ ok: false, text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
+        <Copy size={16} className="text-brand-600" /> Remove duplicate products
+      </h3>
+      <p className="mb-4 text-xs text-slate-500">
+        Past imports can leave copies of the same product with a placeholder Item ID (SKU-1234). This removes those
+        copies when the real product exists and the copy isn&apos;t used in any sale, order, receipt, count or
+        write-off. The real products always stay.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary" disabled={busy} onClick={cleanup}>
+          <Copy size={16} /> {busy ? "Cleaning…" : "Remove duplicates"}
         </button>
         {msg && (
           <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
