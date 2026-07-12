@@ -35,13 +35,15 @@ export async function PATCH(req: Request) {
       if (ok && body.logo.length < 2_000_000) b.logo = body.logo || undefined;
     }
     if (Array.isArray(body.approvers)) {
+      // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers
         .map((a: any) => ({
           role: String(a?.role || "").trim(),
           name: String(a?.name || "").trim(),
           code: String(a?.code || "").trim(),
         }))
-        .filter((a: any) => a.role && a.code);
+        .filter((a: any) => a.role && a.name && a.code)
+        .slice(0, 3);
     }
     return b;
   });

@@ -2,13 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon } from "lucide-react";
+import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon, Plus } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import { useTheme } from "@/components/theme";
 
 type Business = DB["meta"]["business"];
+
+// Only these three roles may approve a receipt edit — at most one row per role.
+const APPROVER_ROLES = ["Area Manager", "Manager", "Assistant Store Manager"];
 
 export default function SettingsPage() {
   const params = useSearchParams();
@@ -17,6 +20,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Business | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [approverError, setApproverError] = useState(false);
 
   // Only seed the form from the server ONCE (the first successful load). useFetch
   // silently re-polls in the background (every 20s, and whenever the tab regains
@@ -33,9 +37,27 @@ export default function SettingsPage() {
     setForm((f) =>
       f ? { ...f, approvers: (f.approvers || []).map((a, i) => (i === idx ? { ...a, [k]: v } : a)) } : f,
     );
+  const addApprover = () =>
+    setForm((f) => {
+      if (!f) return f;
+      const current = f.approvers || [];
+      if (current.length >= APPROVER_ROLES.length) return f;
+      const usedRoles = new Set(current.map((a) => a.role));
+      const nextRole = APPROVER_ROLES.find((r) => !usedRoles.has(r)) || "";
+      return { ...f, approvers: [...current, { role: nextRole, name: "", code: "" }] };
+    });
+  const removeApprover = (idx: number) =>
+    setForm((f) => (f ? { ...f, approvers: (f.approvers || []).filter((_, i) => i !== idx) } : f));
 
   async function save() {
     if (!form) return;
+    // Every approver row needs a name — it's who staff actually see/scan against.
+    const incomplete = (form.approvers || []).some((a) => !a.name?.trim());
+    if (incomplete) {
+      setApproverError(true);
+      return;
+    }
+    setApproverError(false);
     setBusy(true);
     setSaved(false);
     try {
@@ -160,33 +182,80 @@ export default function SettingsPage() {
           </Card>
 
           <Card className="lg:col-span-2">
-            <h3 className="mb-1 text-sm font-bold text-ink-900">Receipt-edit approvers</h3>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-ink-900">Receipt-edit approvers</h3>
+              {(form.approvers || []).length < APPROVER_ROLES.length && (
+                <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={addApprover}>
+                  <Plus size={14} /> Add approver
+                </button>
+              )}
+            </div>
             <p className="mb-4 text-xs text-slate-500">
               Staff can edit a submitted goods receipt, but the change only affects stock after one of these people
-              approves it — by scanning their badge or typing their code on the receipt.
+              approves it — by scanning their badge or typing their code on the receipt. Up to {APPROVER_ROLES.length}{" "}
+              approvers — Area Manager, Manager, and Assistant Store Manager.
             </p>
+            {approverError && (
+              <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">
+                Name is required for every approver.
+              </p>
+            )}
             <div className="space-y-3">
-              {(form.approvers || []).map((a, i) => (
-                <div key={i} className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="label">Role</label>
-                    <input className="input" value={a.role} onChange={(e) => setApprover(i, "role", e.target.value)} />
+              {(form.approvers || []).map((a, i) => {
+                const usedByOthers = new Set(
+                  (form.approvers || []).filter((_, j) => j !== i).map((o) => o.role),
+                );
+                const roleOptions = Array.from(new Set([...APPROVER_ROLES, a.role])).filter(Boolean);
+                const nameMissing = approverError && !a.name?.trim();
+                return (
+                  <div key={i} className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                    <div>
+                      <label className="label">Role</label>
+                      <select
+                        className="input"
+                        value={a.role}
+                        onChange={(e) => setApprover(i, "role", e.target.value)}
+                      >
+                        <option value="" disabled>
+                          Select role…
+                        </option>
+                        {roleOptions.map((r) => (
+                          <option key={r} value={r} disabled={usedByOthers.has(r)}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Name</label>
+                      <input
+                        className={`input ${nameMissing ? "border-rose-400 ring-1 ring-rose-300" : ""}`}
+                        value={a.name || ""}
+                        onChange={(e) => setApprover(i, "name", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Approval code / badge</label>
+                      <input
+                        className="input tracking-widest"
+                        value={a.code}
+                        onChange={(e) => setApprover(i, "code", e.target.value)}
+                        placeholder="e.g. 1234"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+                        onClick={() => removeApprover(i)}
+                        title="Remove approver"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="label">Name (optional)</label>
-                    <input className="input" value={a.name || ""} onChange={(e) => setApprover(i, "name", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="label">Approval code / badge</label>
-                    <input
-                      className="input tracking-widest"
-                      value={a.code}
-                      onChange={(e) => setApprover(i, "code", e.target.value)}
-                      placeholder="e.g. 1234"
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {(form.approvers || []).length === 0 && (
                 <p className="text-sm text-slate-400">No approvers set.</p>
               )}
