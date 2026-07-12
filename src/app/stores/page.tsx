@@ -107,7 +107,7 @@ export default function StoresPage() {
           ) : (
             <ul className="divide-y divide-slate-50">
               {storeList.map((s) => (
-                <li key={s.id} className="flex items-center justify-between px-5 py-3">
+                <li key={s.id} className="flex items-center justify-between px-5 py-4">
                   <div>
                     <p className="font-semibold text-ink-800">{s.name}</p>
                     <p className="text-xs text-slate-400">
@@ -133,7 +133,7 @@ export default function StoresPage() {
               {userList.map((u) => {
                 const deletable = canManage && u.id !== myId && (isOwner || u.role !== "owner");
                 return (
-                  <li key={u.id} className="flex items-center justify-between gap-2 px-5 py-3">
+                  <li key={u.id} className="flex items-center justify-between gap-2 px-5 py-4">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-ink-800">
                         {u.name} <span className="font-normal text-slate-400">@{u.username}</span>

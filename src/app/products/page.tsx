@@ -21,6 +21,7 @@ import {
   ScanLine,
   Camera,
   X,
+  ChevronRight,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
@@ -422,69 +423,48 @@ export default function ProductsPage() {
           <EmptyState title="No products found" hint="Try a different search or filter." />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                    <th className="px-4 py-3 font-semibold">Barcode</th>
-                    <th className="px-4 py-3 font-semibold">Product</th>
-                    <th className="px-4 py-3 font-semibold">Category</th>
-                    <th className="px-4 py-3 font-semibold">Supplier</th>
-                    <th className="px-4 py-3 font-semibold">Location</th>
-                    <th className="px-4 py-3 text-center font-semibold">Unit</th>
-                    <th className="px-4 py-3 text-right font-semibold">Cost</th>
-                    <th className="px-4 py-3 text-right font-semibold">Price</th>
-                    <th className="px-4 py-3 text-right font-semibold">GP%</th>
-                    <th className="px-4 py-3 text-center font-semibold">Stock</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((p) => {
-                    const gp = gpPercent(p.cost, p.price);
-                    return (
-                      <tr
-                        key={p.id}
-                        className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/60"
-                        onClick={() => setViewing(p)}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-ink-700">{p.barcode || "—"}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-semibold text-ink-800">{p.name}</p>
-                          <p className="text-xs text-slate-400">{p.sku}</p>
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{p.category}</td>
-                        <td className="px-4 py-3">
-                          {p.supplierCode ? (
-                            <span className="text-slate-600">{p.supplier}</span>
-                          ) : (
-                            <Badge tone="amber">Not linked</Badge>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {p.gondola || p.shelf ? (
-                            <span className="inline-flex items-center rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-                              {p.gondola ? `G${p.gondola}` : ""}
-                              {p.gondola && p.shelf ? " · " : ""}
-                              {p.shelf ? `SH${p.shelf}` : ""}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center text-slate-500">{p.unit}</td>
-                        <td className="px-4 py-3 text-right text-slate-600">{usd(p.cost)}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-ink-800">{usd(p.price)}</td>
-                        <td className="px-4 py-3 text-right text-emerald-600">{gp.toFixed(0)}%</td>
-                        <td className="px-4 py-3 text-center font-semibold text-ink-900">{p.stock}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div>
+              {shown.map((p) => {
+                const gp = gpPercent(p.cost, p.price);
+                return (
+                  <div
+                    key={p.id}
+                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                    onClick={() => setViewing(p)}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-900">
+                        {p.name}
+                        <span className="ml-2 text-xs font-normal text-slate-400">
+                          {p.sku}
+                          {p.barcode ? ` · ${p.barcode}` : ""}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 truncate text-sm text-slate-500">
+                        {p.category} ·{" "}
+                        {p.supplierCode ? p.supplier : <Badge tone="amber">Not linked</Badge>} · {usd(p.cost)} →{" "}
+                        <span className="font-semibold text-ink-800">{usd(p.price)}</span> ·{" "}
+                        <span className="text-emerald-600">{gp.toFixed(0)}% GP</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {(p.gondola || p.shelf) && (
+                        <span className="inline-flex items-center rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                          {p.gondola ? `G${p.gondola}` : ""}
+                          {p.gondola && p.shelf ? " · " : ""}
+                          {p.shelf ? `SH${p.shelf}` : ""}
+                        </span>
+                      )}
+                      <span className="text-sm text-slate-500">
+                        <span className="font-bold text-ink-900">{p.stock}</span> {p.unit}
+                      </span>
+                      <ChevronRight size={16} className="text-slate-300" />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm text-slate-500">
               <span>
                 Showing {num(shown.length)} of {num(filtered.length)}
                 {filtered.length !== list.length ? ` (filtered from ${num(list.length)})` : ""}

@@ -96,70 +96,56 @@ export default function CustomersPage() {
         {loading ? (
           <Spinner label="Loading customers…" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Customer</th>
-                  <th className="px-4 py-3 font-semibold">Contact</th>
-                  <th className="px-4 py-3 text-center font-semibold">Tier</th>
-                  <th className="px-4 py-3 text-right font-semibold">Visits</th>
-                  <th className="px-4 py-3 text-right font-semibold">Points</th>
-                  <th className="px-4 py-3 text-right font-semibold">Total Spent</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => (
-                  <tr key={c.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">
-                          {c.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-ink-800">{c.name}</p>
-                          {c.lastVisit && <p className="text-xs text-slate-400">last visit {shortDate(c.lastVisit)}</p>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <p className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400" /> {c.phone || "—"}</p>
-                      {c.email && <p className="flex items-center gap-1.5 text-xs text-slate-400"><Mail size={12} /> {c.email}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <TierBadge tier={c.tier} />
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-600">{c.visits}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-violet-600">{num(c.loyaltyPoints)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-ink-900">{usd(c.totalSpent)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setEditing(c)}
-                          className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          onClick={() => remove(c)}
-                          className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                      No customers found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div>
+            {filtered.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">
+                    {c.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-ink-900">
+                      {c.name}
+                      {c.lastVisit && (
+                        <span className="ml-2 text-xs font-normal text-slate-400">last visit {shortDate(c.lastVisit)}</span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-3 truncate text-sm text-slate-500">
+                      <span className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400" /> {c.phone || "—"}</span>
+                      {c.email && <span className="flex items-center gap-1.5 text-xs text-slate-400"><Mail size={12} /> {c.email}</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-slate-500">
+                    {c.visits} visit{c.visits === 1 ? "" : "s"} ·{" "}
+                    <span className="font-semibold text-violet-600">{num(c.loyaltyPoints)} pts</span> ·{" "}
+                    <span className="font-bold text-ink-900">{usd(c.totalSpent)}</span>
+                  </span>
+                  <TierBadge tier={c.tier} />
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setEditing(c)}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      onClick={() => remove(c)}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-5 py-12 text-center text-slate-400">No customers found.</p>
+            )}
           </div>
         )}
       </Card>

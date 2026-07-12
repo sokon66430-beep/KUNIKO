@@ -125,78 +125,65 @@ export default function SuppliersPage() {
         ) : filtered.length === 0 ? (
           <EmptyState title="No suppliers found" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Supplier</th>
-                  <th className="px-4 py-3 text-center font-semibold">Products</th>
-                  <th className="px-4 py-3 font-semibold">Contact</th>
-                  <th className="px-4 py-3 font-semibold">Delivery</th>
-                  <th className="px-4 py-3 text-center font-semibold">Lead time</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s) => {
-                  const count = productCountByCode.get(s.code) || 0;
-                  return (
-                    <tr key={s.code} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-ink-800">{s.name}</p>
-                        <p className="text-xs text-slate-400">{s.code}</p>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {count > 0 ? (
-                          <Link href={`/inventory?supplier=${encodeURIComponent(s.code)}`}>
-                            <Badge tone="brand">{count} products</Badge>
-                          </Link>
-                        ) : (
-                          <Badge tone="slate">0 products</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {s.contactPerson || "—"}
-                        {s.phone && (
-                          <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
-                            <Phone size={11} /> {s.phone}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{s.deliverySchedule || "—"}</td>
-                      <td className="px-4 py-3 text-center text-slate-600">
-                        {s.leadTime ? `${s.leadTime}d` : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <Link
-                            href={`/purchase-orders?supplier=${encodeURIComponent(s.code)}`}
-                            title="New PO for this supplier"
-                            className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50"
-                          >
-                            <ShoppingCart size={16} />
-                          </Link>
-                          <button
-                            title="Edit"
-                            onClick={() => setEditing(s)}
-                            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            title="Delete"
-                            onClick={() => remove(s)}
-                            className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div>
+            {filtered.map((s) => {
+              const count = productCountByCode.get(s.code) || 0;
+              return (
+                <div
+                  key={s.code}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-ink-900">
+                      {s.name}
+                      <span className="ml-2 text-xs font-normal text-slate-400">{s.code}</span>
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-3 truncate text-sm text-slate-500">
+                      <span>{s.contactPerson || "—"}</span>
+                      {s.phone && (
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                          <Phone size={11} /> {s.phone}
+                        </span>
+                      )}
+                      {s.deliverySchedule && <span className="text-slate-400">{s.deliverySchedule}</span>}
+                      {s.leadTime ? <span className="text-slate-400">{s.leadTime}d lead</span> : null}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {count > 0 ? (
+                      <Link href={`/inventory?supplier=${encodeURIComponent(s.code)}`}>
+                        <Badge tone="brand">{count} products</Badge>
+                      </Link>
+                    ) : (
+                      <Badge tone="slate">0 products</Badge>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <Link
+                        href={`/purchase-orders?supplier=${encodeURIComponent(s.code)}`}
+                        title="New PO for this supplier"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50"
+                      >
+                        <ShoppingCart size={16} />
+                      </Link>
+                      <button
+                        title="Edit"
+                        onClick={() => setEditing(s)}
+                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        title="Delete"
+                        onClick={() => remove(s)}
+                        className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>

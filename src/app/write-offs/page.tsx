@@ -416,67 +416,65 @@ export default function WriteOffsPage() {
           <EmptyState title="No write-offs today" hint="Scan a product above to record one." />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                    <th className="px-4 py-3 font-semibold">Time</th>
-                    <th className="px-4 py-3 font-semibold">Barcode</th>
-                    <th className="px-4 py-3 font-semibold">Product</th>
-                    <th className="px-4 py-3 text-right font-semibold">Qty</th>
-                    <th className="px-4 py-3 font-semibold">Reason</th>
-                    <th className="px-4 py-3 font-semibold">User</th>
-                    <th className="px-4 py-3 font-semibold">Notes</th>
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {todays.slice(0, limit).map((w) => {
-                    const status = w.status || "Active";
-                    return (
-                      <tr key={w.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 ${status === "Cancelled" ? "opacity-60" : ""}`}>
-                        <td className="px-4 py-3 tabular-nums text-slate-600">{timeOf(w.createdAt)}</td>
-                        <td className="px-4 py-3 text-xs text-slate-500">{w.barcode || "—"}</td>
-                        <td className="px-4 py-3">
-                          <p className={`font-semibold text-ink-800 ${status === "Cancelled" ? "line-through" : ""}`}>{w.productName}</p>
-                          <p className="text-xs text-slate-400">{w.category}</p>
-                          {status === "PendingCancel" && (
-                            <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                              Cancel pending approval
-                            </span>
-                          )}
-                          {status === "Cancelled" && (
-                            <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                              Cancelled · by {w.cancelledBy}
-                            </span>
-                          )}
-                        </td>
-                        <td className={`px-4 py-3 text-right font-semibold ${status === "Cancelled" ? "text-slate-400 line-through" : "text-rose-600"}`}>−{w.quantity} {w.unit}</td>
-                        <td className="px-4 py-3"><Badge tone={status === "Cancelled" ? "slate" : "amber"}>{w.reason}</Badge></td>
-                        <td className="px-4 py-3 text-slate-600">{w.createdBy}</td>
-                        <td className="px-4 py-3 max-w-[180px] truncate text-slate-500">{w.notes || "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          {status === "Active" && (
-                            <button onClick={() => requestCancel(w)} title="Request cancel (needs manager approval)" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500">
-                              <Trash2 size={15} />
-                            </button>
-                          )}
-                          {status === "PendingCancel" && (
-                            <button
-                              onClick={() => setReviewing(w)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
-                            >
-                              Approve
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div>
+              {todays.slice(0, limit).map((w) => {
+                const status = w.status || "Active";
+                return (
+                  <div
+                    key={w.id}
+                    className={`flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60 ${
+                      status === "Cancelled" ? "opacity-60" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className={`font-semibold text-ink-900 ${status === "Cancelled" ? "line-through" : ""}`}>
+                        {w.productName}
+                        <span className="ml-2 text-xs font-normal text-slate-400">
+                          {timeOf(w.createdAt)}
+                          {w.barcode ? ` · ${w.barcode}` : ""}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 truncate text-sm text-slate-500">
+                        {w.createdBy} · {w.category}
+                        {w.notes ? <span className="text-slate-400"> · {w.notes}</span> : null}
+                      </p>
+                      {status === "PendingCancel" && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                          Cancel pending approval
+                        </span>
+                      )}
+                      {status === "Cancelled" && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                          Cancelled · by {w.cancelledBy}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-semibold ${status === "Cancelled" ? "text-slate-400 line-through" : "text-rose-600"}`}>
+                        −{w.quantity} {w.unit}
+                      </span>
+                      <Badge tone={status === "Cancelled" ? "slate" : "amber"}>{w.reason}</Badge>
+                      <div className="flex items-center gap-1">
+                        {status === "Active" && (
+                          <button onClick={() => requestCancel(w)} title="Request cancel (needs manager approval)" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500">
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                        {status === "PendingCancel" && (
+                          <button
+                            onClick={() => setReviewing(w)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                          >
+                            Approve
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm text-slate-500">
               <span>Showing {num(Math.min(limit, todays.length))} of {num(todays.length)}</span>
               {todays.length > limit && (
                 <button className="btn-ghost !py-1.5 text-xs" onClick={() => setLimit((l) => l + PAGE)}>Load more</button>

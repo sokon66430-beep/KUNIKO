@@ -95,46 +95,37 @@ export default function AllStoresPage() {
         ) : (data?.stores || []).length === 0 ? (
           <EmptyState title="No stores yet" hint="Add stores in Stores & Employees." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Store</th>
-                  <th className="px-4 py-3 text-center font-semibold">Employees</th>
-                  <th className="px-4 py-3 text-center font-semibold">Products</th>
-                  <th className="px-4 py-3 text-center font-semibold">Open POs</th>
-                  <th className="px-4 py-3 text-center font-semibold">Low stock</th>
-                  <th className="px-4 py-3 text-right font-semibold">Stock value</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.stores || []).map((s) => (
-                  <tr key={s.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-ink-800">{s.name}</p>
-                      <p className="text-xs text-slate-400">{s.id}</p>
-                    </td>
-                    <td className="px-4 py-3 text-center text-slate-600">{num(s.staff)}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{num(s.products)}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{num(s.openPOs)}</td>
-                    <td className={`px-4 py-3 text-center font-medium ${s.lowStock > 0 ? "text-rose-500" : "text-slate-400"}`}>
-                      {num(s.lowStock)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-ink-800">{usd(s.invValue)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => openStore(s.id)}
-                        disabled={opening === s.id}
-                        className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
-                      >
-                        {opening === s.id ? "Opening…" : "Open"} <ArrowRight size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div>
+            {(data?.stores || []).map((s) => (
+              <div
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink-900">
+                    {s.name}
+                    <span className="ml-2 text-xs font-normal text-slate-400">{s.id}</span>
+                  </p>
+                  <p className="mt-0.5 truncate text-sm text-slate-500">
+                    {num(s.staff)} employee{s.staff === 1 ? "" : "s"} · {num(s.products)} products · {num(s.openPOs)} open PO
+                    {s.openPOs === 1 ? "" : "s"} ·{" "}
+                    <span className={s.lowStock > 0 ? "font-medium text-rose-500" : "text-slate-400"}>
+                      {num(s.lowStock)} low stock
+                    </span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-ink-800">{usd(s.invValue)}</span>
+                  <button
+                    onClick={() => openStore(s.id)}
+                    disabled={opening === s.id}
+                    className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-100"
+                  >
+                    {opening === s.id ? "Opening…" : "Open"} <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>

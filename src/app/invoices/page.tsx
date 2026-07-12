@@ -87,7 +87,7 @@ export default function InvoicesPage() {
               <li key={r.grnId}>
                 <button
                   onClick={() => setViewing(r)}
-                  className="flex w-full items-center gap-4 px-5 py-3.5 text-left transition hover:bg-slate-50/60"
+                  className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50/60"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img

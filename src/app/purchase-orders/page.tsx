@@ -19,6 +19,7 @@ import {
   ArrowRightCircle,
   PackageCheck as ReceiveIcon,
   Sparkles,
+  ChevronRight,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
@@ -168,7 +169,7 @@ export default function PurchaseOrdersPage() {
             {queue.map((pr) => (
               <div
                 key={pr.id}
-                className="card flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50/60"
+                className="card flex cursor-pointer flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-slate-50/60"
                 onClick={() => setViewingPR(pr)}
               >
                 <div className="flex items-center gap-4">
@@ -225,66 +226,57 @@ export default function PurchaseOrdersPage() {
         ) : list.length === 0 ? (
           <EmptyState title="No purchase orders yet" hint="Approve a request or create an order directly." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Order</th>
-                  <th className="px-4 py-3 font-semibold">Supplier</th>
-                  <th className="px-4 py-3 text-right font-semibold">Value</th>
-                  <th className="px-4 py-3 font-semibold">Received</th>
-                  <th className="px-4 py-3 text-center font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((po) => {
-                  const pct = receivedPct(po);
-                  return (
-                    <tr
-                      key={po.id}
-                      className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/60"
-                      onClick={() => setViewing(po)}
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-ink-800">{po.poNo}</p>
-                        <p className="text-xs text-slate-400">
-                          {po.prNo ? `from ${po.prNo} · ` : ""}
-                          {shortDate(po.createdAt)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{po.supplier}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-ink-800">{usd(poTotal(po))}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className={`h-full rounded-full ${
-                                pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300"
-                              }`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-slate-500">{pct}%</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                          {(po.status === "Open" || po.status === "Partial") && (
-                            <Link href="/receiving" className="btn-primary !px-3 !py-1.5 text-xs">
-                              <ReceiveIcon size={14} /> Receive
-                            </Link>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div>
+            {list.map((po) => {
+              const pct = receivedPct(po);
+              return (
+                <div
+                  key={po.id}
+                  className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                  onClick={() => setViewing(po)}
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-ink-900">
+                      {po.poNo}
+                      <span className="ml-2 text-xs font-normal text-slate-400">
+                        {po.prNo ? `from ${po.prNo} · ` : ""}
+                        {shortDate(po.createdAt)}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 truncate text-sm text-slate-500">
+                      {po.supplier} · <span className="font-semibold text-ink-800">{usd(poTotal(po))}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={`h-full rounded-full ${
+                            pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300"
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-500">{pct}%</span>
+                    </div>
+                    <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
+                    <div className="flex items-center gap-1">
+                      {(po.status === "Open" || po.status === "Partial") && (
+                        <Link href="/receiving" className="btn-primary !px-3 !py-1.5 text-xs">
+                          <ReceiveIcon size={14} /> Receive
+                        </Link>
+                      )}
+                      <button
+                        onClick={() => setViewing(po)}
+                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
