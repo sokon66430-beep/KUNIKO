@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import type { Supplier } from "@/lib/types";
@@ -12,6 +13,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const actor = await currentActor();
   const body = await req.json();
   const name = body?.name?.trim();
   if (!name) return NextResponse.json({ error: "Supplier name is required" }, { status: 400 });
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
       taxPct: Math.max(0, Number(body.taxPct) || 0),
     };
     db.suppliers.push(supplier);
-    logAudit(db, { actor: "Admin", action: "Created", entityType: "Supplier", entity: `${supplier.name} (${supplier.code})` });
+    logAudit(db, { actor, action: "Created", entityType: "Supplier", entity: `${supplier.name} (${supplier.code})` });
     return { supplier };
   });
 

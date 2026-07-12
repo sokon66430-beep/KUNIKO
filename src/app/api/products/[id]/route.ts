@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { resolveSupplier, supplierNotInSystem } from "@/lib/supplierLink";
@@ -13,6 +14,7 @@ const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDay
 const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const body = await req.json();
   const result = await mutateDB((db) => {
     const product = db.products.find((p) => p.id === params.id);
@@ -51,14 +53,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       // Inventory "Restock" button — a manual stock adjustment.
       const delta = product.stock - prevStock;
       logAudit(db, {
-        actor: "Admin",
+        actor,
         action: "Restocked",
         entityType: "Stock",
         entity: product.name,
         detail: `${delta >= 0 ? "+" : ""}${delta} → ${product.stock}`,
       });
     } else {
-      logAudit(db, { actor: "Admin", action: "Updated", entityType: "Product", entity: product.name });
+      logAudit(db, { actor, action: "Updated", entityType: "Product", entity: product.name });
     }
     return product;
   });
@@ -69,11 +71,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const ok = await mutateDB((db) => {
     const idx = db.products.findIndex((p) => p.id === params.id);
     if (idx === -1) return false;
     const [removed] = db.products.splice(idx, 1);
-    logAudit(db, { actor: "Admin", action: "Deleted", entityType: "Product", entity: removed.name });
+    logAudit(db, { actor, action: "Deleted", entityType: "Product", entity: removed.name });
     return true;
   });
 

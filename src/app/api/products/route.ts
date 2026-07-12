@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { generateItemId } from "@/lib/itemId";
@@ -13,6 +14,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const actor = await currentActor();
   const body = await req.json();
   if (!body?.name || body?.price == null) {
     return NextResponse.json({ error: "name and price are required" }, { status: 400 });
@@ -51,7 +53,7 @@ export async function POST(req: Request) {
       shelf: body.shelf?.trim() || undefined,
     };
     db.products.push(product);
-    logAudit(db, { actor: "Admin", action: "Created", entityType: "Product", entity: product.name, detail: product.barcode || product.sku });
+    logAudit(db, { actor, action: "Created", entityType: "Product", entity: product.name, detail: product.barcode || product.sku });
     return { product };
   });
 

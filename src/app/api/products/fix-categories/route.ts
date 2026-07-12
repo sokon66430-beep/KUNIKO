@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 // import where the Category column held a code instead of a name). Those are
 // reset to "Uncategorized" so the category filter shows real names, not numbers.
 export async function POST() {
+  const actor = await currentActor();
   const result = await mutateDB((db) => {
     let fixed = 0;
     const codes = new Set<string>();
@@ -21,7 +23,7 @@ export async function POST() {
     }
     if (fixed > 0) {
       logAudit(db, {
-        actor: "Admin",
+        actor,
         action: "Updated",
         entityType: "Product",
         entity: "Category cleanup",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
@@ -13,6 +14,7 @@ const STRING_FIELDS = new Set([
 ]);
 
 export async function PATCH(req: Request, { params }: { params: { code: string } }) {
+  const actor = await currentActor();
   const body = await req.json();
   const result = await mutateDB((db) => {
     const supplier = db.suppliers.find((s) => s.code === params.code);
@@ -34,7 +36,7 @@ export async function PATCH(req: Request, { params }: { params: { code: string }
         if (p.supplierCode === params.code) p.supplier = newName;
       });
     }
-    logAudit(db, { actor: body.actor || "Admin", action: "Updated", entityType: "Supplier", entity: `${supplier.name} (${supplier.code})` });
+    logAudit(db, { actor, action: "Updated", entityType: "Supplier", entity: `${supplier.name} (${supplier.code})` });
     return supplier;
   });
 
@@ -43,13 +45,14 @@ export async function PATCH(req: Request, { params }: { params: { code: string }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { code: string } }) {
+  const actor = await currentActor();
   const result = await mutateDB((db) => {
     const idx = db.suppliers.findIndex((s) => s.code === params.code);
     if (idx === -1) return { error: "not_found" as const };
     const inUse = db.products.some((p) => p.supplierCode === params.code);
     if (inUse) return { error: "in_use" as const };
     const [removed] = db.suppliers.splice(idx, 1);
-    logAudit(db, { action: "Deleted", entityType: "Supplier", entity: `${removed.name} (${removed.code})` });
+    logAudit(db, { actor, action: "Deleted", entityType: "Supplier", entity: `${removed.name} (${removed.code})` });
     return { ok: true as const };
   });
 

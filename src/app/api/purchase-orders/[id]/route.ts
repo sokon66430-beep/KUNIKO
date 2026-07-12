@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
@@ -12,13 +13,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const body = await req.json();
   const result = await mutateDB((db) => {
     const po = db.purchaseOrders.find((p) => p.id === params.id);
     if (!po) return null;
     if (body.action === "cancel" && po.status !== "Cancelled") {
       po.status = "Cancelled";
-      logAudit(db, { actor: body.actor || "Procurement", action: "Cancelled", entityType: "PO", entity: po.poNo });
+      logAudit(db, { actor, action: "Cancelled", entityType: "PO", entity: po.poNo });
     }
     if (typeof body.note === "string") po.note = body.note.trim() || undefined;
     if (typeof body.expectedDate === "string") po.expectedDate = body.expectedDate || undefined;
@@ -29,6 +31,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const ok = await mutateDB((db) => {
     const idx = db.purchaseOrders.findIndex((p) => p.id === params.id);
     if (idx === -1) return false;

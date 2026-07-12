@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { nextPoNumber, findMergeablePO, appendItemsToPO } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 // Convert an approved PR into one or more POs, grouped by supplier.
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const result = await mutateDB((db) => {
     const pr = db.purchaseRequests.find((r) => r.id === params.id);
     if (!pr) return { error: "not_found" as const };
@@ -39,7 +41,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         const { added, merged } = appendItemsToPO(mergeInto, items);
         affected.push(mergeInto);
         logAudit(db, {
-          actor: "Procurement",
+          actor,
           action: "Updated",
           entityType: "PO",
           entity: mergeInto.poNo,
@@ -62,7 +64,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       db.purchaseOrders.push(po);
       affected.push(po);
       logAudit(db, {
-        actor: "Procurement",
+        actor,
         action: "Created",
         entityType: "PO",
         entity: po.poNo,
@@ -74,7 +76,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     pr.status = "Converted";
     pr.poIds = created.map((p) => p.id);
     logAudit(db, {
-      actor: "Procurement",
+      actor,
       action: "Converted",
       entityType: "PR",
       entity: pr.prNo,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -42,6 +43,7 @@ function toDayKey(cellValue: any, text: string): string | null {
 }
 
 export async function POST(req: Request) {
+  const actor = await currentActor();
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) {
@@ -195,7 +197,7 @@ export async function POST(req: Request) {
     }
 
     logAudit(db, {
-      actor: "Admin",
+      actor,
       action: "Imported",
       entityType: "Sale",
       entity: file.name || "Excel file",

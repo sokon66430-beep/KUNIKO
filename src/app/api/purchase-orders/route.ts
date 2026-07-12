@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { nextPoNumber, findMergeablePO, appendItemsToPO } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
@@ -16,6 +17,7 @@ export async function GET() {
 
 // Create a PO directly (without a PR). All items must share one supplier.
 export async function POST(req: Request) {
+  const actor = await currentActor();
   const body = await req.json();
   const items: POItem[] = Array.isArray(body?.items) ? body.items : [];
   if (items.length === 0) {
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
     if (mergeInto) {
       const { added, merged } = appendItemsToPO(mergeInto, lines);
       logAudit(db, {
-        actor: "Procurement",
+        actor,
         action: "Updated",
         entityType: "PO",
         entity: mergeInto.poNo,
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     };
     db.purchaseOrders.push(po);
     logAudit(db, {
-      actor: "Procurement",
+      actor,
       action: "Created",
       entityType: "PO",
       entity: po.poNo,

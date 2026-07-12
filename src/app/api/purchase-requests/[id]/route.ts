@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import type { PRStatus } from "@/lib/types";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 const STATUSES: PRStatus[] = ["Draft", "Submitted", "Approved", "Rejected", "Cancelled", "Converted"];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const body = await req.json();
   const result = await mutateDB((db) => {
     const pr = db.purchaseRequests.find((r) => r.id === params.id);
@@ -18,8 +20,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (body.status === "Approved" || body.status === "Rejected" || body.status === "Cancelled") {
         pr.decidedAt = new Date().toISOString();
       }
-      // Approvals/rejections are a procurement decision; submit is the requester.
-      const actor = body.status === "Submitted" ? pr.requestedBy : body.actor || "Procurement";
+      // Every decision is stamped with the signed-in user.
       logAudit(db, { actor, action: body.status, entityType: "PR", entity: pr.prNo });
     }
     if (Array.isArray(body.items)) {
@@ -43,11 +44,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const actor = await currentActor();
   const ok = await mutateDB((db) => {
     const idx = db.purchaseRequests.findIndex((r) => r.id === params.id);
     if (idx === -1) return false;
     const [removed] = db.purchaseRequests.splice(idx, 1);
-    logAudit(db, { action: "Deleted", entityType: "PR", entity: removed.prNo });
+    logAudit(db, { actor, action: "Deleted", entityType: "PR", entity: removed.prNo });
     return true;
   });
   if (!ok) return NextResponse.json({ error: "Purchase request not found" }, { status: 404 });

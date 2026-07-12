@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -35,6 +36,7 @@ const num = (v: string) => {
 };
 
 export async function POST(req: Request) {
+  const actor = await currentActor();
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) {
@@ -249,7 +251,7 @@ export async function POST(req: Request) {
 
     const newSuppliers = [...createdSuppliers.entries()].map(([code, name]) => (name === code ? code : `${name} (${code})`));
     logAudit(db, {
-      actor: "Admin",
+      actor,
       action: "Imported",
       entityType: "Product",
       entity: file.name || "Excel file",

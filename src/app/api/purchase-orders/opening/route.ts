@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { nextPoNumber } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 // Opening order for a new store: a set of { productId | sku, qty } lines that
 // are grouped into one Purchase Order per supplier.
 export async function POST(req: Request) {
+  const actor = await currentActor();
   const body = await req.json().catch(() => ({}));
   const rawItems: { productId?: string; sku?: string; qty: number }[] = Array.isArray(body?.items) ? body.items : [];
   if (rawItems.length === 0) return NextResponse.json({ error: "No items to order" }, { status: 400 });
@@ -60,7 +62,7 @@ export async function POST(req: Request) {
     }
 
     logAudit(db, {
-      actor: "Procurement",
+      actor,
       action: "Created",
       entityType: "PO",
       entity: `${created.length} PO${created.length === 1 ? "" : "s"}`,
