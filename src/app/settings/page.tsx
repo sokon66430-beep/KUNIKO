@@ -18,9 +18,15 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Only seed the form from the server ONCE (the first successful load). useFetch
+  // silently re-polls in the background (every 20s, and whenever the tab regains
+  // focus/visibility) so it stays current on other screens — but here that refetch
+  // was stomping on in-progress edits. That's most visible with the logo picker:
+  // opening the phone's photo app backgrounds the tab, and returning re-focuses
+  // it, triggering a refetch that wiped out the just-picked logo before Save.
   useEffect(() => {
-    if (data) setForm(data);
-  }, [data]);
+    if (data && !form) setForm(data);
+  }, [data, form]);
 
   const set = (k: keyof Business, v: any) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const setApprover = (idx: number, k: "role" | "name" | "code", v: string) =>
