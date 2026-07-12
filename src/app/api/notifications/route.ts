@@ -39,6 +39,22 @@ export async function GET() {
     });
   }
 
+  // Receipts whose goods came in but whose invoice was never scanned — the
+  // receiving process is not complete until it is.
+  const missingInvoices = db.goodsReceipts.filter((g) => !g.invoice);
+  if (missingInvoices.length > 0) {
+    actions.push({
+      id: "invoices-missing",
+      title: `${missingInvoices.length} receipt${missingInvoices.length === 1 ? "" : "s"} missing the supplier invoice`,
+      detail: `Receiving isn't complete until it's scanned — ${missingInvoices
+        .slice(0, 3)
+        .map((g) => g.grnNo)
+        .join(", ")}`,
+      href: "/receiving",
+      tone: "rose",
+    });
+  }
+
   const pendingInvoices = db.goodsReceipts.filter((g) => g.invoice?.status === "Pending").length;
   if (pendingInvoices > 0) {
     actions.push({

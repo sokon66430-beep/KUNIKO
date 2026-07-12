@@ -13,25 +13,19 @@ export const dynamic = "force-dynamic";
 const INVOICE_DIR = path.join(DATA_DIR, "invoices");
 
 // Receive goods against a PO: bump stock, update received qty, record a GRN.
-// A photo/scan of the supplier's invoice is REQUIRED — it's stored and queued
-// for Accounting to review (approve / reject).
+// The supplier invoice scan is attached here when available; without it the
+// receipt is saved but stays INCOMPLETE until the invoice is scanned in.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json();
   const lines: { productId: string; qtyReceived: number }[] = Array.isArray(body?.items)
     ? body.items
     : [];
 
-  // Validate + decode the invoice image (a JPEG/PNG data URL from the client).
+  // Optional invoice image (a JPEG/PNG data URL from the client).
   const invoiceDataUrl: string = typeof body.invoice === "string" ? body.invoice : "";
   const m = invoiceDataUrl.match(/^data:image\/(jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/);
-  if (!m) {
-    return NextResponse.json(
-      { error: "Invoice photo is required — scan or photograph the supplier's invoice before submitting." },
-      { status: 400 },
-    );
-  }
-  const invoiceBuf = Buffer.from(m[2], "base64");
-  if (invoiceBuf.length > 8_000_000) {
+  const invoiceBuf = m ? Buffer.from(m[2], "base64") : null;
+  if (invoiceBuf && invoiceBuf.length > 8_000_000) {
     return NextResponse.json({ error: "Invoice image is too large (max 8 MB)." }, { status: 400 });
   }
 
@@ -84,11 +78,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       note: body.note?.trim() || undefined,
       receivedBy,
       createdAt: new Date().toISOString(),
-      invoice: {
-        image: `${storeId}-grn${n}.jpg`,
-        uploadedBy: receivedBy,
-        status: "Pending",
-      },
+      // Attached only when the invoice was scanned; otherwise the receipt is
+      // incomplete until /api/goods-receipts/[id]/invoice adds it.
+      invoice: invoiceBuf
+        ? { image: `${storeId}-grn${n}.jpg`, uploadedBy: receivedBy, status: "Pending" }
+        : undefined,
     };
     db.goodsReceipts.push(grn);
     logAudit(db, {
@@ -111,11 +105,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // Persist the invoice image next to the store data (best-effort: the receipt
   // stands even if the disk write fails; the viewer shows a missing-image note).
-  try {
-    await fs.mkdir(INVOICE_DIR, { recursive: true });
-    await fs.writeFile(path.join(INVOICE_DIR, result.grn.invoice!.image), invoiceBuf);
-  } catch {
-    /* ignore */
+  if (invoiceBuf && result.grn.invoice) {
+    try {
+      await fs.mkdir(INVOICE_DIR, { recursive: true });
+      await fs.writeFile(path.join(INVOICE_DIR, result.grn.invoice.image), invoiceBuf);
+    } catch {
+      /* ignore */
+    }
   }
   return NextResponse.json(result, { status: 201 });
 }

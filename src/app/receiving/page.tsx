@@ -37,6 +37,20 @@ export default function ReceivingPage() {
   // confirmed, then sent with it). Keyed by PO id.
   const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string>>({});
   const [invoiceCamPo, setInvoiceCamPo] = useState<string | null>(null);
+  // Scanning the invoice AFTER receiving (completes an incomplete receipt).
+  const [invoiceCamGrn, setInvoiceCamGrn] = useState<string | null>(null);
+
+  async function attachInvoiceToGrn(grnId: string, dataUrl: string) {
+    try {
+      await api(`/api/goods-receipts/${grnId}/invoice`, {
+        method: "POST",
+        body: JSON.stringify({ invoice: dataUrl }),
+      });
+      reloadGrns();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
 
   // Open a receipt's PDF inside the app (so it can be viewed and printed here).
   async function openPdf(g: GoodsReceipt) {
@@ -146,9 +160,7 @@ export default function ReceivingPage() {
                   <button
                     type="button"
                     onClick={() => setReceiving(po)}
-                    disabled={!hasInvoice}
-                    title={hasInvoice ? undefined : "Scan the supplier invoice first"}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-700 disabled:opacity-40"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
                   >
                     <ScanLine size={14} /> Receive
                   </button>
@@ -208,6 +220,23 @@ export default function ReceivingPage() {
                             <Clock size={11} /> Edit pending approval
                           </span>
                         )}
+                        {!g.invoice ? (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                            <FileType2 size={11} /> Incomplete — invoice missing
+                          </span>
+                        ) : g.invoice.status === "Rejected" ? (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                            <FileType2 size={11} /> Invoice rejected — re-scan
+                          </span>
+                        ) : (
+                          <span
+                            className={`mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+                              g.invoice.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            <FileType2 size={11} /> Invoice {g.invoice.status === "Approved" ? "approved" : "pending review"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-slate-700">{g.poNo}</p>
@@ -220,6 +249,15 @@ export default function ReceivingPage() {
                       <td className="px-4 py-3 text-slate-600">{g.receivedBy}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {(!g.invoice || g.invoice.status === "Rejected") && (
+                            <button
+                              onClick={() => setInvoiceCamGrn(g.id)}
+                              title="Scan the supplier invoice to complete this receipt"
+                              className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                            >
+                              <Camera size={14} /> Scan invoice
+                            </button>
+                          )}
                           <a
                             href={`/api/goods-receipts/${g.id}/export`}
                             title="Download this receipt as Excel"
@@ -266,6 +304,13 @@ export default function ReceivingPage() {
         open={!!invoiceCamPo}
         onClose={() => setInvoiceCamPo(null)}
         onCapture={(d) => setInvoiceByPo((prev) => ({ ...prev, [invoiceCamPo!]: d }))}
+      />
+
+      {/* Invoice camera opened from a receipt row — completes an incomplete receipt. */}
+      <InvoiceCamera
+        open={!!invoiceCamGrn}
+        onClose={() => setInvoiceCamGrn(null)}
+        onCapture={(d) => attachInvoiceToGrn(invoiceCamGrn!, d)}
       />
 
       {receiving && (
@@ -720,10 +765,6 @@ function ReceiveModal({
       setFlash({ tone: "warn", text: "Enter at least one quantity" });
       return;
     }
-    if (!invoice) {
-      setFlash({ tone: "warn", text: "Scan the supplier's invoice on the PO card first — it's required" });
-      return;
-    }
     setBusy(true);
     try {
       await api(`/api/purchase-orders/${po.id}/receive`, {
@@ -752,8 +793,8 @@ function ReceiveModal({
           </button>
           <button
             className="btn-primary"
-            disabled={busy || totalNow === 0 || !invoice}
-            title={!invoice ? "Scan the supplier's invoice first" : undefined}
+            disabled={busy || totalNow === 0}
+            title={!invoice ? "You can confirm now, but the receipt stays incomplete until the invoice is scanned" : undefined}
             onClick={confirm}
           >
             <CheckCircle2 size={16} /> {busy ? "Posting…" : `Confirm receipt (+${totalNow})`}
@@ -915,13 +956,18 @@ function ReceiveModal({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={onScanInvoice}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/60 px-4 py-4 text-sm font-semibold text-amber-700 transition hover:border-amber-400"
-          >
-            <Camera size={17} /> No invoice yet — scan the supplier invoice (required)
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onScanInvoice}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/60 px-4 py-4 text-sm font-semibold text-amber-700 transition hover:border-amber-400"
+            >
+              <Camera size={17} /> No invoice yet — scan the supplier invoice
+            </button>
+            <p className="mt-1.5 text-xs text-amber-600">
+              You can still confirm the goods now, but the receipt stays <b>incomplete</b> until the invoice is scanned.
+            </p>
+          </>
         )}
       </div>
 
