@@ -622,24 +622,28 @@ export function buildWriteOffWorkbook(
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
   ws.columns = [
-    { width: 12 }, { width: 8 }, { width: 16 }, { width: 13 }, { width: 34 },
+    { width: 6 }, { width: 12 }, { width: 8 }, { width: 16 }, { width: 13 }, { width: 34 },
     { width: 18 }, { width: 10 }, { width: 8 }, { width: 15 }, { width: 26 }, { width: 16 },
   ];
 
-  let row = reportHeader(ws, "WRITE-OFF REPORT", [`${business.name} · ${business.branch}`, filterNote], WRITE_OFF_COLUMNS.length);
-  tableHead(
-    ws,
-    row,
-    WRITE_OFF_COLUMNS.map((c) => ({ label: c.header, align: c.header === "Quantity" ? ("right" as const) : undefined })),
-  );
+  let row = reportHeader(ws, "WRITE-OFF REPORT", [`${business.name} · ${business.branch}`, filterNote], WRITE_OFF_COLUMNS.length + 1);
+  tableHead(ws, row, [
+    { label: "No" },
+    ...WRITE_OFF_COLUMNS.map((c) => ({ label: c.header, align: c.header === "Quantity" ? ("right" as const) : undefined })),
+  ]);
 
   const firstDataRow = row + 1;
   let totalQty = 0;
   writeoffs.forEach((w, i) => {
     const r = ws.getRow(firstDataRow + i);
     totalQty += w.quantity;
+    const noCell = r.getCell(1);
+    noCell.value = i + 1;
+    noCell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+    noCell.alignment = { horizontal: "center", vertical: "middle" };
+    noCell.border = allThin;
     WRITE_OFF_COLUMNS.forEach((c, ci) => {
-      const cell = r.getCell(ci + 1);
+      const cell = r.getCell(ci + 2);
       cell.value = c.get(w) as ExcelJS.CellValue;
       cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
       cell.alignment = { horizontal: c.header === "Quantity" ? "right" : "left", vertical: "middle" };
@@ -649,12 +653,12 @@ export function buildWriteOffWorkbook(
 
   const totalRow = firstDataRow + writeoffs.length;
   const tr = ws.getRow(totalRow);
-  const lbl = tr.getCell(6);
+  const lbl = tr.getCell(7);
   lbl.value = "TOTAL QTY";
   lbl.font = { name: CALIBRI, size: 11, bold: true };
   lbl.alignment = { horizontal: "right" };
   lbl.border = allThin;
-  const val = tr.getCell(7);
+  const val = tr.getCell(8);
   val.value = round2(totalQty);
   val.font = { name: CALIBRI, size: 11, bold: true };
   val.alignment = { horizontal: "right" };
@@ -675,6 +679,7 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
   ws.columns = [
+    { header: "No", key: "no", width: 6 },
     { header: "Item ID", key: "sku", width: 14 },
     { header: "Barcode", key: "barcode", width: 18 },
     { header: "Product Name", key: "name", width: 42 },
@@ -701,8 +706,9 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
     c.border = allThin;
   });
 
-  products.forEach((p) => {
+  products.forEach((p, idx) => {
     const r = ws.addRow({
+      no: idx + 1,
       sku: p.sku,
       barcode: p.barcode || "",
       name: p.name,
@@ -725,8 +731,8 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
     });
     // Highlight the two supplier cells when the product isn't linked yet.
     if (!p.supplierCode) {
-      r.getCell(7).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
       r.getCell(8).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
+      r.getCell(9).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
     }
   });
 

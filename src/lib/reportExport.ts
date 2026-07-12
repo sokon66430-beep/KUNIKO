@@ -61,18 +61,30 @@ function csvCell(s: string): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 export function buildCsv(cols: Col[], rows: any[]): string {
-  const head = cols.map((c) => csvCell(c.header)).join(",");
-  const body = rows.map((r) => cols.map((c) => csvCell(cellText(c, r))).join(",")).join("\n");
+  const addNo = cols[0]?.header !== "No"; // don't double-number reports that already have one
+  const head = [...(addNo ? ["No"] : []), ...cols.map((c) => csvCell(c.header))].join(",");
+  const body = rows
+    .map((r, i) => [...(addNo ? [String(i + 1)] : []), ...cols.map((c) => csvCell(cellText(c, r)))].join(","))
+    .join("\n");
   return "﻿" + head + "\n" + body; // BOM so Excel opens UTF-8 cleanly
 }
 
 // ---------------------------------------------------------------------------
 // Excel (generic styled table — used for reports without a bespoke workbook)
 // ---------------------------------------------------------------------------
+// Every report gets an automatic "No" running-number column in front, so a
+// row can always be referred to by its number. The injected column resolves
+// to the row index at render time.
+const NO_COL: Col & { rowNo?: boolean } = { header: "No", get: () => "", num: true, width: 0.4, rowNo: true };
+const withNo = (cols: Col[]): (Col & { rowNo?: boolean })[] =>
+  cols[0]?.header === "No" ? cols : [NO_COL, ...cols]; // don't double-number reports that already have one
+const colValue = (c: Col & { rowNo?: boolean }, row: any, idx: number) => (c.rowNo ? idx + 1 : c.get(row));
+
 export async function buildGenericXlsx(r: ReportData): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Report", { views: [{ state: "frozen", ySplit: 4 }] });
-  const n = r.cols.length;
+  const cols = withNo(r.cols);
+  const n = cols.length;
   const lastCol = String.fromCharCode(64 + n); // A..Z (reports stay well under 26 cols)
 
   ws.mergeCells(`A1:${lastCol}1`);
@@ -89,7 +101,7 @@ export async function buildGenericXlsx(r: ReportData): Promise<Buffer> {
 
   // Header row (row 4)
   const header = ws.getRow(4);
-  r.cols.forEach((c, i) => {
+  cols.forEach((c, i) => {
     const cell = header.getCell(i + 1);
     cell.value = c.header;
     cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
@@ -102,9 +114,9 @@ export async function buildGenericXlsx(r: ReportData): Promise<Buffer> {
   // Data rows
   r.rows.forEach((row, idx) => {
     const xlRow = ws.getRow(5 + idx);
-    r.cols.forEach((c, i) => {
+    cols.forEach((c, i) => {
       const cell = xlRow.getCell(i + 1);
-      const raw = c.get(row);
+      const raw = colValue(c, row, idx);
       cell.value = c.money || c.num ? Number(raw) : String(raw ?? "");
       if (c.money) cell.numFmt = '"$"#,##0.00';
       else if (c.num) cell.numFmt = "#,##0";
@@ -115,10 +127,10 @@ export async function buildGenericXlsx(r: ReportData): Promise<Buffer> {
   });
 
   // Totals row for money columns
-  const hasMoney = r.cols.some((c) => c.money);
+  const hasMoney = cols.some((c) => c.money);
   if (hasMoney && r.rows.length) {
     const totRow = ws.getRow(5 + r.rows.length);
-    r.cols.forEach((c, i) => {
+    cols.forEach((c, i) => {
       const cell = totRow.getCell(i + 1);
       if (i === 0) cell.value = "TOTAL";
       else if (c.money) {
@@ -132,10 +144,13 @@ export async function buildGenericXlsx(r: ReportData): Promise<Buffer> {
   }
 
   // Column widths
-  r.cols.forEach((c, i) => {
+  cols.forEach((c, i) => {
     const headerLen = c.header.length;
-    const sample = Math.max(...r.rows.slice(0, 40).map((row) => cellText(c, row).length), headerLen);
-    ws.getColumn(i + 1).width = Math.min(46, Math.max(9, sample + 2));
+    const sample = Math.max(
+      ...r.rows.slice(0, 40).map((row, ri) => String(c.rowNo ? ri + 1 : cellText(c, row)).length),
+      headerLen,
+    );
+    ws.getColumn(i + 1).width = Math.min(46, Math.max(c.rowNo ? 6 : 9, sample + 2));
   });
 
   const buf = await wb.xlsx.writeBuffer();
@@ -155,6 +170,7 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const cols = withNo(r.cols);
 
   const PAGE_W = 842;
   const PAGE_H = 595;
@@ -171,11 +187,12 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
   const HSIZE = 8.5;
   const RSIZE = 8.5;
   const pad = 4;
-  const natural = r.cols.map((c) => {
+  const natural = cols.map((c) => {
     let w = bold.widthOfTextAtSize(ascii(c.header), HSIZE);
-    for (const row of r.rows.slice(0, 60)) {
-      w = Math.max(w, font.widthOfTextAtSize(ascii(cellText(c, row)), RSIZE));
-    }
+    r.rows.slice(0, 60).forEach((row, ri) => {
+      const t = c.rowNo ? String(ri + 1) : cellText(c, row);
+      w = Math.max(w, font.widthOfTextAtSize(ascii(t), RSIZE));
+    });
     return Math.min(w + pad * 2, 200) * (c.width || 1);
   });
   const totalNat = natural.reduce((s, w) => s + w, 0);
@@ -183,7 +200,7 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
   const widths = natural.map((w) => w * scale);
 
   const rowH = 16;
-  const money = r.cols.some((c) => c.money);
+  const money = cols.some((c) => c.money);
 
   let page: any = null;
   let y = 0;
@@ -199,7 +216,7 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
   const drawHeaderRow = () => {
     page.drawRectangle({ x: M, y: y - rowH + 3, width: contentW, height: rowH, color: brand });
     let x = M;
-    r.cols.forEach((c, i) => {
+    cols.forEach((c, i) => {
       const w = widths[i];
       const t = truncate(c.header, w, bold, HSIZE);
       const tw = bold.widthOfTextAtSize(t, HSIZE);
@@ -230,9 +247,9 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
       page.drawRectangle({ x: M, y: y - rowH + 3, width: contentW, height: rowH, color: stripe });
     }
     let x = M;
-    r.cols.forEach((c, i) => {
+    cols.forEach((c, i) => {
       const w = widths[i];
-      const t = truncate(cellText(c, row), w, font, RSIZE);
+      const t = truncate(c.rowNo ? String(idx + 1) : cellText(c, row), w, font, RSIZE);
       const tw = font.widthOfTextAtSize(t, RSIZE);
       const tx = c.money || c.num ? x + w - pad - tw : x + pad;
       page.drawText(t, { x: tx, y: y - rowH + 8, size: RSIZE, font, color: ink });
@@ -246,7 +263,7 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
     if (y - rowH < M) newPage(false);
     page.drawLine({ start: { x: M, y: y + 2 }, end: { x: M + contentW, y: y + 2 }, thickness: 0.7, color: line });
     let x = M;
-    r.cols.forEach((c, i) => {
+    cols.forEach((c, i) => {
       const w = widths[i];
       let t = "";
       if (i === 0) t = "TOTAL";

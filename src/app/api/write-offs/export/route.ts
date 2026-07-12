@@ -49,8 +49,10 @@ export async function GET(req: Request) {
   }
 
   if (format === "csv") {
-    const header = WRITE_OFF_COLUMNS.map((c) => csvCell(c.header)).join(",");
-    const body = rows.map((w) => WRITE_OFF_COLUMNS.map((c) => csvCell(c.get(w))).join(",")).join("\n");
+    const header = ["No", ...WRITE_OFF_COLUMNS.map((c) => csvCell(c.header))].join(",");
+    const body = rows
+      .map((w, i) => [String(i + 1), ...WRITE_OFF_COLUMNS.map((c) => csvCell(c.get(w)))].join(","))
+      .join("\n");
     return new NextResponse(`﻿${header}\n${body}`, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
