@@ -97,7 +97,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             <img
               src={business.logo}
               alt="Logo"
-              style={{ position: "absolute", top: 0, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
+              style={{ position: "absolute", top: -8, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
             />
           )}
           <h1 style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1 }} className="text-center">
