@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BrowserMultiFormatOneDReader } from "@zxing/browser";
 import { X, Camera, CheckCircle2 } from "lucide-react";
+
+// Every code a product/shelf label actually carries is a 1D barcode, so the
+// One-D-only reader is used instead of the general multi-format reader — it
+// never wastes a frame trying to detect QR/DataMatrix/Aztec/PDF417, which is
+// the main reason the generic reader felt slow to lock on.
+const SCAN_OPTIONS = {
+  delayBetweenScanAttempts: 50, // was the library default of 500ms
+  delayBetweenScanSuccess: 250, // was the library default of 500ms
+};
 
 /**
  * Full-screen camera barcode scanner (works on Android + iOS Safari over HTTPS
@@ -41,14 +50,26 @@ export function CameraScanner({
       return;
     }
 
-    const reader = new BrowserMultiFormatReader();
+    const reader = new BrowserMultiFormatOneDReader(undefined, SCAN_OPTIONS);
     let controls: { stop: () => void } | undefined;
     let cancelled = false;
 
     (async () => {
       try {
         controls = await reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: "environment" } } },
+          {
+            video: {
+              facingMode: { ideal: "environment" },
+              // A moderate resolution decodes faster per frame than a phone's
+              // default (often 1080p+) — plenty sharp for a 1D barcode.
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 },
+              // Not a standard TS-typed constraint, but supported by Chrome/
+              // Android — keeps the lens locked on instead of hunting focus.
+              advanced: [{ focusMode: "continuous" } as any],
+            },
+          },
           videoRef.current!,
           (result) => {
             if (!result || cancelled) return;
