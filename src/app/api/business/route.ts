@@ -29,6 +29,11 @@ export async function PATCH(req: Request) {
       if (Array.isArray(body[f])) (b as any)[f] = body[f].map((x: any) => String(x));
     }
     if (body.vatRate != null) b.vatRate = Math.max(0, Number(body.vatRate) || 0);
+    // Logo: a small image data-URL, or "" to clear it. Cap at ~1.5 MB.
+    if (typeof body.logo === "string") {
+      const ok = body.logo === "" || /^data:image\/(png|jpeg|jpg|svg\+xml|webp);base64,/.test(body.logo);
+      if (ok && body.logo.length < 2_000_000) b.logo = body.logo || undefined;
+    }
     if (Array.isArray(body.approvers)) {
       b.approvers = body.approvers
         .map((a: any) => ({

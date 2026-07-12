@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Sun, Moon } from "lucide-react";
+import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
@@ -46,6 +46,7 @@ export default function SettingsPage() {
           invoiceTo: form.invoiceTo,
           poNotes: form.poNotes,
           approvers: form.approvers,
+          logo: form.logo ?? "",
         }),
       });
       setSaved(true);
@@ -105,6 +106,10 @@ export default function SettingsPage() {
               <Building2 size={16} className="text-brand-600" /> Store Identity
             </h3>
             <div className="space-y-3">
+              <div>
+                <label className="label">Logo (printed on purchase orders)</label>
+                <LogoUpload value={form.logo} onChange={(v) => set("logo", v as any)} />
+              </div>
               <div>
                 <label className="label">Store / Branch name</label>
                 <input className="input" value={form.branch} onChange={(e) => set("branch", e.target.value)} />
@@ -318,5 +323,74 @@ function ChangePasswordCard() {
         )}
       </div>
     </Card>
+  );
+}
+
+// Logo upload for the PO header. Shrinks the image client-side (max 400px,
+// keeps transparency for PNGs) and stores it as a data URL on the business.
+function LogoUpload({ value, onChange }: { value?: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  function pick(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || "");
+      // SVGs stay as-is; raster images are downscaled to keep the file small.
+      if (file.type === "image/svg+xml") {
+        onChange(src);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 400;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+        // PNG preserves transparency; large photos still stay small at this size.
+        onChange(c.toDataURL("image/png"));
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="grid h-16 w-28 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="Logo" className="max-h-14 max-w-[104px] object-contain" />
+        ) : (
+          <ImageIcon size={20} className="text-slate-300" />
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => ref.current?.click()}>
+          <Upload size={14} /> {value ? "Replace logo" : "Upload logo"}
+        </button>
+        {value && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-rose-500 hover:underline"
+            onClick={() => onChange("")}
+          >
+            <Trash2 size={13} /> Remove
+          </button>
+        )}
+        <input
+          ref={ref}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) pick(f);
+            if (ref.current) ref.current.value = "";
+          }}
+        />
+      </div>
+    </div>
   );
 }

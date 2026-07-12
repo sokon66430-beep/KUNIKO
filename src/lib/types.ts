@@ -300,6 +300,7 @@ export type DB = {
       vatRate: number; // e.g. 0.10
       address: string;
       phone: string;
+      logo?: string; // data-URL logo printed top-left on the PO
       // Purchase-order header defaults (match the ON Mart PO format)
       branch: string;
       shipTo: string;
