@@ -8,6 +8,7 @@ import {
   Camera,
   Trash2,
   FileSpreadsheet,
+  FileType2,
   Upload,
   CheckCircle2,
   Calculator,
@@ -118,6 +119,13 @@ export default function StockCountPage() {
                             className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
                           >
                             <FileSpreadsheet size={14} /> Excel
+                          </a>
+                          <a
+                            href={`/api/stock-counts/${c.id}/export?format=pdf`}
+                            title="Download count sheet (PDF)"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                          >
+                            <FileType2 size={14} /> PDF
                           </a>
                           <button
                             onClick={() => setActiveId(c.id)}
@@ -451,6 +459,9 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="flex flex-wrap items-center gap-2">
               <a href={`/api/stock-counts/${id}/export`} className="btn-ghost !py-1.5 text-xs">
                 <FileSpreadsheet size={15} /> Download count sheet (all products)
+              </a>
+              <a href={`/api/stock-counts/${id}/export?format=pdf`} className="btn-ghost !py-1.5 text-xs">
+                <FileType2 size={15} /> PDF (view / print only)
               </a>
               {!posted && (
                 <>
