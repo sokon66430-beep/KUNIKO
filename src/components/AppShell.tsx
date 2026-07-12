@@ -1,16 +1,39 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { ReactNode, Suspense } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, Suspense, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { ConfirmHost } from "./confirm";
 import { ThemeProvider } from "./theme";
+import { canAccessPage } from "@/lib/access";
+import type { Role } from "@/lib/auth";
 
 // The login page renders bare (no sidebar); everything else gets the app shell.
 // The Suspense boundary lets pages use useSearchParams() (request-time data)
 // without breaking the production build.
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Re-check page access on every navigation so an owner-set denial (beyond
+  // the built-in baseline middleware already enforces) still sends the user
+  // back to their dashboard, even for a client-side <Link> transition.
+  useEffect(() => {
+    if (pathname === "/login" || pathname === "/register") return;
+    let alive = true;
+    fetch("/api/auth/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!alive || !s) return;
+        const role = s.user.role as Role;
+        if (!canAccessPage(role, pathname, s.denied)) router.replace("/");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [pathname, router]);
+
   if (pathname === "/login" || pathname === "/register") return <Suspense>{children}</Suspense>;
 
   return (

@@ -23,6 +23,9 @@ export type SystemData = {
   users: User[];
   nextStore: number;
   nextUser: number;
+  // Owner-configurable page access per role (denied page paths). Falls back to
+  // DEFAULT_ROLE_DENIED in access.ts until the owner customizes it here.
+  rolePermissions?: Partial<Record<Role, string[]>>;
 };
 
 // The default store keeps the existing ON Mart Tuol Kork demo data.

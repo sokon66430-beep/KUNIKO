@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/session";
 import { readSystem } from "@/lib/system";
 import { signSession, SESSION_COOKIE, cookieOptions } from "@/lib/auth";
+import { DEFAULT_ROLE_DENIED } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,13 @@ export async function GET() {
     s.role === "owner"
       ? sys.stores.map((st) => ({ id: st.id, name: st.name }))
       : sys.stores.filter((st) => st.id === s.storeId).map((st) => ({ id: st.id, name: st.name }));
+  // Effective denied-page list for this role — the owner's live /permissions
+  // config if set, otherwise the built-in baseline. Owner is never denied.
+  const denied = s.role === "owner" ? [] : sys.rolePermissions?.[s.role] ?? DEFAULT_ROLE_DENIED[s.role] ?? [];
   return NextResponse.json({
     user: { id: s.uid, name: s.name, role: s.role, storeId: s.storeId, storeName: s.storeName },
     stores,
+    denied,
   });
 }
 

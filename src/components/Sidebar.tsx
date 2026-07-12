@@ -32,11 +32,13 @@ import {
   Store,
   Tag,
   ReceiptText,
+  ShieldCheck,
 } from "lucide-react";
 
 type SessionInfo = {
   user: { name: string; role: string; storeId: string; storeName: string };
   stores: { id: string; name: string }[];
+  denied: string[];
 };
 
 const OPERATIONS = {
@@ -149,17 +151,20 @@ export default function Sidebar() {
   const ALLOW_STORE_SWITCH = true;
 
   const role = (session?.user.role || "operations") as Role;
+  const denied = session?.denied;
   const admin = {
     label: "Management",
     items: [
       { href: "/all-stores", label: "All Stores", icon: LayoutGrid },
+      { href: "/permissions", label: "Permissions", icon: ShieldCheck },
       { href: "/stores", label: "Stores & Employees", icon: Building2 },
       { href: "/settings", label: "Store Settings", icon: Settings },
     ],
   };
-  // Show only the menus this role may use (Accountant is limited; others see all).
+  // Show only the menus this role may use — owner-set overrides (via
+  // /permissions) take priority over the built-in baseline.
   const groups = [OPERATIONS, PROCUREMENT, ACCOUNTING, admin]
-    .map((g) => ({ ...g, items: g.items.filter((it) => canAccessPage(role, it.href)) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => canAccessPage(role, it.href, denied)) }))
     .filter((g) => g.items.length > 0);
 
   async function switchStore(storeId: string) {
