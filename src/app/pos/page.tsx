@@ -16,11 +16,12 @@ import {
   FileSpreadsheet,
   BarChart3,
 } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
+import { canSeeProfit } from "@/lib/access";
 
 type CartLine = { product: Product; qty: number; seq: number };
 
@@ -779,6 +780,8 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
   const { data, loading } = useFetch<SalesReportData>(`/api/sales-report?${query}`);
   const exportHref = (fmt: string) => `/api/sales-report/export?format=${fmt}&${query}`;
   const ranges = [7, 14, 30, 90];
+  const role = useRole();
+  const showProfit = role == null || canSeeProfit(role);
 
   const categoryOptions = useMemo(
     () => [
@@ -908,7 +911,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                   { label: "Items", value: num(items.length) },
                   { label: "Units sold", value: num(shown.qty) },
                   { label: "Revenue", value: usd(shown.revenue) },
-                  { label: "Profit", value: usd(shown.profit) },
+                  ...(showProfit ? [{ label: "Profit", value: usd(shown.profit) }] : []),
                 ].map((s) => (
                   <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
@@ -924,7 +927,8 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-3.5 py-2.5">
                       <p className="text-sm font-bold text-ink-900">{g.category}</p>
                       <p className="text-xs font-semibold text-slate-500">
-                        {num(g.qty)} sold · <span className="text-ink-800">{usd(g.revenue)}</span> · <span className="text-emerald-600">{usd(g.profit)} profit</span>
+                        {num(g.qty)} sold · <span className="text-ink-800">{usd(g.revenue)}</span>
+                        {showProfit && <> · <span className="text-emerald-600">{usd(g.profit)} profit</span></>}
                       </p>
                     </div>
                     <table className="w-full text-sm">
@@ -937,7 +941,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                             </td>
                             <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
-                            <td className="px-3.5 py-2 text-right text-emerald-600">{usd(it.profit)}</td>
+                            {showProfit && <td className="px-3.5 py-2 text-right text-emerald-600">{usd(it.profit)}</td>}
                           </tr>
                         ))}
                       </tbody>

@@ -22,10 +22,11 @@ import {
   Package,
   ArrowUpRight,
 } from "lucide-react";
-import { useFetch } from "@/lib/client";
+import { useFetch, useRole } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num, pct } from "@/lib/format";
+import { canSeeProfit } from "@/lib/access";
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
@@ -39,6 +40,8 @@ const PIE_COLORS = ["#1f5ff5", "#3380ff", "#59a5ff", "#8ec6ff", "#a78bfa", "#34d
 export default function DashboardPage() {
   const [range, setRange] = useState<RangeKey>("30d");
   const { data, loading, error } = useFetch<Stats>(`/api/stats?range=${range}`);
+  const role = useRole();
+  const showProfit = role == null || canSeeProfit(role);
 
   return (
     <div>
@@ -83,13 +86,15 @@ export default function DashboardPage() {
               icon={<Receipt size={18} />}
               accent="violet"
             />
-            <StatCard
-              label={`Profit (${labelFor(range)})`}
-              value={usd(data.profit)}
-              sub={`${pct(data.margin)} margin`}
-              icon={<TrendingUp size={18} />}
-              accent="emerald"
-            />
+            {showProfit && (
+              <StatCard
+                label={`Profit (${labelFor(range)})`}
+                value={usd(data.profit)}
+                sub={`${pct(data.margin)} margin`}
+                icon={<TrendingUp size={18} />}
+                accent="emerald"
+              />
+            )}
             <StatCard
               label="Low Stock Items"
               value={num(data.lowStockCount)}
@@ -103,12 +108,12 @@ export default function DashboardPage() {
           <Card>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-ink-900">Revenue & Profit Trend</h3>
+                <h3 className="text-base font-bold text-ink-900">{showProfit ? "Revenue & Profit Trend" : "Revenue Trend"}</h3>
                 <p className="text-xs text-slate-500">Daily over the selected period</p>
               </div>
               <div className="flex gap-4 text-xs">
                 <Legend color="#1f5ff5" label="Revenue" />
-                <Legend color="#34d399" label="Profit" />
+                {showProfit && <Legend color="#34d399" label="Profit" />}
               </div>
             </div>
             <div className="h-72 w-full">
@@ -128,7 +133,7 @@ export default function DashboardPage() {
                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={48} />
                   <Tooltip content={<ChartTooltip />} />
                   <Area type="monotone" dataKey="revenue" stroke="#1f5ff5" strokeWidth={2.5} fill="url(#rev)" />
-                  <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={2.5} fill="url(#prof)" />
+                  {showProfit && <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={2.5} fill="url(#prof)" />}
                 </AreaChart>
               </ResponsiveContainer>
             </div>

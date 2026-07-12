@@ -1,5 +1,7 @@
 import { readDB } from "@/lib/db";
 import { respondReport, type ReportData } from "@/lib/reportExport";
+import { getSession } from "@/lib/session";
+import { canSeeProfit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,11 @@ export async function GET(req: Request) {
     .map((x) => ({ ...x, revenue: round2(x.revenue), cost: round2(x.cost), profit: round2(x.revenue - x.cost) }))
     .sort((a, b) => a.category.localeCompare(b.category) || b.qty - a.qty);
 
+  const session = await getSession();
+  // Profit is restricted to Procurement + owner — drop the column for
+  // everyone else rather than exporting the real figure to a file.
+  const showProfit = !!session && canSeeProfit(session.role);
+
   const period = from && from === to ? from : `${from || "start"} → ${to || "today"}`;
   const data: ReportData = {
     title: "Sales by Category",
@@ -55,7 +62,7 @@ export async function GET(req: Request) {
       { header: "Item Name", get: (r: any) => r.name, width: 2 },
       { header: "Qty Sold", get: (r: any) => r.qty, num: true },
       { header: "Revenue", get: (r: any) => r.revenue, money: true },
-      { header: "Profit", get: (r: any) => r.profit, money: true },
+      ...(showProfit ? [{ header: "Profit", get: (r: any) => r.profit, money: true }] : []),
     ],
   };
   return respondReport(data, format);

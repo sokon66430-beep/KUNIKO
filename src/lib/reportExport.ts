@@ -290,7 +290,7 @@ export type ReportKey =
   | "goods-receipts"
   | "stock-counts";
 
-export function getReportData(key: ReportKey, db: DB, q: ReportQuery): ReportData {
+export function getReportData(key: ReportKey, db: DB, q: ReportQuery, showProfit = true): ReportData {
   const biz = db.meta.business?.name || "Stookii";
   const note = filterNote(q);
   const subtitle = `${biz}   |   ${note}`;
@@ -301,7 +301,7 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery): ReportDat
         .filter((s) => inRange(s.createdAt, q))
         .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
       return {
-        title: "Sales & Profit Report",
+        title: showProfit ? "Sales & Profit Report" : "Sales Report",
         filename: "Sales-Report",
         subtitle,
         rows,
@@ -315,8 +315,14 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery): ReportDat
           { header: "Discount", get: (s) => s.discount, money: true },
           { header: "Tax", get: (s) => s.tax, money: true },
           { header: "Total", get: (s) => s.total, money: true },
-          { header: "Cost", get: (s) => s.cost, money: true },
-          { header: "Profit", get: (s) => s.profit, money: true },
+          // Cost/Profit are restricted to Procurement + owner (revenue next
+          // to cost lets anyone back out the margin, so both drop together).
+          ...(showProfit
+            ? [
+                { header: "Cost", get: (s: any) => s.cost, money: true },
+                { header: "Profit", get: (s: any) => s.profit, money: true },
+              ]
+            : []),
           { header: "Payment", get: (s) => s.paymentMethod },
         ],
       };
@@ -467,9 +473,13 @@ export async function respondReport(r: ReportData, format: string): Promise<Next
 // Convenience for routes: read db, parse query, build, respond.
 export async function sendReport(req: Request, key: ReportKey): Promise<NextResponse> {
   const { readDB } = await import("./db");
+  const { getSession } = await import("./session");
+  const { canSeeProfit } = await import("./access");
   const db = await readDB();
   const q = parseQuery(req.url);
   const format = new URL(req.url).searchParams.get("format") || "xlsx";
-  const data = getReportData(key, db, q);
+  const session = await getSession();
+  const showProfit = !!session && canSeeProfit(session.role);
+  const data = getReportData(key, db, q, showProfit);
   return respondReport(data, format);
 }

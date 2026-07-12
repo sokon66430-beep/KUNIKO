@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { Role } from "./auth";
 
 export async function api<T = any>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -60,4 +61,12 @@ export function useFetch<T>(url: string): {
   }, [url, tick]);
 
   return { data, loading, error, reload };
+}
+
+// Current user's role, for screens that need to hide a widget rather than a
+// whole page (e.g. profit figures) — full page-level gating lives in
+// AppShell/Sidebar via canAccessPage instead.
+export function useRole(): Role | null {
+  const { data } = useFetch<{ user: { role: Role } }>("/api/auth/session");
+  return data?.user.role ?? null;
 }

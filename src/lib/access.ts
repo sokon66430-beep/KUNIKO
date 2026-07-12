@@ -67,3 +67,11 @@ export function canAccessPage(role: Role, pathname: string, denied?: string[]): 
 export function canManageStaff(role: Role): boolean {
   return role === "owner" || role === "manager" || role === "area_manager";
 }
+
+// Profit/margin figures (Dashboard, Reports, POS Sales Report) are a level
+// more sensitive than the pages above — restricted to Procurement, who
+// negotiate cost, plus the owner. Cost is gated the same way: showing revenue
+// and cost side by side lets anyone back out the profit anyway.
+export function canSeeProfit(role: Role): boolean {
+  return role === "owner" || role === "procurement";
+}

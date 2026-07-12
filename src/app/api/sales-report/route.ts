@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
+import { getSession } from "@/lib/session";
+import { canSeeProfit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -61,14 +63,20 @@ export async function GET(req: Request) {
   const byItem = [...items.values()].map(finish).sort((a, b) => b.qty - a.qty);
   const byCategory = [...cats.values()].map(finish).sort((a, b) => b.revenue - a.revenue);
 
+  const session = await getSession();
+  // Cost + profit are restricted to Procurement + owner — showing revenue and
+  // cost side by side lets anyone back out the margin, so both are zeroed.
+  const hideProfit = !session || !canSeeProfit(session.role);
+  const strip = <T extends { cost: number; profit: number }>(x: T) => (hideProfit ? { ...x, cost: 0, profit: 0 } : x);
+
   return NextResponse.json({
-    byItem,
-    byCategory,
+    byItem: byItem.map(strip),
+    byCategory: byCategory.map(strip),
     totals: {
       qty: totalQty,
       revenue: round2(totalRevenue),
-      cost: round2(totalCost),
-      profit: round2(totalRevenue - totalCost),
+      cost: hideProfit ? 0 : round2(totalCost),
+      profit: hideProfit ? 0 : round2(totalRevenue - totalCost),
       sales: saleCount,
     },
   });

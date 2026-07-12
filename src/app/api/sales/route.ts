@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Sale, SaleItem } from "@/lib/types";
+import { getSession } from "@/lib/session";
+import { canSeeProfit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,13 @@ export async function GET(req: Request) {
   const db = await readDB();
   const limit = Number(new URL(req.url).searchParams.get("limit")) || 50;
   const sales = [...db.sales].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, limit);
-  return NextResponse.json(sales);
+
+  const session = await getSession();
+  if (session && canSeeProfit(session.role)) return NextResponse.json(sales);
+
+  // Cost/profit are restricted to Procurement + owner.
+  const redacted = sales.map((s) => ({ ...s, cost: 0, profit: 0 }));
+  return NextResponse.json(redacted);
 }
 
 export async function POST(req: Request) {

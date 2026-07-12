@@ -14,12 +14,13 @@ import {
   YAxis,
 } from "recharts";
 import { Download, RotateCcw } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useRole } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import type { Sale } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { usd, num, pct, dateTime } from "@/lib/format";
+import { canSeeProfit } from "@/lib/access";
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
@@ -35,6 +36,8 @@ export default function ReportsPage() {
   const { data, loading, error, reload } = useFetch<Stats>(`/api/stats?range=${range}`);
   const { data: sales, reload: reloadSales } = useFetch<Sale[]>("/api/sales?limit=25");
   const [resetting, setResetting] = useState(false);
+  const role = useRole();
+  const showProfit = role == null || canSeeProfit(role);
 
   async function resetDemo() {
     if (
@@ -57,20 +60,23 @@ export default function ReportsPage() {
 
   function exportCsv() {
     if (!sales) return;
+    const header = ["Invoice", "Date", "Customer", "Payment", "Items", "Subtotal", "Discount", "VAT", "Total"];
     const rows = [
-      ["Invoice", "Date", "Customer", "Payment", "Items", "Subtotal", "Discount", "VAT", "Total", "Profit"],
-      ...sales.map((s) => [
-        s.invoiceNo,
-        new Date(s.createdAt).toISOString(),
-        s.customerName || "Walk-in",
-        s.paymentMethod,
-        String(s.items.reduce((a, it) => a + it.qty, 0)),
-        s.subtotal.toFixed(2),
-        s.discount.toFixed(2),
-        s.tax.toFixed(2),
-        s.total.toFixed(2),
-        s.profit.toFixed(2),
-      ]),
+      showProfit ? [...header, "Profit"] : header,
+      ...sales.map((s) => {
+        const row = [
+          s.invoiceNo,
+          new Date(s.createdAt).toISOString(),
+          s.customerName || "Walk-in",
+          s.paymentMethod,
+          String(s.items.reduce((a, it) => a + it.qty, 0)),
+          s.subtotal.toFixed(2),
+          s.discount.toFixed(2),
+          s.tax.toFixed(2),
+          s.total.toFixed(2),
+        ];
+        return showProfit ? [...row, s.profit.toFixed(2)] : row;
+      }),
     ];
     const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -122,9 +128,9 @@ export default function ReportsPage() {
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <Kpi label="Gross Revenue" value={usd(data.revenue)} />
             <Kpi label="Net Sales" value={usd(data.netSales)} />
-            <Kpi label="Gross Profit" value={usd(data.profit)} tone="emerald" />
-            <Kpi label="Profit Margin" value={pct(data.margin)} tone="emerald" />
-            <Kpi label="Cost of Goods" value={usd(data.cogs)} />
+            {showProfit && <Kpi label="Gross Profit" value={usd(data.profit)} tone="emerald" />}
+            {showProfit && <Kpi label="Profit Margin" value={pct(data.margin)} tone="emerald" />}
+            {showProfit && <Kpi label="Cost of Goods" value={usd(data.cogs)} />}
             <Kpi label="VAT Collected" value={usd(data.tax)} />
             <Kpi label="Discounts Given" value={usd(data.discount)} tone="rose" />
             <Kpi label="Avg. Ticket" value={usd(data.avgTicket)} />
@@ -132,7 +138,7 @@ export default function ReportsPage() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
-              <h3 className="mb-1 text-base font-bold text-ink-900">Daily Revenue vs Profit</h3>
+              <h3 className="mb-1 text-base font-bold text-ink-900">{showProfit ? "Daily Revenue vs Profit" : "Daily Revenue"}</h3>
               <p className="mb-4 text-xs text-slate-500">{data.txCount} transactions · {num(data.itemsSold)} items</p>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -142,7 +148,7 @@ export default function ReportsPage() {
                     <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={48} />
                     <Tooltip content={<MoneyTooltip />} />
                     <Bar dataKey="revenue" name="Revenue" radius={[3, 3, 0, 0]} fill="#1f5ff5" />
-                    <Bar dataKey="profit" name="Profit" radius={[3, 3, 0, 0]} fill="#34d399" />
+                    {showProfit && <Bar dataKey="profit" name="Profit" radius={[3, 3, 0, 0]} fill="#34d399" />}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -190,7 +196,7 @@ export default function ReportsPage() {
                     <th className="px-5 py-3 font-semibold">Product</th>
                     <th className="px-5 py-3 text-right font-semibold">Qty Sold</th>
                     <th className="px-5 py-3 text-right font-semibold">Revenue</th>
-                    <th className="px-5 py-3 text-right font-semibold">Profit</th>
+                    {showProfit && <th className="px-5 py-3 text-right font-semibold">Profit</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -203,7 +209,7 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-5 py-3 text-right text-slate-600">{num(p.qty)}</td>
                       <td className="px-5 py-3 text-right font-semibold text-ink-900">{usd(p.revenue)}</td>
-                      <td className="px-5 py-3 text-right text-emerald-600">{usd(p.profit)}</td>
+                      {showProfit && <td className="px-5 py-3 text-right text-emerald-600">{usd(p.profit)}</td>}
                     </tr>
                   ))}
                 </tbody>
