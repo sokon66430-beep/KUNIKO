@@ -62,17 +62,21 @@ export default function PermissionsPage() {
         subtitle="Control which functions each role can see and use. The owner always has full access."
       />
 
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
+      {/* The card is the scroll area (both directions), so the header row can
+          stay frozen on top and the Function column frozen on the left. */}
+      <Card className="max-h-[calc(100vh-14rem)] overflow-auto !p-0">
+        {/* border-separate (not collapse) — sticky headers glitch inside a
+            border-collapse table, so each cell carries its own bottom border. */}
+        <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/70">
-              <th className="sticky left-0 z-10 bg-slate-50/70 px-5 py-3 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            <tr>
+              <th className="sticky left-0 top-0 z-30 border-b border-slate-100 bg-slate-50 px-5 py-3 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
                 Function
               </th>
               {data.roles.map((role) => (
                 <th
                   key={role}
-                  className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500"
+                  className="sticky top-0 z-20 border-b border-slate-100 bg-slate-50 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500"
                 >
                   {ROLE_LABEL[role] || role}
                 </th>
@@ -81,14 +85,16 @@ export default function PermissionsPage() {
           </thead>
           <tbody>
             {data.pages.map((page) => (
-              <tr key={page.href} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40">
-                <td className="sticky left-0 z-10 bg-white px-5 py-3 font-medium text-ink-800">{page.label}</td>
+              <tr key={page.href} className="hover:bg-slate-50/40">
+                <td className="sticky left-0 z-10 border-b border-slate-50 bg-white px-5 py-3 font-medium text-ink-800">
+                  {page.label}
+                </td>
                 {data.roles.map((role) => {
                   const isDenied = (denied[role] ?? []).includes(page.href);
                   const key = `${role}:${page.href}`;
                   const busy = saving === key;
                   return (
-                    <td key={role} className="px-3 py-3 text-center">
+                    <td key={role} className="border-b border-slate-50 px-3 py-3 text-center">
                       <button
                         type="button"
                         disabled={busy}
