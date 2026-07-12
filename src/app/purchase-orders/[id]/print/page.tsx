@@ -23,6 +23,15 @@ function ddmmyyyy(iso?: string) {
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
 
+// When no expected-arrival date was set on the PO, default the printed EST.
+// ARRIVAL to the day after the order date instead of leaving it blank.
+function estArrival(expectedDate: string | undefined, createdAt: string): string {
+  if (expectedDate) return ddmmyyyy(expectedDate);
+  const d = new Date(createdAt);
+  d.setDate(d.getDate() + 1);
+  return ddmmyyyy(d.toISOString());
+}
+
 // Column widths (must total 100 for the fixed table layout). Numeric columns get
 // enough room for their header to wrap cleanly instead of overflowing.
 const COLW = ["5%", "12%", "31%", "8%", "6%", "7%", "11%", "11%", "9%"];
@@ -123,47 +132,51 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             pageBreakAfter: p < totalPages - 1 ? "always" : "auto",
           }}
         >
-          {/* Logo pinned to the top-left corner; title stays centered on the sheet */}
-          <div className="mb-5" style={{ position: "relative" }}>
-            {business.logo && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={business.logo}
-                alt="Logo"
-                style={{ position: "absolute", top: -27, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
-              />
-            )}
-            <h1
-              style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1, marginTop: 38 }}
-              className="text-center"
-            >
-              PURCHASE ORDER
-            </h1>
-          </div>
+          {/* Logo, title and the full header info block only appear on page 1 —
+              continuation pages go straight to the item table. */}
+          {p === 0 && (
+            <>
+              <div className="mb-5" style={{ position: "relative" }}>
+                {business.logo && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={business.logo}
+                    alt="Logo"
+                    style={{ position: "absolute", top: -27, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
+                  />
+                )}
+                <h1
+                  style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1, marginTop: 38 }}
+                  className="text-center"
+                >
+                  PURCHASE ORDER
+                </h1>
+              </div>
 
-          {/* Header block — 4 rows, two label/value blocks, thin rule underneath */}
-          <div
-            className="mb-4"
-            style={{
-              display: "grid",
-              // Right-hand label/value pair starts at the same x-position as the
-              // "Unit Price (ex VAT)" column in the table below (69% across).
-              gridTemplateColumns: "14% 55% 13% 18%",
-              columnGap: 12,
-              rowGap: 8,
-              paddingBottom: 14,
-              borderBottom: "1px solid #D1D5DB",
-            }}
-          >
-            <HeaderCell label="SUPPLIER" value={po.supplier} bold />
-            <HeaderCell label="PO NUMBER" value={po.poNo} />
-            <HeaderCell label="BRANCH" value={business.branch} />
-            <HeaderCell label="ORDER DATE" value={ddmmyyyy(po.createdAt)} />
-            <HeaderCell label="SHIP TO" value={business.shipTo} />
-            <HeaderCell label="EST. ARRIVAL" value={ddmmyyyy(po.expectedDate)} />
-            <HeaderCell label="RECEIVED BY" value={business.receivedBy} />
-            <HeaderCell label="Requested By" value={business.authorizedBy} />
-          </div>
+              <div
+                className="mb-4"
+                style={{
+                  display: "grid",
+                  // Right-hand label/value pair starts at the same x-position as the
+                  // "Unit Price (ex VAT)" column in the table below (69% across).
+                  gridTemplateColumns: "14% 55% 13% 18%",
+                  columnGap: 12,
+                  rowGap: 8,
+                  paddingBottom: 14,
+                  borderBottom: "1px solid #D1D5DB",
+                }}
+              >
+                <HeaderCell label="SUPPLIER" value={po.supplier} bold />
+                <HeaderCell label="PO NUMBER" value={po.poNo} />
+                <HeaderCell label="BRANCH" value={business.branch} />
+                <HeaderCell label="ORDER DATE" value={ddmmyyyy(po.createdAt)} />
+                <HeaderCell label="SHIP TO" value={business.shipTo} />
+                <HeaderCell label="EST. ARRIVAL" value={estArrival(po.expectedDate, po.createdAt)} />
+                <HeaderCell label="RECEIVED BY" value={business.receivedBy} />
+                <HeaderCell label="Requested By" value={business.authorizedBy} />
+              </div>
+            </>
+          )}
 
           {/* Line-item table. On a trailing page dedicated to totals/notes/signature
               (pg.items === null), tbody is empty but the table still renders so the
@@ -333,7 +346,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
 
           {/* Page number — printed on every page since Chrome's print-to-PDF
               has no automatic per-page footer support. */}
-          <div style={{ fontFamily: CALIBRI, fontSize: 10, color: "#6B7280", textAlign: "right", marginTop: 12 }}>
+          <div style={{ fontFamily: CALIBRI, fontSize: 10, color: "#6B7280", textAlign: "center", marginTop: 12 }}>
             Page {p + 1} of {totalPages}
           </div>
         </div>

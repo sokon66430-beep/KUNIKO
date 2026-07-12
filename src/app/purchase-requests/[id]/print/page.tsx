@@ -103,45 +103,49 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
             pageBreakAfter: p < totalPages - 1 ? "always" : "auto",
           }}
         >
-          {/* Logo pinned to the top-left corner; title stays centered on the sheet */}
-          <div className="mb-5" style={{ position: "relative" }}>
-            {business.logo && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={business.logo}
-                alt="Logo"
-                style={{ position: "absolute", top: -27, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
-              />
-            )}
-            <h1
-              style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1, marginTop: 38 }}
-              className="text-center"
-            >
-              PURCHASE REQUEST
-            </h1>
-          </div>
+          {/* Logo, title and the full header info block only appear on page 1 —
+              continuation pages go straight to the item table. */}
+          {p === 0 && (
+            <>
+              <div className="mb-5" style={{ position: "relative" }}>
+                {business.logo && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={business.logo}
+                    alt="Logo"
+                    style={{ position: "absolute", top: -27, left: 0, maxHeight: 56, maxWidth: 170, objectFit: "contain" }}
+                  />
+                )}
+                <h1
+                  style={{ fontFamily: CALIBRI, fontWeight: 700, fontSize: 30, letterSpacing: 1, marginTop: 38 }}
+                  className="text-center"
+                >
+                  PURCHASE REQUEST
+                </h1>
+              </div>
 
-          {/* Header block */}
-          <div
-            className="mb-4"
-            style={{
-              display: "grid",
-              // Right-hand label/value pair starts at the same x-position as the
-              // "EST. UNIT COST" column in the table below (72% across).
-              gridTemplateColumns: "14% 58% 10% 18%",
-              columnGap: 12,
-              rowGap: 8,
-              paddingBottom: 14,
-              borderBottom: "1px solid #D1D5DB",
-            }}
-          >
-            <HeaderCell label="PR NUMBER" value={pr.prNo} bold />
-            <HeaderCell label="STATUS" value={pr.status} />
-            <HeaderCell label="BRANCH" value={business.branch} />
-            <HeaderCell label="DATE" value={ddmmyyyy(pr.createdAt)} />
-            <HeaderCell label="REQUESTED BY" value={pr.requestedBy} />
-            {pr.decidedAt && <HeaderCell label="DECIDED" value={ddmmyyyy(pr.decidedAt)} />}
-          </div>
+              <div
+                className="mb-4"
+                style={{
+                  display: "grid",
+                  // Right-hand label/value pair starts at the same x-position as the
+                  // "EST. UNIT COST" column in the table below (72% across).
+                  gridTemplateColumns: "14% 58% 10% 18%",
+                  columnGap: 12,
+                  rowGap: 8,
+                  paddingBottom: 14,
+                  borderBottom: "1px solid #D1D5DB",
+                }}
+              >
+                <HeaderCell label="PR NUMBER" value={pr.prNo} bold />
+                <HeaderCell label="STATUS" value={pr.status} />
+                <HeaderCell label="BRANCH" value={business.branch} />
+                <HeaderCell label="DATE" value={ddmmyyyy(pr.createdAt)} />
+                <HeaderCell label="REQUESTED BY" value={pr.requestedBy} />
+                {pr.decidedAt && <HeaderCell label="DECIDED" value={ddmmyyyy(pr.decidedAt)} />}
+              </div>
+            </>
+          )}
 
           {p === 0 && pr.note && (
             <div
@@ -299,7 +303,7 @@ export default function PRPrintPage({ params }: { params: { id: string } }) {
 
           {/* Page number — printed on every page since Chrome's print-to-PDF
               has no automatic per-page footer support. */}
-          <div style={{ fontFamily: CALIBRI, fontSize: 10, color: "#6B7280", textAlign: "right", marginTop: 12 }}>
+          <div style={{ fontFamily: CALIBRI, fontSize: 10, color: "#6B7280", textAlign: "center", marginTop: 12 }}>
             Page {p + 1} of {totalPages}
           </div>
         </div>
