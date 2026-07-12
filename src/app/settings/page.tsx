@@ -121,6 +121,8 @@ export default function SettingsPage() {
 
       <ClearSalesCard />
 
+      <ClearProductsCard />
+
       <CleanupDuplicatesCard />
 
       {saved && (
@@ -390,6 +392,103 @@ function ClearSalesCard() {
           <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
         )}
       </div>
+    </Card>
+  );
+}
+
+// Owner-only: wipe the ENTIRE product master so a fresh one can be imported.
+// Destructive enough that the owner must re-type their password to approve —
+// a signed-in session alone doesn't unlock it.
+function ClearProductsCard() {
+  const role = useRole();
+  const [arming, setArming] = useState(false); // password step revealed?
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (role !== "owner") return null;
+
+  async function clearProducts() {
+    if (!password.trim()) {
+      setMsg({ ok: false, text: "Enter your password to approve." });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ removed: number }>("/api/products/clear-all", {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      });
+      setMsg({ ok: true, text: `Deleted ${r.removed} product${r.removed === 1 ? "" : "s"}. You can import a fresh master now.` });
+      setArming(false);
+      setPassword("");
+    } catch (e: any) {
+      setMsg({ ok: false, text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6 border-rose-200">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-rose-700">
+        <Trash2 size={16} /> Clear all products
+      </h3>
+      <p className="mb-4 text-xs text-slate-500">
+        Delete <b>every product</b> in this store so a fresh product master can be imported. Sales, orders and
+        receipts keep their own history. Owner only — your password is required to approve, and it cannot be undone.
+      </p>
+      {!arming ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+            onClick={() => {
+              setArming(true);
+              setMsg(null);
+            }}
+          >
+            <Trash2 size={16} /> Clear all products…
+          </button>
+          {msg && (
+            <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="label">Your password (to approve)</label>
+            <input
+              className="input"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+          <button
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+            disabled={busy || !password.trim()}
+            onClick={clearProducts}
+          >
+            <Trash2 size={16} /> {busy ? "Deleting…" : "Delete ALL products"}
+          </button>
+          <button
+            className="btn-ghost"
+            disabled={busy}
+            onClick={() => {
+              setArming(false);
+              setPassword("");
+              setMsg(null);
+            }}
+          >
+            Cancel
+          </button>
+          {msg && (
+            <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
