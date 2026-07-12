@@ -33,6 +33,10 @@ export default function ReceivingPage() {
   const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  // Supplier invoices scanned on each PO card (held here until the receipt is
+  // confirmed, then sent with it). Keyed by PO id.
+  const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string>>({});
+  const [invoiceCamPo, setInvoiceCamPo] = useState<string | null>(null);
 
   // Open a receipt's PDF inside the app (so it can be viewed and printed here).
   async function openPdf(g: GoodsReceipt) {
@@ -100,12 +104,9 @@ export default function ReceivingPage() {
             const ordered = po.items.reduce((s, i) => s + i.qtyOrdered, 0);
             const received = po.items.reduce((s, i) => s + Math.min(i.qtyReceived, i.qtyOrdered), 0);
             const pct = ordered ? Math.round((received / ordered) * 100) : 0;
+            const hasInvoice = !!invoiceByPo[po.id];
             return (
-              <button
-                key={po.id}
-                onClick={() => setReceiving(po)}
-                className="card p-5 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
-              >
+              <div key={po.id} className="card p-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-bold text-ink-900">{po.poNo}</p>
@@ -124,16 +125,35 @@ export default function ReceivingPage() {
                     {received}/{ordered}
                   </span>
                 </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <p className="text-xs text-slate-400">
-                    {po.items.length} line{po.items.length === 1 ? "" : "s"}
-                    {po.expectedDate ? ` · due ${shortDate(po.expectedDate)}` : ""}
-                  </p>
-                  <span className="chip bg-brand-50 text-brand-600">
-                    <ScanLine size={13} /> Receive
-                  </span>
+                <p className="mt-3 text-xs text-slate-400">
+                  {po.items.length} line{po.items.length === 1 ? "" : "s"}
+                  {po.expectedDate ? ` · due ${shortDate(po.expectedDate)}` : ""}
+                </p>
+                {/* Step 1: scan the supplier invoice · Step 2: receive the goods */}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceCamPo(po.id)}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                      hasInvoice
+                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {hasInvoice ? <CheckCircle2 size={14} /> : <Camera size={14} />}
+                    {hasInvoice ? "Invoice ✓" : "Scan Invoice"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReceiving(po)}
+                    disabled={!hasInvoice}
+                    title={hasInvoice ? undefined : "Scan the supplier invoice first"}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-700 disabled:opacity-40"
+                  >
+                    <ScanLine size={14} /> Receive
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -241,12 +261,27 @@ export default function ReceivingPage() {
         )}
       </Card>
 
+      {/* Invoice camera opened from a PO card — holds the photo for that PO. */}
+      <InvoiceCamera
+        open={!!invoiceCamPo}
+        onClose={() => setInvoiceCamPo(null)}
+        onCapture={(d) => setInvoiceByPo((prev) => ({ ...prev, [invoiceCamPo!]: d }))}
+      />
+
       {receiving && (
         <ReceiveModal
           po={receiving}
+          invoice={invoiceByPo[receiving.id] || ""}
+          onScanInvoice={() => setInvoiceCamPo(receiving.id)}
           onClose={() => setReceiving(null)}
           onDone={() => {
+            const doneId = receiving.id;
             setReceiving(null);
+            setInvoiceByPo((prev) => {
+              const n = { ...prev };
+              delete n[doneId];
+              return n;
+            });
             reload();
             reloadGrns();
           }}
@@ -572,10 +607,14 @@ function ApproveModal({
 
 function ReceiveModal({
   po,
+  invoice,
+  onScanInvoice,
   onClose,
   onDone,
 }: {
   po: PurchaseOrder;
+  invoice: string; // supplier invoice scanned on the PO card (required)
+  onScanInvoice: () => void;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -673,31 +712,6 @@ function ReceiveModal({
     scanRef.current?.focus();
   }
 
-  // Supplier invoice photo — REQUIRED before the receipt can be submitted.
-  // Compressed client-side so uploads stay small even from a phone camera.
-  const [invoice, setInvoice] = useState<string>("");
-  const [invoiceCamOpen, setInvoiceCamOpen] = useState(false);
-  const invoiceRef = useRef<HTMLInputElement>(null);
-  function pickInvoice(file: File) {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const MAX = 1600;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      setInvoice(canvas.toDataURL("image/jpeg", 0.72));
-      URL.revokeObjectURL(url);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      alert("Could not read that image — try another photo.");
-    };
-    img.src = url;
-  }
-
   async function confirm() {
     const items = po.items
       .map((it) => ({ productId: it.productId, qtyReceived: now[it.productId] || 0 }))
@@ -707,7 +721,7 @@ function ReceiveModal({
       return;
     }
     if (!invoice) {
-      setFlash({ tone: "warn", text: "Scan the supplier's invoice first — it's required" });
+      setFlash({ tone: "warn", text: "Scan the supplier's invoice on the PO card first — it's required" });
       return;
     }
     setBusy(true);
@@ -883,23 +897,11 @@ function ReceiveModal({
         </table>
       </div>
 
-      {/* Supplier invoice — must be scanned before the receipt can be submitted */}
+      {/* Supplier invoice — scanned on the PO card; shown here as status. */}
       <div className="mt-4">
         <label className="label flex items-center gap-1.5">
           <FileType2 size={13} /> Supplier invoice <span className="text-rose-500">*</span>
         </label>
-        <input
-          ref={invoiceRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) pickInvoice(f);
-            e.target.value = "";
-          }}
-        />
         {invoice ? (
           <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -908,31 +910,20 @@ function ReceiveModal({
               <p className="text-sm font-semibold text-emerald-700">Invoice attached ✓</p>
               <p className="text-xs text-slate-500">Accounting will review it after you confirm.</p>
             </div>
-            <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => setInvoiceCamOpen(true)}>
+            <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={onScanInvoice}>
               Retake
             </button>
           </div>
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setInvoiceCamOpen(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-4 text-sm font-semibold text-slate-500 transition hover:border-brand-400 hover:text-brand-600"
-            >
-              <Camera size={17} /> Open camera &amp; scan the invoice (required)
-            </button>
-            <button
-              type="button"
-              onClick={() => invoiceRef.current?.click()}
-              className="mt-1.5 text-xs font-semibold text-slate-400 hover:text-brand-600 hover:underline"
-            >
-              …or upload a photo from the gallery
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={onScanInvoice}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/60 px-4 py-4 text-sm font-semibold text-amber-700 transition hover:border-amber-400"
+          >
+            <Camera size={17} /> No invoice yet — scan the supplier invoice (required)
+          </button>
         )}
       </div>
-
-      <InvoiceCamera open={invoiceCamOpen} onClose={() => setInvoiceCamOpen(false)} onCapture={(d) => setInvoice(d)} />
 
       <div className="mt-4">
         <label className="label flex items-center gap-1.5">
