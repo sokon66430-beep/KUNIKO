@@ -35,6 +35,16 @@ const num = (v: any) => {
   return isFinite(n) ? n : 0;
 };
 
+// Normalizers so a product still matches despite cosmetic differences between
+// the sheet and the master. Header names ignore spacing/punctuation ("Item ID"
+// == "item-id"); barcodes ignore stray spaces; item codes and names ignore case
+// and extra whitespace. All are exact-after-normalizing (never fuzzy), so they
+// can't cause a wrong product to match.
+const normHeader = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const cleanBarcode = (s: string) => s.replace(/\s+/g, "");
+const cleanSku = (s: string) => s.trim().toLowerCase();
+const cleanName = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
 // Best-effort date parse → yyyy-mm-dd. Accepts Excel Date cells (including a
 // formula cell whose computed result is a Date) and common text.
 function toDayKey(cellValue: any, text: string): string | null {
@@ -98,9 +108,12 @@ export async function POST(req: Request) {
   const colOf: Record<string, number> = {};
   for (let r = 1; r <= Math.min(ws.rowCount, 15) && !headerRow; r++) {
     const texts: string[] = [];
-    for (let c = 1; c <= maxCol; c++) texts[c] = cellText(r, c).toLowerCase();
+    for (let c = 1; c <= maxCol; c++) texts[c] = normHeader(cellText(r, c));
     const find = (key: string) => {
-      for (const alias of ALIASES[key]) for (let c = 1; c <= maxCol; c++) if (texts[c] === alias) return c;
+      for (const alias of ALIASES[key]) {
+        const a = normHeader(alias);
+        for (let c = 1; c <= maxCol; c++) if (texts[c] === a) return c;
+      }
       return 0;
     };
     // Need a product identifier + a quantity to count a sale.
@@ -185,9 +198,9 @@ export async function POST(req: Request) {
   const bySku = new Map<string, any>();
   const byName = new Map<string, any>();
   for (const p of db.products) {
-    if (p.barcode) byBarcode.set(p.barcode, p);
-    if (p.sku) bySku.set(p.sku.toLowerCase(), p);
-    byName.set(p.name.toLowerCase(), p);
+    if (p.barcode) byBarcode.set(cleanBarcode(p.barcode), p);
+    if (p.sku) bySku.set(cleanSku(p.sku), p);
+    byName.set(cleanName(p.name), p);
   }
 
   type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string };
@@ -195,9 +208,9 @@ export async function POST(req: Request) {
   const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
   for (const row of rows) {
     const p =
-      (row.barcode && byBarcode.get(row.barcode)) ||
-      (row.sku && bySku.get(row.sku.toLowerCase())) ||
-      (row.name && byName.get(row.name.toLowerCase()));
+      (row.barcode && byBarcode.get(cleanBarcode(row.barcode))) ||
+      (row.sku && bySku.get(cleanSku(row.sku))) ||
+      (row.name && byName.get(cleanName(row.name)));
     if (!p) {
       problems.push({ row: row.rowNum, message: `no product found for "${row.sku || row.barcode || row.name}"` });
       const key = (row.barcode || row.sku || row.name).toLowerCase();
