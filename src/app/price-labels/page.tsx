@@ -217,6 +217,7 @@ export default function PriceLabelsPage() {
   }, [scan, list]);
 
   function addProduct(p: Product) {
+    const alreadyInBatch = batch.some((l) => l.product.id === p.id);
     setBatch((b) => {
       const existing = b.find((l) => l.product.id === p.id);
       // Newest always on the top row; re-scanning bumps its qty and moves it up.
@@ -231,6 +232,17 @@ export default function PriceLabelsPage() {
         ...b,
       ];
     });
+    // Scanning with a shelf location set at the top REGISTERS that location on
+    // the product, so it's remembered everywhere (stock count, etc.) — not just
+    // printed on this label. Only when it's new to the batch and actually
+    // changes something.
+    if (!alreadyInBatch && (curGondola || curShelf)) {
+      const gondola = curGondola || p.gondola || "";
+      const shelf = curShelf || p.shelf || "";
+      if (gondola !== (p.gondola || "") || shelf !== (p.shelf || "")) {
+        saveLocation({ product: p, qty: 1, gondola, shelf });
+      }
+    }
     setScan("");
     setNotice(null);
     scanRef.current?.focus();
