@@ -254,9 +254,12 @@ export default function PriceLabelsPage() {
     setBatch((b) => b.map((l) => (l.product.id === id ? { ...l, [field]: value } : l)));
   }
   function saveLocation(line: BatchLine) {
+    if (!line.gondola && !line.shelf) return;
+    // Register this spot on the product (kept alongside any other spots), so a
+    // product in several places remembers them all.
     api(`/api/products/${line.product.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ gondola: line.gondola, shelf: line.shelf }),
+      body: JSON.stringify({ addLocation: { gondola: line.gondola, shelf: line.shelf } }),
     }).catch(() => {
       /* best-effort — the label still prints what was typed */
     });

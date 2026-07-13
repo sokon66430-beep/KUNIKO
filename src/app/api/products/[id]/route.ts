@@ -3,6 +3,7 @@ import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { resolveSupplier, supplierNotInSystem } from "@/lib/supplierLink";
+import type { ProductLocation } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,34 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           (product.supplierCode || "") === (body.supplierCode || "");
         if (!unchanged) return { error: supplierNotInSystem(sup.input) };
       }
+    }
+
+    // addLocation = "this product is ALSO displayed here". Appends the spot to
+    // the product's location list (deduped) and updates the primary gondola/
+    // shelf, so a product in 2–3 places keeps them all instead of overwriting.
+    if (body.addLocation && typeof body.addLocation === "object") {
+      const g = String(body.addLocation.gondola || "").trim();
+      const s = String(body.addLocation.shelf || "").trim();
+      if (g || s) {
+        const locs: ProductLocation[] =
+          product.locations ??
+          (product.gondola || product.shelf ? [{ gondola: product.gondola || "", shelf: product.shelf || "" }] : []);
+        if (!locs.some((l) => (l.gondola || "") === g && (l.shelf || "") === s)) locs.push({ gondola: g, shelf: s });
+        product.locations = locs;
+        product.gondola = g || undefined; // primary = most recent, for the label
+        product.shelf = s || undefined;
+      }
+      delete body.addLocation;
+    }
+    // Direct set of the full list (e.g. removing a wrong spot from the editor).
+    if (Array.isArray(body.locations)) {
+      const locs: ProductLocation[] = body.locations
+        .map((l: any) => ({ gondola: String(l?.gondola || "").trim(), shelf: String(l?.shelf || "").trim() }))
+        .filter((l: ProductLocation) => l.gondola || l.shelf);
+      product.locations = locs;
+      product.gondola = locs[0]?.gondola || undefined;
+      product.shelf = locs[0]?.shelf || undefined;
+      delete body.locations;
     }
 
     const prevStock = product.stock;

@@ -4,6 +4,7 @@ import { buildStockCountWorkbook } from "@/lib/excelExport";
 import { buildCsv, buildPdf, type Col } from "@/lib/reportExport";
 import { getSession } from "@/lib/session";
 import { canSeeProfit } from "@/lib/access";
+import { formatLocations } from "@/lib/location";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         barcode: p.barcode || "",
         name: p.name,
         category: p.category || "",
-        gondola: p.gondola || "",
-        shelf: p.shelf || "",
+        locations: formatLocations(p),
         unit: p.unit || "",
         systemQty: p.stock,
         countedQty: cq ?? "",
@@ -49,8 +49,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       { header: "Barcode", get: (r: any) => r.barcode },
       { header: "Product Name", get: (r: any) => r.name, width: 2 },
       { header: "Category", get: (r: any) => r.category },
-      { header: "Gondola", get: (r: any) => r.gondola },
-      { header: "Shelf", get: (r: any) => r.shelf },
+      { header: "Location(s)", get: (r: any) => r.locations },
       { header: "Unit", get: (r: any) => r.unit },
       { header: "System Qty", get: (r: any) => r.systemQty, num: true },
       { header: "Counted Qty", get: (r: any) => r.countedQty, num: true },

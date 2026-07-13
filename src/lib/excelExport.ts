@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import type { PurchaseOrder, PurchaseRequest, GoodsReceipt, StockCount, WriteOff, Product, Sale, DB } from "./types";
+import { formatLocations } from "./location";
 
 type Business = DB["meta"]["business"];
 
@@ -990,8 +991,7 @@ export function buildStockCountWorkbook(
     { label: "Barcode", width: 18, kind: "text", get: (p) => p.barcode || "" },
     { label: "Product Name", width: 40, kind: "text", get: (p) => p.name },
     { label: "Category", width: 18, kind: "text", get: (p) => p.category || "" },
-    { label: "Gondola", width: 10, align: "center", kind: "text", get: (p) => p.gondola || "" },
-    { label: "Shelf", width: 10, align: "center", kind: "text", get: (p) => p.shelf || "" },
+    { label: "Location(s)", width: 22, kind: "text", get: (p) => formatLocations(p) },
     { label: "Unit", width: 7, align: "center", kind: "text", get: (p) => p.unit || "" },
     { label: "System Qty", width: 11, align: "right", kind: "num", get: (p) => p.stock },
     { label: "Counted Qty", width: 12, align: "right", kind: "input" },

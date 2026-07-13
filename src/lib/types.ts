@@ -18,9 +18,14 @@ export type Product = {
   reorderLevel: number;
   barcode?: string;
   trackStock?: boolean;
-  gondola?: string; // gondola / aisle where the product is displayed (on price label)
-  shelf?: string; // shelf position within the gondola (on price label)
+  gondola?: string; // PRIMARY gondola (most recently set) — printed on the label
+  shelf?: string; // primary shelf position within the gondola
+  // A product can sit in several places; every registered spot is kept here so
+  // the stock count sheet lists them all. `gondola`/`shelf` mirror the latest.
+  locations?: ProductLocation[];
 };
+
+export type ProductLocation = { gondola: string; shelf: string };
 
 export type Supplier = {
   code: string;
