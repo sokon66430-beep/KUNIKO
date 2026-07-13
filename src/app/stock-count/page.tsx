@@ -343,13 +343,16 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
       .slice(0, 8);
   }, [products, query]);
 
-  async function setCounted(productId: string, countedQty: number) {
+  // patch = either { countedQty } (set absolute — manual edit) or
+  // { addQty } (add this spot's count — a scan; the server sums it so two
+  // people scanning the same product at once both count).
+  async function writeCount(productId: string, patch: { countedQty: number } | { addQty: number }) {
     seqRef.current += 1;
     const s = seqRef.current;
     setScanOrder((o) => ({ ...o, [productId]: s })); // this item floats to the top
     await api(`/api/stock-counts/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ items: [{ productId, countedQty }] }),
+      body: JSON.stringify({ items: [{ productId, ...patch }] }),
     });
     setEdits((e) => {
       const n = { ...e };
@@ -358,6 +361,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     });
     reload();
   }
+  const setCounted = (productId: string, countedQty: number) => writeCount(productId, { countedQty });
 
   // Scan/pick a product → pop up the amount prompt. If it was counted before
   // (another shelf / the stockroom), the new amount ADDS to the running total.
@@ -374,13 +378,13 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     if (!countTarget) return;
     const p = countTarget;
     const seen = Math.max(0, Number(countValue) || 0);
-    const total = alreadyCounted + seen;
     setCountTarget(null);
     setCountValue("");
-    await setCounted(p.id, total);
+    // Send the delta — the server adds it to whatever's already there.
+    await writeCount(p.id, { addQty: seen });
     setNotice({
       tone: "ok",
-      text: alreadyCounted > 0 ? `${p.name} — +${seen}, total ${total}` : `${p.name} — counted ${seen}`,
+      text: alreadyCounted > 0 ? `${p.name} — +${seen}, total ${alreadyCounted + seen}` : `${p.name} — counted ${seen}`,
     });
     scanRef.current?.focus(); // ready for the next scan
   }

@@ -17,7 +17,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 // system stock the first time each product is added to the count.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json().catch(() => ({}));
-  const items: { productId: string; countedQty?: number; remove?: boolean }[] = Array.isArray(body.items)
+  // countedQty = set the absolute total (manual edit / import).
+  // addQty     = add to the running total (a scan of another spot). Done here
+  //              on the server, inside the write-lock, so two people scanning
+  //              the same product at once both count — neither overwrites.
+  const items: { productId: string; countedQty?: number; addQty?: number; remove?: boolean }[] = Array.isArray(
+    body.items,
+  )
     ? body.items
     : [];
   const session = await getSession();
@@ -39,9 +45,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         if (existing) count.items = count.items.filter((x) => x.productId !== it.productId);
         continue;
       }
-      const qty = Math.max(0, Number(it.countedQty) || 0);
+      const adding = it.addQty != null;
+      const delta = Math.max(0, Number(it.addQty) || 0);
+      const setTo = Math.max(0, Number(it.countedQty) || 0);
       if (existing) {
-        existing.countedQty = qty;
+        existing.countedQty = adding ? existing.countedQty + delta : setTo;
         existing.countedBy = who;
         existing.countedAt = at;
       } else {
@@ -51,7 +59,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           name: product.name,
           barcode: product.barcode,
           systemQty: product.stock,
-          countedQty: qty,
+          countedQty: adding ? delta : setTo,
           countedBy: who,
           countedAt: at,
         };
