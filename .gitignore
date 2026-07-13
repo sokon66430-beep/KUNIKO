@@ -11,6 +11,7 @@ npm-debug.log*
 # Keep only the seed master catalog.
 /data/stores/
 /data/system.json
+/data/master-products.json
 
 # Source spreadsheets & scratch files
 *.xlsx

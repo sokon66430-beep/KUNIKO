@@ -7,7 +7,7 @@ import type { Role } from "./auth";
 // owner-only — everything else is configurable by the owner on /permissions.
 // Edge-safe (type-only import) so the sidebar and middleware can share it.
 
-const OWNER_ONLY = ["/all-stores", "/permissions"];
+const OWNER_ONLY = ["/all-stores", "/permissions", "/master-data"];
 
 // Baseline used until the owner customizes access on /permissions (and as the
 // floor middleware enforces, since it can't read the live per-store config —
