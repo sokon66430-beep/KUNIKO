@@ -688,6 +688,7 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
     { header: "Product Name", key: "name", width: 42 },
     { header: "Name KH", key: "nameKh", width: 30 },
     { header: "Category", key: "category", width: 22 },
+    { header: "Location(s)", key: "locations", width: 18 },
     { header: "Unit", key: "unit", width: 8 },
     { header: "Supplier Code", key: "supplierCode", width: 14 },
     { header: "Supplier Name", key: "supplierName", width: 30 },
@@ -717,6 +718,7 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
       name: p.name,
       nameKh: p.nameKh || "",
       category: p.category || "",
+      locations: formatLocations(p),
       unit: p.unit || "",
       supplierCode: p.supplierCode || "",
       supplierName: p.supplier && p.supplier !== "—" ? p.supplier : "",
@@ -733,9 +735,11 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
       c.border = allThin;
     });
     // Highlight the two supplier cells when the product isn't linked yet.
+    // By column key so it can't drift when columns are inserted.
     if (!p.supplierCode) {
-      r.getCell(8).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
-      r.getCell(9).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
+      const yellow = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFFFF9C4" } };
+      r.getCell(ws.getColumn("supplierCode").number).fill = yellow;
+      r.getCell(ws.getColumn("supplierName").number).fill = yellow;
     }
   });
 
