@@ -955,31 +955,51 @@ export function buildStockCountWorkbook(
   count: StockCount,
   products: Product[],
   business: Business,
+  showValue = false, // Cost / Sell Price / Total shown only for owner + procurement
 ): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Stock Count", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
-  ws.columns = [
-    { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
-    { width: 8 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 18 },
-  ];
+  // Base: No·Code·Barcode·Name·Category·Unit·System·Counted·Variance  then
+  // (value) Cost·Sell·Total  then Counted By.
+  ws.columns = showValue
+    ? [
+        { width: 5 }, { width: 14 }, { width: 18 }, { width: 40 }, { width: 18 },
+        { width: 7 }, { width: 10 }, { width: 11 }, { width: 10 },
+        { width: 11 }, { width: 12 }, { width: 14 }, { width: 16 },
+      ]
+    : [
+        { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
+        { width: 8 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 18 },
+      ];
+
+  const head = showValue
+    ? [
+        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
+        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "System Qty", align: "right" as const },
+        { label: "Counted Qty", align: "right" as const }, { label: "Variance", align: "right" as const },
+        { label: "Cost", align: "right" as const }, { label: "Sell Price", align: "right" as const },
+        { label: "Total (Cost)", align: "right" as const }, { label: "Counted By" },
+      ]
+    : [
+        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
+        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "System Qty", align: "right" as const },
+        { label: "Counted Qty", align: "right" as const }, { label: "Variance", align: "right" as const }, { label: "Counted By" },
+      ];
 
   let row = reportHeader(ws, "STOCK COUNT SHEET", [
     `${business.name} · ${business.branch}`,
     `${count.countNo} · started by ${count.countedBy || "—"}`,
     "Write the physical quantity in the yellow \"Counted Qty\" column, then re-import this file.",
-  ], 10);
+  ], head.length);
 
-  tableHead(ws, row, [
-    { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
-    { label: "Category" }, { label: "Unit", align: "center" }, { label: "System Qty", align: "right" },
-    { label: "Counted Qty", align: "right" }, { label: "Variance", align: "right" }, { label: "Counted By" },
-  ]);
+  tableHead(ws, row, head);
 
   const counted = new Map(count.items.map((i) => [i.productId, i.countedQty]));
   const counter = new Map(count.items.map((i) => [i.productId, i.countedBy || ""]));
   const firstDataRow = row + 1;
+  const byCol = showValue ? 13 : 10; // Counted By column index
   products.forEach((p, i) => {
     const r = ws.getRow(firstDataRow + i);
     const cq = counted.get(p.id);
@@ -1002,13 +1022,173 @@ export function buildStockCountWorkbook(
     vCell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
     vCell.alignment = { horizontal: "right", vertical: "middle" };
     vCell.border = allThin;
+
+    if (showValue) {
+      // Cost (J) · Sell Price (K) · Total = Counted × Cost (L, live formula).
+      const costCell = r.getCell(10);
+      costCell.value = round2(p.cost);
+      costCell.numFmt = MONEY;
+      const sellCell = r.getCell(11);
+      sellCell.value = round2(p.price);
+      sellCell.numFmt = MONEY;
+      const totalCell = r.getCell(12);
+      totalCell.value = { formula: `H${firstDataRow + i}*J${firstDataRow + i}` };
+      totalCell.numFmt = MONEY;
+      for (const c of [costCell, sellCell, totalCell]) {
+        c.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+        c.alignment = { horizontal: "right", vertical: "middle" };
+        c.border = allThin;
+      }
+    }
+
     // Who counted this line (blank until counted).
-    const byCell = r.getCell(10);
+    const byCell = r.getCell(byCol);
     byCell.value = counter.get(p.id) || "";
     byCell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
     byCell.alignment = { horizontal: "left", vertical: "middle" };
     byCell.border = allThin;
   });
+
+  // Grand total of the counted stock value (sum of the Total column).
+  if (showValue && products.length) {
+    const lastDataRow = firstDataRow + products.length - 1;
+    const totRow = ws.getRow(lastDataRow + 1);
+    const lbl = totRow.getCell(11);
+    lbl.value = "TOTAL VALUE";
+    lbl.font = { name: CALIBRI, size: 11, bold: true };
+    lbl.alignment = { horizontal: "right" };
+    lbl.border = allThin;
+    const sum = totRow.getCell(12);
+    sum.value = { formula: `SUM(L${firstDataRow}:L${lastDataRow})` };
+    sum.numFmt = MONEY;
+    sum.font = { name: CALIBRI, size: 11, bold: true };
+    sum.alignment = { horizontal: "right" };
+    sum.border = allThin;
+  }
+
+  ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
+  return wb;
+}
+
+// ---------------------------------------------------------------------------
+// Combined stock-count report — sums every count's counted quantities per
+// product into one consolidated report (you count in batches and post each,
+// so this rolls them all up). Cost/Sell/Total value shown only for owner +
+// procurement. `rows` are pre-aggregated by the route.
+// ---------------------------------------------------------------------------
+export type CombinedCountRow = {
+  sku: string;
+  barcode: string;
+  name: string;
+  category: string;
+  unit: string;
+  counted: number;
+  cost: number;
+  price: number;
+  total: number; // counted * cost
+  reports: number; // in how many counts it appeared
+};
+
+export function buildCombinedStockCountWorkbook(
+  rows: CombinedCountRow[],
+  business: Business,
+  countsIncluded: number,
+  showValue = false,
+): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Combined Count", {
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
+  });
+  ws.columns = showValue
+    ? [
+        { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
+        { width: 7 }, { width: 13 }, { width: 11 }, { width: 12 }, { width: 14 }, { width: 10 },
+      ]
+    : [
+        { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
+        { width: 7 }, { width: 13 }, { width: 10 },
+      ];
+
+  const head = showValue
+    ? [
+        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
+        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "Total Counted", align: "right" as const },
+        { label: "Cost", align: "right" as const }, { label: "Sell Price", align: "right" as const },
+        { label: "Total Value", align: "right" as const }, { label: "In Reports", align: "right" as const },
+      ]
+    : [
+        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
+        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "Total Counted", align: "right" as const },
+        { label: "In Reports", align: "right" as const },
+      ];
+
+  let row = reportHeader(ws, "COMBINED STOCK COUNT REPORT", [
+    `${business.name} · ${business.branch}`,
+    `Sum of ${countsIncluded} stock count${countsIncluded === 1 ? "" : "s"} · ${rows.length} products counted`,
+  ], head.length);
+
+  tableHead(ws, row, head);
+
+  const firstDataRow = row + 1;
+  const reportsCol = showValue ? 11 : 8;
+  rows.forEach((r, i) => {
+    const xr = ws.getRow(firstDataRow + i);
+    const base: [ExcelJS.CellValue, ("right" | "center" | "left")?][] = [
+      [i + 1, "center"], [r.sku], [r.barcode], [r.name], [r.category],
+      [r.unit, "center"], [r.counted, "right"],
+    ];
+    base.forEach(([val, align], c) => {
+      const cell = xr.getCell(c + 1);
+      cell.value = val;
+      cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+      cell.alignment = { horizontal: align || "left", vertical: "middle" };
+      cell.border = allThin;
+    });
+    if (showValue) {
+      const cost = xr.getCell(8);
+      cost.value = round2(r.cost);
+      cost.numFmt = MONEY;
+      const sell = xr.getCell(9);
+      sell.value = round2(r.price);
+      sell.numFmt = MONEY;
+      const tot = xr.getCell(10);
+      tot.value = round2(r.total);
+      tot.numFmt = MONEY;
+      for (const c of [cost, sell, tot]) {
+        c.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+        c.alignment = { horizontal: "right", vertical: "middle" };
+        c.border = allThin;
+      }
+    }
+    const rep = xr.getCell(reportsCol);
+    rep.value = r.reports;
+    rep.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
+    rep.alignment = { horizontal: "right", vertical: "middle" };
+    rep.border = allThin;
+  });
+
+  // Footer: sum of Total Counted (and Total Value when shown).
+  if (rows.length) {
+    const totRow = ws.getRow(firstDataRow + rows.length);
+    const lbl = totRow.getCell(6);
+    lbl.value = "TOTAL";
+    lbl.font = { name: CALIBRI, size: 11, bold: true };
+    lbl.alignment = { horizontal: "right" };
+    lbl.border = allThin;
+    const qty = totRow.getCell(7);
+    qty.value = rows.reduce((s, r) => s + r.counted, 0);
+    qty.font = { name: CALIBRI, size: 11, bold: true };
+    qty.alignment = { horizontal: "right" };
+    qty.border = allThin;
+    if (showValue) {
+      const tv = totRow.getCell(10);
+      tv.value = round2(rows.reduce((s, r) => s + r.total, 0));
+      tv.numFmt = MONEY;
+      tv.font = { name: CALIBRI, size: 11, bold: true };
+      tv.alignment = { horizontal: "right" };
+      tv.border = allThin;
+    }
+  }
 
   ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;

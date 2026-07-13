@@ -48,6 +48,20 @@ export default function StockCountPage() {
     setPdfView(null);
   }
 
+  // Combined report = every count summed into one. Open its PDF in-app.
+  async function openCombinedPdf() {
+    setPdfLoading("combined");
+    try {
+      const res = await fetch(`/api/stock-counts/combined/export?format=pdf`);
+      const blob = await res.blob();
+      setPdfView({ url: URL.createObjectURL(blob), title: "— Combined Report" });
+    } catch {
+      alert("Could not open the PDF.");
+    } finally {
+      setPdfLoading(null);
+    }
+  }
+
   async function newCount() {
     setCreating(true);
     try {
@@ -96,6 +110,32 @@ export default function StockCountPage() {
           accent={lastNet === 0 ? "brand" : "rose"}
         />
       </div>
+
+      {/* Combined report — sums every count into one, right above the list */}
+      {list.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+            <ClipboardCheck size={16} /> All counts
+          </h2>
+          <div className="flex items-center gap-2">
+            <a
+              href="/api/stock-counts/combined/export?format=xlsx"
+              className="btn-ghost !py-2 text-sm"
+              title="Excel — every count summed into one report"
+            >
+              <FileSpreadsheet size={16} /> Combined Excel
+            </a>
+            <button
+              className="btn-ghost !py-2 text-sm"
+              disabled={pdfLoading === "combined"}
+              onClick={openCombinedPdf}
+              title="PDF — every count summed into one report"
+            >
+              <FileType2 size={16} /> {pdfLoading === "combined" ? "Opening…" : "Combined PDF"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <Card className="p-0">
         {loading ? (
