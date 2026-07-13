@@ -272,9 +272,13 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  // After each scan we pop up an amount prompt for that product.
+  // After each scan we pop up an amount prompt for that product. The same
+  // product often sits in several places (shelf front, stockroom…), so a
+  // re-scan ADDS to what's already counted — staff just count what's in
+  // front of them and the app keeps the running total.
   const [countTarget, setCountTarget] = useState<Product | null>(null);
   const [countValue, setCountValue] = useState("");
+  const [alreadyCounted, setAlreadyCounted] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLInputElement>(null);
@@ -355,23 +359,29 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     reload();
   }
 
-  // Scan/pick a product → pop up the amount prompt (pre-filled if already counted).
+  // Scan/pick a product → pop up the amount prompt. If it was counted before
+  // (another shelf / the stockroom), the new amount ADDS to the running total.
   function promptCount(p: Product) {
     setQuery("");
     setNotice(null);
     const existing = items.find((x) => x.productId === p.id);
-    setCountValue(existing ? String(existing.countedQty) : "");
+    setAlreadyCounted(existing ? existing.countedQty : 0);
+    setCountValue(""); // always type just what's in front of you
     setCountTarget(p);
   }
 
   async function confirmCount() {
     if (!countTarget) return;
     const p = countTarget;
-    const qty = Math.max(0, Number(countValue) || 0);
+    const seen = Math.max(0, Number(countValue) || 0);
+    const total = alreadyCounted + seen;
     setCountTarget(null);
     setCountValue("");
-    await setCounted(p.id, qty);
-    setNotice({ tone: "ok", text: `${p.name} — counted ${qty}` });
+    await setCounted(p.id, total);
+    setNotice({
+      tone: "ok",
+      text: alreadyCounted > 0 ? `${p.name} — +${seen}, total ${total}` : `${p.name} — counted ${seen}`,
+    });
     scanRef.current?.focus(); // ready for the next scan
   }
 
@@ -519,10 +529,18 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
           {/* Amount prompt — appears right after a scan */}
           {!posted && countTarget && (
             <div className="mb-4 rounded-xl border-2 border-brand-400 bg-brand-50 p-4 shadow-soft">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Enter counted amount</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">
+                {alreadyCounted > 0 ? "Count this spot — it adds to the total" : "Enter counted amount"}
+              </p>
               <p className="mt-0.5 truncate text-[15px] font-bold text-ink-900">{countTarget.name}</p>
               <p className="text-xs text-slate-500">
                 {countTarget.barcode || countTarget.sku} · system stock {countTarget.stock}
+                {alreadyCounted > 0 && (
+                  <>
+                    {" · "}
+                    <span className="font-semibold text-brand-700">already counted {alreadyCounted}</span>
+                  </>
+                )}
               </p>
               <div className="mt-3 flex items-center gap-2">
                 <input
@@ -550,7 +568,17 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   Cancel
                 </button>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400">Type the amount and press Enter — then scan the next item.</p>
+              <p className="mt-2 text-[11px] text-slate-400">
+                {alreadyCounted > 0 ? (
+                  <>
+                    Type only what you see in this spot — new total will be{" "}
+                    <b className="text-brand-700">{alreadyCounted + Math.max(0, Number(countValue) || 0)}</b>. To fix a
+                    mistake, edit the number in the list below instead.
+                  </>
+                ) : (
+                  "Type the amount and press Enter — then scan the next item."
+                )}
+              </p>
             </div>
           )}
 
@@ -613,7 +641,10 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-slate-400">Scan an item → a box pops up → type the counted amount → Enter. Repeat for the next.</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Scan an item → type what you see → Enter. Scan it again at another spot (shelf, stockroom…) and the
+                amounts add up automatically.
+              </p>
             </div>
           )}
 
