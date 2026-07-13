@@ -951,6 +951,18 @@ export function buildSalesReportWorkbook(
 // "Counted Qty" column for the accountant to fill, plus a Variance formula.
 // Re-importing the filled sheet reads the "Counted Qty" column back in.
 // ---------------------------------------------------------------------------
+// Excel column letter for a 1-based index (1→A, 27→AA).
+function colLetter(idx1: number): string {
+  let s = "";
+  let n = idx1;
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
 export function buildStockCountWorkbook(
   count: StockCount,
   products: Product[],
@@ -961,105 +973,105 @@ export function buildStockCountWorkbook(
   const ws = wb.addWorksheet("Stock Count", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
-  // Base: No·Code·Barcode·Name·Category·Unit·System·Counted·Variance  then
-  // (value) Cost·Sell·Total  then Counted By.
-  ws.columns = showValue
-    ? [
-        { width: 5 }, { width: 14 }, { width: 18 }, { width: 40 }, { width: 18 },
-        { width: 7 }, { width: 10 }, { width: 11 }, { width: 10 },
-        { width: 11 }, { width: 12 }, { width: 14 }, { width: 16 },
-      ]
-    : [
-        { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
-        { width: 8 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 18 },
-      ];
 
-  const head = showValue
-    ? [
-        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
-        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "System Qty", align: "right" as const },
-        { label: "Counted Qty", align: "right" as const }, { label: "Variance", align: "right" as const },
-        { label: "Cost", align: "right" as const }, { label: "Sell Price", align: "right" as const },
-        { label: "Total (Cost)", align: "right" as const }, { label: "Counted By" },
-      ]
-    : [
-        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
-        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "System Qty", align: "right" as const },
-        { label: "Counted Qty", align: "right" as const }, { label: "Variance", align: "right" as const }, { label: "Counted By" },
-      ];
+  // Column-driven so inserting columns can't break the formula references.
+  type Kind = "no" | "text" | "num" | "input" | "variance" | "money" | "total" | "by";
+  type SCCol = {
+    label: string;
+    width: number;
+    align?: "right" | "center";
+    kind: Kind;
+    get?: (p: Product) => ExcelJS.CellValue;
+    value?: boolean; // owner/procurement-only money column
+  };
+  const allCols: SCCol[] = [
+    { label: "No", width: 5, align: "center", kind: "no" },
+    { label: "Item Code", width: 14, kind: "text", get: (p) => p.sku },
+    { label: "Barcode", width: 18, kind: "text", get: (p) => p.barcode || "" },
+    { label: "Product Name", width: 40, kind: "text", get: (p) => p.name },
+    { label: "Category", width: 18, kind: "text", get: (p) => p.category || "" },
+    { label: "Gondola", width: 10, align: "center", kind: "text", get: (p) => p.gondola || "" },
+    { label: "Shelf", width: 10, align: "center", kind: "text", get: (p) => p.shelf || "" },
+    { label: "Unit", width: 7, align: "center", kind: "text", get: (p) => p.unit || "" },
+    { label: "System Qty", width: 11, align: "right", kind: "num", get: (p) => p.stock },
+    { label: "Counted Qty", width: 12, align: "right", kind: "input" },
+    { label: "Variance", width: 10, align: "right", kind: "variance" },
+    { label: "Cost", width: 11, align: "right", kind: "money", value: true, get: (p) => round2(p.cost) },
+    { label: "Sell Price", width: 12, align: "right", kind: "money", value: true, get: (p) => round2(p.price) },
+    { label: "Total (Cost)", width: 14, align: "right", kind: "total", value: true },
+    { label: "Counted By", width: 16, kind: "by" },
+  ];
+  const cols = allCols.filter((c) => !c.value || showValue);
+
+  ws.columns = cols.map((c) => ({ width: c.width }));
+
+  const idxOf = (kind: Kind) => cols.findIndex((c) => c.kind === kind) + 1; // 1-based
+  const systemCol = colLetter(idxOf("num"));
+  const countedCol = colLetter(idxOf("input"));
+  const costCol = idxOf("money") > 0 ? colLetter(idxOf("money")) : ""; // first money = Cost
 
   let row = reportHeader(ws, "STOCK COUNT SHEET", [
     `${business.name} · ${business.branch}`,
     `${count.countNo} · started by ${count.countedBy || "—"}`,
     "Write the physical quantity in the yellow \"Counted Qty\" column, then re-import this file.",
-  ], head.length);
+  ], cols.length);
 
-  tableHead(ws, row, head);
+  tableHead(ws, row, cols.map((c) => ({ label: c.label, align: c.align })));
 
-  const counted = new Map(count.items.map((i) => [i.productId, i.countedQty]));
-  const counter = new Map(count.items.map((i) => [i.productId, i.countedBy || ""]));
+  const countedMap = new Map(count.items.map((i) => [i.productId, i.countedQty]));
+  const counterMap = new Map(count.items.map((i) => [i.productId, i.countedBy || ""]));
   const firstDataRow = row + 1;
-  const byCol = showValue ? 13 : 10; // Counted By column index
+
   products.forEach((p, i) => {
-    const r = ws.getRow(firstDataRow + i);
-    const cq = counted.get(p.id);
-    const cells: [ExcelJS.CellValue, ("right" | "center" | "left")?][] = [
-      [i + 1, "center"], [p.sku], [p.barcode || ""], [p.name], [p.category || ""],
-      [p.unit || "", "center"], [p.stock, "right"], [cq != null ? cq : null, "right"],
-    ];
-    cells.forEach(([val, align], c) => {
-      const cell = r.getCell(c + 1);
-      cell.value = val;
+    const rowNum = firstDataRow + i;
+    const r = ws.getRow(rowNum);
+    const cq = countedMap.get(p.id);
+    cols.forEach((c, ci) => {
+      const cell = r.getCell(ci + 1);
       cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-      cell.alignment = { horizontal: align || "left", vertical: "middle" };
+      cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
       cell.border = allThin;
-    });
-    // Highlight the input column so the counter knows where to write.
-    r.getCell(8).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } };
-    // Variance = Counted − System (live formula).
-    const vCell = r.getCell(9);
-    vCell.value = { formula: `H${firstDataRow + i}-G${firstDataRow + i}` };
-    vCell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-    vCell.alignment = { horizontal: "right", vertical: "middle" };
-    vCell.border = allThin;
-
-    if (showValue) {
-      // Cost (J) · Sell Price (K) · Total = Counted × Cost (L, live formula).
-      const costCell = r.getCell(10);
-      costCell.value = round2(p.cost);
-      costCell.numFmt = MONEY;
-      const sellCell = r.getCell(11);
-      sellCell.value = round2(p.price);
-      sellCell.numFmt = MONEY;
-      const totalCell = r.getCell(12);
-      totalCell.value = { formula: `H${firstDataRow + i}*J${firstDataRow + i}` };
-      totalCell.numFmt = MONEY;
-      for (const c of [costCell, sellCell, totalCell]) {
-        c.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-        c.alignment = { horizontal: "right", vertical: "middle" };
-        c.border = allThin;
+      switch (c.kind) {
+        case "no":
+          cell.value = i + 1;
+          break;
+        case "input":
+          cell.value = cq != null ? cq : null;
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF9C4" } }; // yellow input
+          break;
+        case "variance":
+          cell.value = { formula: `${countedCol}${rowNum}-${systemCol}${rowNum}` };
+          break;
+        case "money":
+          cell.value = c.get ? c.get(p) : "";
+          cell.numFmt = MONEY;
+          break;
+        case "total":
+          cell.value = { formula: `${countedCol}${rowNum}*${costCol}${rowNum}` };
+          cell.numFmt = MONEY;
+          break;
+        case "by":
+          cell.value = counterMap.get(p.id) || "";
+          break;
+        default:
+          cell.value = c.get ? c.get(p) : "";
       }
-    }
-
-    // Who counted this line (blank until counted).
-    const byCell = r.getCell(byCol);
-    byCell.value = counter.get(p.id) || "";
-    byCell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-    byCell.alignment = { horizontal: "left", vertical: "middle" };
-    byCell.border = allThin;
+    });
   });
 
   // Grand total of the counted stock value (sum of the Total column).
   if (showValue && products.length) {
+    const totalIdx = idxOf("total");
+    const totalCol = colLetter(totalIdx);
     const lastDataRow = firstDataRow + products.length - 1;
     const totRow = ws.getRow(lastDataRow + 1);
-    const lbl = totRow.getCell(11);
+    const lbl = totRow.getCell(totalIdx - 1);
     lbl.value = "TOTAL VALUE";
     lbl.font = { name: CALIBRI, size: 11, bold: true };
     lbl.alignment = { horizontal: "right" };
     lbl.border = allThin;
-    const sum = totRow.getCell(12);
-    sum.value = { formula: `SUM(L${firstDataRow}:L${lastDataRow})` };
+    const sum = totRow.getCell(totalIdx);
+    sum.value = { formula: `SUM(${totalCol}${firstDataRow}:${totalCol}${lastDataRow})` };
     sum.numFmt = MONEY;
     sum.font = { name: CALIBRI, size: 11, bold: true };
     sum.alignment = { horizontal: "right" };
