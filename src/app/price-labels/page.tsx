@@ -220,16 +220,15 @@ export default function PriceLabelsPage() {
     const alreadyInBatch = batch.some((l) => l.product.id === p.id);
     setBatch((b) => {
       const existing = b.find((l) => l.product.id === p.id);
-      // Newest always on the top row; re-scanning bumps its qty and moves it up.
+      // Keep the list in SCAN ORDER so the labels print in the exact order you
+      // build the list, top-to-bottom. Re-scanning bumps qty in place (doesn't
+      // reshuffle the row); a new item is appended to the bottom.
       if (existing) {
-        const updated = { ...existing, qty: existing.qty + 1 };
-        return [updated, ...b.filter((l) => l.product.id !== p.id)];
+        return b.map((l) => (l.product.id === p.id ? { ...l, qty: l.qty + 1 } : l));
       }
-      // A newly scanned item takes the CURRENT shelf location (set at the top);
-      // if none is set, fall back to whatever the product already had.
       return [
-        { product: p, qty: 1, gondola: curGondola || p.gondola || "", shelf: curShelf || p.shelf || "" },
         ...b,
+        { product: p, qty: 1, gondola: curGondola || p.gondola || "", shelf: curShelf || p.shelf || "" },
       ];
     });
     // Scanning with a shelf location set at the top REGISTERS that location on
@@ -377,8 +376,12 @@ export default function PriceLabelsPage() {
     win.document.open();
     win.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>Price Labels</title>${styles}` +
-        `<style>@page{size:A4 portrait;margin:8mm}html,body{margin:0;padding:0;background:#fff}` +
-        `.label-sheet{display:flex;flex-wrap:wrap;gap:3mm}.label-card{outline:none!important;box-shadow:none!important}</style>` +
+        `<style>@page{size:A4 portrait;margin:${layout.margin}mm}html,body{margin:0;padding:0;background:#fff}` +
+        // Same grid as the on-screen preview — fixed columns/width/gap — so the
+        // printed sheet lays out EXACTLY like the preview (not reflowed by flex).
+        `.label-sheet{display:grid!important;grid-template-columns:repeat(${perRow}, ${layout.w}mm)!important;` +
+        `gap:${layout.gap}mm!important;width:max-content}` +
+        `.label-card{outline:none!important;box-shadow:none!important}</style>` +
         `</head><body>${sheet.outerHTML}</body></html>`,
     );
     win.document.close();
