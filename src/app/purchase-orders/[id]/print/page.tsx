@@ -71,7 +71,7 @@ const HEADER_PAGE_WITH_FOOTER_CAP = cap(TOP_MATTER_PX + FOOTER_PX); // page 1 th
 const CONT_PAGE_WITH_FOOTER_CAP = cap(CONT_MATTER_PX + FOOTER_PX); // continuation page that also carries the footer
 
 export default function POPrintPage({ params }: { params: { id: string } }) {
-  const { data, loading, error } = useFetch<{ po: PurchaseOrder; business: Business }>(
+  const { data, loading, error } = useFetch<{ po: PurchaseOrder; business: Business; vatRate?: number }>(
     `/api/purchase-orders/${params.id}`,
   );
 
@@ -95,7 +95,8 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
   if (error || !data) return <ErrorBox message={error || "Not found"} />;
 
   const { po, business } = data;
-  const vatRate = business.vatRate ?? 0.1;
+  // Tax follows the PO's supplier (0 for a tax-free supplier); the API resolves it.
+  const vatRate = data.vatRate ?? business.vatRate ?? 0.1;
   const subtotal = po.items.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
   const vat = subtotal * vatRate;
   const grand = subtotal + vat;

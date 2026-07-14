@@ -105,6 +105,19 @@ export function SupplierModal({
           <label className="label">Tax ID</label>
           <input className="input" value={form.taxId || ""} onChange={(e) => set("taxId", e.target.value)} />
         </div>
+        <div className="col-span-2">
+          <label className="label">VAT / Tax (%) on this supplier&apos;s PO</label>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            value={form.taxPct ?? 10}
+            onChange={(e) => set("taxPct", e.target.value)}
+          />
+          <p className="mt-1 text-[11px] text-slate-400">
+            10 = the PO adds 10% VAT for this supplier. Set 0 for a supplier with no tax.
+          </p>
+        </div>
       </div>
     </Modal>
   );

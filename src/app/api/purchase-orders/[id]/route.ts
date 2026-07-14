@@ -11,7 +11,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const db = await readDB();
   const po = db.purchaseOrders.find((p) => p.id === params.id);
   if (!po) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
-  return NextResponse.json({ po, business: db.meta.business });
+  // The PO's tax follows its supplier: each supplier carries its own tax % (10 by
+  // default, 0 for a tax-free supplier). Fall back to the business VAT only when
+  // the PO's supplier isn't in the list.
+  const supplier = db.suppliers.find((s) => s.name === po.supplier);
+  const vatRate = supplier ? (supplier.taxPct ?? 10) / 100 : db.meta.business.vatRate ?? 0.1;
+  return NextResponse.json({ po, business: db.meta.business, vatRate });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

@@ -305,6 +305,9 @@ export type DB = {
     nextStockCount: number;
     nextWriteOff: number;
     nextAudit: number;
+    // One-time flag: suppliers have all been defaulted to 10% VAT (after which
+    // each supplier's tax rate is managed individually). See backfill().
+    supplierTaxInitialized?: boolean;
     business: {
       name: string;
       currency: string;

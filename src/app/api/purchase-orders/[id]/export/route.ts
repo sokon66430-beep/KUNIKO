@@ -9,7 +9,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const po = db.purchaseOrders.find((p) => p.id === params.id);
   if (!po) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
 
-  const wb = buildPOWorkbook(po, db.meta.business);
+  // Tax follows the PO's supplier (10% by default, 0 for a tax-free supplier).
+  const supplier = db.suppliers.find((s) => s.name === po.supplier);
+  const vatRate = supplier ? (supplier.taxPct ?? 10) / 100 : db.meta.business.vatRate ?? 0.1;
+  const wb = buildPOWorkbook(po, db.meta.business, vatRate);
   const buffer = await wb.xlsx.writeBuffer();
 
   return new NextResponse(buffer as ArrayBuffer, {

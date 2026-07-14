@@ -44,6 +44,13 @@ function backfill(db: DB): DB {
       { role: "Assistant Manager", name: "", code: "5678" },
     ];
   }
+  // The per-supplier tax rate (taxPct) was added after suppliers were imported —
+  // most came in with 0 or no value. Default EVERY supplier to 10% VAT once, then
+  // leave each supplier's rate to be managed individually (0 = tax-free supplier).
+  if (!db.meta.supplierTaxInitialized) {
+    for (const s of db.suppliers) s.taxPct = 10;
+    db.meta.supplierTaxInitialized = true;
+  }
   return db;
 }
 

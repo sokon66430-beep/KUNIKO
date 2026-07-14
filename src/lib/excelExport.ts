@@ -49,7 +49,11 @@ const COLW = [13, 19.45, 58.54, 10.18, 10.82, 10.18, 15.45, 28.54, 15.18];
 // SUPPLIER/PO NUMBER header block, bordered line table with live formulas,
 // Subtotal/VAT/GRAND TOTAL (yellow), notes, and a signature box.
 // ---------------------------------------------------------------------------
-export function buildPOWorkbook(po: PurchaseOrder, business: Business): ExcelJS.Workbook {
+export function buildPOWorkbook(
+  po: PurchaseOrder,
+  business: Business,
+  vatRate: number = business.vatRate ?? 0.1,
+): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("PR-Form", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1 } });
   ws.columns = COLW.map((width) => ({ width }));
@@ -151,7 +155,6 @@ export function buildPOWorkbook(po: PurchaseOrder, business: Business): ExcelJS.
 
   const lastDataRow = firstDataRow + po.items.length - 1;
   const totalsStart = lastDataRow + 1;
-  const vatRate = business.vatRate ?? 0.1;
   const totalRows: { label: string; formula: string; yellow?: boolean }[] = [
     { label: "Subtotal (EX VAT)", formula: `SUM(I${firstDataRow}:I${lastDataRow})` },
     { label: `VAT (${Math.round(vatRate * 100)}%)`, formula: `I${totalsStart}*${vatRate}` },
