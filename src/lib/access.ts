@@ -75,3 +75,10 @@ export function canManageStaff(role: Role): boolean {
 export function canSeeProfit(role: Role): boolean {
   return role === "owner" || role === "procurement";
 }
+
+// Who may switch the active store from the sidebar. The owner (all stores),
+// plus Procurement and Accounting, who work across stores (ordering,
+// invoices/reports). Shop-floor roles stay pinned to their own store.
+export function canSwitchStores(role: Role): boolean {
+  return role === "owner" || role === "procurement" || role === "accountant";
+}

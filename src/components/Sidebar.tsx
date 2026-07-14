@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { canAccessPage } from "@/lib/access";
+import { canAccessPage, canSwitchStores } from "@/lib/access";
 import { useTheme } from "@/components/theme";
 import { NotificationBell } from "@/components/NotificationBell";
 import type { Role } from "@/lib/auth";
@@ -201,8 +201,8 @@ export default function Sidebar() {
         <NotificationBell align="left" />
       </div>
 
-      {/* Store switcher (owner) — switch the active store, or add more. */}
-      {ALLOW_STORE_SWITCH && isOwner && (session?.stores.length || 0) >= 1 && (
+      {/* Store switcher — owner, procurement & accounting can switch the active store. */}
+      {ALLOW_STORE_SWITCH && canSwitchStores(role) && (session?.stores.length || 0) >= 1 && (
         <div className="relative px-3 pb-1">
           <button
             type="button"

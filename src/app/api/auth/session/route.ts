@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/session";
 import { readSystem } from "@/lib/system";
 import { signSession, SESSION_COOKIE, cookieOptions } from "@/lib/auth";
-import { DEFAULT_ROLE_DENIED } from "@/lib/access";
+import { DEFAULT_ROLE_DENIED, canSwitchStores } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +11,11 @@ export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const sys = await readSystem();
-  // Owners can switch between all stores; others are pinned to their store.
-  const stores =
-    s.role === "owner"
-      ? sys.stores.map((st) => ({ id: st.id, name: st.name }))
-      : sys.stores.filter((st) => st.id === s.storeId).map((st) => ({ id: st.id, name: st.name }));
+  // Owner, Procurement and Accounting can switch between all stores; others are
+  // pinned to their store.
+  const stores = canSwitchStores(s.role)
+    ? sys.stores.map((st) => ({ id: st.id, name: st.name }))
+    : sys.stores.filter((st) => st.id === s.storeId).map((st) => ({ id: st.id, name: st.name }));
   // Effective denied-page list for this role — the owner's live /permissions
   // config if set, otherwise the built-in baseline. Owner is never denied.
   const denied = s.role === "owner" ? [] : sys.rolePermissions?.[s.role] ?? DEFAULT_ROLE_DENIED[s.role] ?? [];
@@ -26,11 +26,13 @@ export async function GET() {
   });
 }
 
-// Owner: switch the active store (re-issues the signed session).
+// Switch the active store (re-issues the signed session). Owner, Procurement
+// and Accounting only.
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  if (s.role !== "owner") return NextResponse.json({ error: "Only owners can switch stores" }, { status: 403 });
+  if (!canSwitchStores(s.role))
+    return NextResponse.json({ error: "You can't switch stores" }, { status: 403 });
 
   const { storeId } = await req.json().catch(() => ({}));
   const sys = await readSystem();
