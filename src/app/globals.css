@@ -210,24 +210,45 @@ html.dark .po-sheet.bg-white {
   }
 }
 
-/* Print: show only the PO sheet */
+/* Print: collapse the app shell so ONLY the PO/PR sheet remains and it fills
+   the full A4 page width. Otherwise the centered max-width wrappers (max-w-6xl
+   on <main>'s child, max-w-[960px] on the print page) leave the sheet narrower
+   than the paper, and the browser scales the whole page down to fit — the PO
+   ends up small in the top-left corner instead of filling A4 portrait. */
 @media print {
   aside,
   .no-print,
   .fixed {
     display: none !important;
   }
-  main {
-    padding: 0 !important;
-  }
   body {
     background: #fff !important;
   }
+  /* Pin the PO/PR sheet chain to the exact A4 printable width (210mm − 2×12mm
+     page margin = 186mm). Some browsers lay print out at the SCREEN width and
+     then scale to fit the paper; pinning every wrapper to the page width means
+     nothing is ever wider than the page, so no scaling happens and the sheet
+     prints at its true size, filling A4 portrait. Scoped with :has(.po-sheet)
+     so the price-labels page (its own fixed-mm grid) is left untouched. */
+  main:has(.po-sheet) {
+    width: 186mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  main:has(.po-sheet) > div,
+  main:has(.po-sheet) > div > div {
+    width: 186mm !important;
+    max-width: 186mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   .po-sheet {
+    width: 186mm !important;
+    max-width: 186mm !important;
+    margin: 0 !important;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
-    max-width: 100% !important;
   }
 }
 
