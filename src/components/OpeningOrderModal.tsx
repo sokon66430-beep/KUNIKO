@@ -22,8 +22,12 @@ export function OpeningOrderModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  // 0 = ALL best sellers, no cap.
+  // 0 = ALL, no cap.
   const [count, setCount] = useState<number>(50);
+  // "sales"   → suggest best sellers from your OTHER stores (needs sales history)
+  // "catalog" → order straight from the product list (for a brand-new store
+  //             opening with no sales yet)
+  const [mode, setMode] = useState<"sales" | "catalog">("sales");
   const [rows, setRows] = useState<OpenRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -50,6 +54,26 @@ export function OpeningOrderModal({
 
   useEffect(() => {
     if (!storeId) return;
+
+    // Catalog mode: order straight from the product list — no sales needed.
+    if (mode === "catalog") {
+      const all = [...(products || [])]
+        .filter((p) => p.name)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => ({
+          sku: p.sku,
+          name: p.name,
+          supplier: p.supplier || "—",
+          category: p.category || "",
+          units: 0,
+          // Opening qty suggestion: the reorder level, or 10 if none set.
+          qty: p.reorderLevel > 0 ? p.reorderLevel : 10,
+        }));
+      setRows(count > 0 ? all.slice(0, count) : all);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     // Suggestions = best sellers across every store EXCEPT the one we're stocking.
@@ -76,7 +100,7 @@ export function OpeningOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [count, bySku, storeId]);
+  }, [count, bySku, storeId, mode, products]);
 
   const totalUnits = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
   const supplierCount = new Set(rows.map((r) => r.supplier)).size;
@@ -124,7 +148,11 @@ export function OpeningOrderModal({
             <Sparkles size={18} className="text-brand-600" />
             <div>
               <h3 className="text-base font-bold text-ink-900">Stock a new store</h3>
-              <p className="text-[11px] text-slate-500">Best sellers from your other stores — grouped into one PO per supplier</p>
+              <p className="text-[11px] text-slate-500">
+                {mode === "sales"
+                  ? "Best sellers from your other stores — grouped into one PO per supplier"
+                  : "Order from the product catalog — for a new store with no sales yet"}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
@@ -145,15 +173,40 @@ export function OpeningOrderModal({
               placeholder="Choose a store…"
               options={(stores || []).map((s) => ({ value: s.id, label: s.name }))}
             />
-            <span className="text-xs font-normal text-slate-400">
-              All POs below are created for this store — suggestions come from your other stores.
-            </span>
+            <span className="text-xs font-normal text-slate-400">All POs below are created for this store.</span>
+          </div>
+        </div>
+
+        {/* Mode: from sales history, or straight from the catalog (new store) */}
+        <div className="border-b border-slate-100 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Order by:</span>
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+              {(
+                [
+                  { key: "sales", label: "Best sellers" },
+                  { key: "catalog", label: "Full catalog (no sales)" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => setMode(o.key)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    mode === o.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="border-b border-slate-100 px-5 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">How many SKUs (top sellers):</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {mode === "sales" ? "How many SKUs (top sellers):" : "How many products:"}
+            </span>
             <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
               {presets.map((p) => (
                 <button
@@ -182,7 +235,15 @@ export function OpeningOrderModal({
             <div className="grid h-40 place-items-center text-sm text-slate-400">Finding best sellers…</div>
           ) : rows.length === 0 ? (
             <div className="grid h-40 place-items-center px-6 text-center text-sm text-slate-400">
-              No sales history in your other stores yet — nothing to recommend. Import some sales first.
+              {mode === "sales" ? (
+                <span>
+                  No sales history in your other stores yet — nothing to recommend.
+                  <br />
+                  Switch to <b>Full catalog</b> above to stock a brand-new store without sales.
+                </span>
+              ) : (
+                "No products in the catalog yet — import your product master first."
+              )}
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-slate-200">
