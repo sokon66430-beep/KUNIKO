@@ -16,14 +16,24 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const m = (typeof body.invoice === "string" ? body.invoice : "").match(
-    /^data:image\/(jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/,
-  );
-  if (!m) return NextResponse.json({ error: "A scanned invoice image is required" }, { status: 400 });
-  const buf = Buffer.from(m[2], "base64");
-  if (buf.length > 8_000_000) {
-    return NextResponse.json({ error: "Invoice image is too large (max 8 MB)." }, { status: 400 });
+  // One or more pages: `invoices: string[]` or a single `invoice: string`.
+  const rawPages: string[] = Array.isArray(body.invoices)
+    ? body.invoices.filter((x: any) => typeof x === "string")
+    : typeof body.invoice === "string" && body.invoice
+      ? [body.invoice]
+      : [];
+  const bufs: Buffer[] = [];
+  for (const url of rawPages) {
+    const mm = url.match(/^data:image\/(jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/);
+    if (!mm) continue;
+    const b = Buffer.from(mm[2], "base64");
+    if (b.length > 8_000_000) {
+      return NextResponse.json({ error: "An invoice page is too large (max 8 MB each)." }, { status: 400 });
+    }
+    bufs.push(b);
   }
+  if (!bufs.length) return NextResponse.json({ error: "A scanned invoice image is required" }, { status: 400 });
+  const stamp = Date.now();
 
   const result = await mutateDB((db) => {
     const grn = db.goodsReceipts.find((g) => g.id === params.id);
@@ -31,8 +41,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Approved invoices are final; missing or rejected (or still-pending) ones
     // may be scanned again.
     if (grn.invoice?.status === "Approved") return { error: "This invoice is already approved" as const };
+    const images = bufs.map((_, i) => `${s.storeId}-${grn.id}-${stamp}-p${i + 1}.jpg`);
     grn.invoice = {
-      image: `${s.storeId}-${grn.id}-${Date.now()}.jpg`,
+      image: images[0],
+      images,
       uploadedBy: s.name,
       status: "Pending",
     };
@@ -51,7 +63,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   try {
     await fs.mkdir(path.join(DATA_DIR, "invoices"), { recursive: true });
-    await fs.writeFile(path.join(DATA_DIR, "invoices", result.grn.invoice!.image), buf);
+    const names = result.grn.invoice!.images || [result.grn.invoice!.image];
+    await Promise.all(names.map((name, i) => fs.writeFile(path.join(DATA_DIR, "invoices", name), bufs[i])));
   } catch {
     /* best-effort */
   }

@@ -21,13 +21,25 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ? body.items
     : [];
 
-  // Optional invoice image (a JPEG/PNG data URL from the client).
-  const invoiceDataUrl: string = typeof body.invoice === "string" ? body.invoice : "";
-  const m = invoiceDataUrl.match(/^data:image\/(jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/);
-  const invoiceBuf = m ? Buffer.from(m[2], "base64") : null;
-  if (invoiceBuf && invoiceBuf.length > 8_000_000) {
-    return NextResponse.json({ error: "Invoice image is too large (max 8 MB)." }, { status: 400 });
+  // Optional invoice — one or more pages. Accepts `invoices: string[]`
+  // (multi-page) or a single `invoice: string` (back-compat). Each is a
+  // JPEG/PNG data URL.
+  const rawPages: string[] = Array.isArray(body.invoices)
+    ? body.invoices.filter((x: any) => typeof x === "string")
+    : typeof body.invoice === "string" && body.invoice
+      ? [body.invoice]
+      : [];
+  const invoiceBufs: Buffer[] = [];
+  for (const url of rawPages) {
+    const mm = url.match(/^data:image\/(jpeg|jpg|png);base64,([A-Za-z0-9+/=]+)$/);
+    if (!mm) continue;
+    const b = Buffer.from(mm[2], "base64");
+    if (b.length > 8_000_000) {
+      return NextResponse.json({ error: "An invoice page is too large (max 8 MB each)." }, { status: 400 });
+    }
+    invoiceBufs.push(b);
   }
+  const hasInvoice = invoiceBufs.length > 0;
 
   const session = await getSession();
   const storeId = session?.storeId || "store";
@@ -79,9 +91,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       receivedBy,
       createdAt: new Date().toISOString(),
       // Attached only when the invoice was scanned; otherwise the receipt is
-      // incomplete until /api/goods-receipts/[id]/invoice adds it.
-      invoice: invoiceBuf
-        ? { image: `${storeId}-grn${n}.jpg`, uploadedBy: receivedBy, status: "Pending" }
+      // incomplete until /api/goods-receipts/[id]/invoice adds it. Multi-page
+      // invoices store one file per page.
+      invoice: hasInvoice
+        ? (() => {
+            const images = invoiceBufs.map((_, i) => `${storeId}-grn${n}-p${i + 1}.jpg`);
+            return { image: images[0], images, uploadedBy: receivedBy, status: "Pending" as const };
+          })()
         : undefined,
     };
     db.goodsReceipts.push(grn);
@@ -105,10 +121,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // Persist the invoice image next to the store data (best-effort: the receipt
   // stands even if the disk write fails; the viewer shows a missing-image note).
-  if (invoiceBuf && result.grn.invoice) {
+  if (hasInvoice && result.grn.invoice) {
     try {
       await fs.mkdir(INVOICE_DIR, { recursive: true });
-      await fs.writeFile(path.join(INVOICE_DIR, result.grn.invoice.image), invoiceBuf);
+      const names = result.grn.invoice.images || [result.grn.invoice.image];
+      await Promise.all(names.map((name, i) => fs.writeFile(path.join(INVOICE_DIR, name), invoiceBufs[i])));
     } catch {
       /* ignore */
     }

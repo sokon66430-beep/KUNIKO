@@ -156,7 +156,8 @@ export type GRNStatus = "Posted" | "PendingApproval";
 // Supplier invoice photographed at receiving time, reviewed by Accounting.
 export type InvoiceStatus = "Pending" | "Approved" | "Rejected";
 export type InvoiceReview = {
-  image: string; // stored file name, served via /api/invoice-image/[name]
+  image: string; // FIRST page's stored file name (kept for back-compat/thumbnail)
+  images?: string[]; // every page's file name (page 1 === image). Absent = 1 page.
   uploadedBy: string;
   status: InvoiceStatus;
   reviewedBy?: string;

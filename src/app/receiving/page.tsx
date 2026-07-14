@@ -42,16 +42,16 @@ export default function ReceivingPage() {
   }, [grns, sortBy]);
   // Supplier invoices scanned on each PO card (held here until the receipt is
   // confirmed, then sent with it). Keyed by PO id.
-  const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string>>({});
+  const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string[]>>({});
   const [invoiceCamPo, setInvoiceCamPo] = useState<string | null>(null);
   // Scanning the invoice AFTER receiving (completes an incomplete receipt).
   const [invoiceCamGrn, setInvoiceCamGrn] = useState<string | null>(null);
 
-  async function attachInvoiceToGrn(grnId: string, dataUrl: string) {
+  async function attachInvoiceToGrn(grnId: string, pages: string[]) {
     try {
       await api(`/api/goods-receipts/${grnId}/invoice`, {
         method: "POST",
-        body: JSON.stringify({ invoice: dataUrl }),
+        body: JSON.stringify({ invoices: pages }),
       });
       reloadGrns();
     } catch (e: any) {
@@ -125,7 +125,8 @@ export default function ReceivingPage() {
             const ordered = po.items.reduce((s, i) => s + i.qtyOrdered, 0);
             const received = po.items.reduce((s, i) => s + Math.min(i.qtyReceived, i.qtyOrdered), 0);
             const pct = ordered ? Math.round((received / ordered) * 100) : 0;
-            const hasInvoice = !!invoiceByPo[po.id];
+            const invoicePageCount = invoiceByPo[po.id]?.length || 0;
+            const hasInvoice = invoicePageCount > 0;
             return (
               <div key={po.id} className="card p-5">
                 <div className="flex items-start justify-between">
@@ -328,20 +329,20 @@ export default function ReceivingPage() {
       <InvoiceCamera
         open={!!invoiceCamPo}
         onClose={() => setInvoiceCamPo(null)}
-        onCapture={(d) => setInvoiceByPo((prev) => ({ ...prev, [invoiceCamPo!]: d }))}
+        onCapture={(pages) => setInvoiceByPo((prev) => ({ ...prev, [invoiceCamPo!]: pages }))}
       />
 
       {/* Invoice camera opened from a receipt row — completes an incomplete receipt. */}
       <InvoiceCamera
         open={!!invoiceCamGrn}
         onClose={() => setInvoiceCamGrn(null)}
-        onCapture={(d) => attachInvoiceToGrn(invoiceCamGrn!, d)}
+        onCapture={(pages) => attachInvoiceToGrn(invoiceCamGrn!, pages)}
       />
 
       {receiving && (
         <ReceiveModal
           po={receiving}
-          invoice={invoiceByPo[receiving.id] || ""}
+          invoicePages={invoiceByPo[receiving.id] || []}
           onScanInvoice={() => setInvoiceCamPo(receiving.id)}
           onClose={() => setReceiving(null)}
           onDone={() => {
@@ -643,13 +644,13 @@ function ApproveModal({
 
 function ReceiveModal({
   po,
-  invoice,
+  invoicePages,
   onScanInvoice,
   onClose,
   onDone,
 }: {
   po: PurchaseOrder;
-  invoice: string; // supplier invoice scanned on the PO card (required)
+  invoicePages: string[]; // supplier invoice pages scanned on the PO card
   onScanInvoice: () => void;
   onClose: () => void;
   onDone: () => void;
@@ -760,7 +761,7 @@ function ReceiveModal({
     try {
       await api(`/api/purchase-orders/${po.id}/receive`, {
         method: "POST",
-        body: JSON.stringify({ items, receivedBy, invoice }),
+        body: JSON.stringify({ items, receivedBy, invoices: invoicePages }),
       });
       onDone();
     } catch (e: any) {
@@ -785,7 +786,7 @@ function ReceiveModal({
           <button
             className="btn-primary"
             disabled={busy || totalNow === 0}
-            title={!invoice ? "You can confirm now, but the receipt stays incomplete until the invoice is scanned" : undefined}
+            title={!invoicePages.length ? "You can confirm now, but the receipt stays incomplete until the invoice is scanned" : undefined}
             onClick={confirm}
           >
             <CheckCircle2 size={16} /> {busy ? "Posting…" : `Confirm receipt (+${totalNow})`}
@@ -934,16 +935,28 @@ function ReceiveModal({
         <label className="label flex items-center gap-1.5">
           <FileType2 size={13} /> Supplier invoice <span className="text-rose-500">*</span>
         </label>
-        {invoice ? (
+        {invoicePages.length ? (
           <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={invoice} alt="Invoice" className="h-16 w-16 rounded-lg object-cover ring-1 ring-emerald-200" />
+            <div className="flex -space-x-3">
+              {invoicePages.slice(0, 3).map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={src}
+                  alt={`Invoice page ${i + 1}`}
+                  className="h-16 w-16 rounded-lg object-cover ring-2 ring-white"
+                  style={{ zIndex: 3 - i }}
+                />
+              ))}
+            </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-emerald-700">Invoice attached ✓</p>
+              <p className="text-sm font-semibold text-emerald-700">
+                Invoice attached ✓ {invoicePages.length > 1 && `· ${invoicePages.length} pages`}
+              </p>
               <p className="text-xs text-slate-500">Accounting will review it after you confirm.</p>
             </div>
             <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={onScanInvoice}>
-              Retake
+              Re-scan
             </button>
           </div>
         ) : (

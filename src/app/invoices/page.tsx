@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ReceiptText, CheckCircle2, XCircle, Clock, X, Printer } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { InvoiceReview } from "@/lib/types";
+import { invoicePages } from "@/lib/invoice";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, EmptyState } from "@/components/ui";
 import { num, dateTime } from "@/lib/format";
 
@@ -89,13 +90,20 @@ export default function InvoicesPage() {
                   onClick={() => setViewing(r)}
                   className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50/60"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`/api/invoice-image/${r.invoice.image}`}
-                    alt=""
-                    className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-slate-200"
-                    onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")}
-                  />
+                  <div className="relative shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/invoice-image/${r.invoice.image}`}
+                      alt=""
+                      className="h-14 w-14 rounded-lg object-cover ring-1 ring-slate-200"
+                      onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")}
+                    />
+                    {invoicePages(r.invoice).length > 1 && (
+                      <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                        {invoicePages(r.invoice).length}
+                      </span>
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-ink-800">
                       {r.grnNo} <span className="font-normal text-slate-400">· {r.poNo}</span>
@@ -136,20 +144,30 @@ function ReviewModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
   const [note, setNote] = useState(row.invoice.reviewNote || "");
   const [busy, setBusy] = useState(false);
 
-  // Print just the invoice image on its own page.
+  // Print every invoice page — one per printed page.
   function printInvoice() {
-    const url = `/api/invoice-image/${row.invoice.image}`;
+    const pages = invoicePages(row.invoice);
+    if (!pages.length) return;
     const w = window.open("", "PRINT", "width=820,height=1040");
     if (!w) {
       window.print();
       return;
     }
+    // Each page on its own sheet; only the LAST image triggers print (so all
+    // are loaded first).
+    const imgs = pages
+      .map(
+        (name, i) =>
+          `<img class="pg" src="/api/invoice-image/${name}"${i === pages.length - 1 ? ' onload="window.focus();window.print();"' : ""}>`,
+      )
+      .join("");
     w.document.write(
       `<!doctype html><html><head><title>Invoice ${row.grnNo} — ${row.poNo}</title>` +
         `<style>@page{margin:10mm}body{margin:0;font-family:system-ui,sans-serif}` +
-        `.h{font-size:12px;color:#555;padding:6px 2px}img{width:100%;height:auto;display:block}</style></head>` +
-        `<body><div class="h">${row.grnNo} · ${row.poNo} · ${row.supplier}</div>` +
-        `<img src="${url}" onload="window.focus();window.print();"></body></html>`,
+        `.h{font-size:12px;color:#555;padding:6px 2px}img.pg{width:100%;height:auto;display:block;break-after:page}` +
+        `img.pg:last-child{break-after:auto}</style></head>` +
+        `<body><div class="h">${row.grnNo} · ${row.poNo} · ${row.supplier}${pages.length > 1 ? ` · ${pages.length} pages` : ""}</div>` +
+        `${imgs}</body></html>`,
     );
     w.document.close();
   }
@@ -189,13 +207,22 @@ function ReviewModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-slate-100 p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/api/invoice-image/${row.invoice.image}`}
-            alt={`Invoice for ${row.grnNo}`}
-            className="mx-auto max-w-full rounded-xl shadow-soft"
-          />
+        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-100 p-4">
+          {invoicePages(row.invoice).map((name, i) => (
+            <div key={name} className="mx-auto max-w-full">
+              {invoicePages(row.invoice).length > 1 && (
+                <p className="mb-1 text-center text-[11px] font-semibold text-slate-500">
+                  Page {i + 1} of {invoicePages(row.invoice).length}
+                </p>
+              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/invoice-image/${name}`}
+                alt={`Invoice for ${row.grnNo} page ${i + 1}`}
+                className="mx-auto max-w-full rounded-xl shadow-soft"
+              />
+            </div>
+          ))}
         </div>
 
         <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-3">

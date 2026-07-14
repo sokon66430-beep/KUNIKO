@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Camera, RefreshCw, Check, Zap, ZapOff } from "lucide-react";
+import { X, Camera, RefreshCw, Check, Zap, ZapOff, Plus } from "lucide-react";
 
 // Document scanner for paper invoices — not a plain photo:
 //   · A4-shaped guide frame; the capture is CROPPED to exactly that frame
@@ -15,7 +15,9 @@ export function InvoiceCamera({
 }: {
   open: boolean;
   onClose: () => void;
-  onCapture: (dataUrl: string) => void;
+  // Returns every captured page (1 or more) — a multi-page invoice comes back
+  // as several images in order.
+  onCapture: (pages: string[]) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLDivElement>(null);
@@ -23,6 +25,7 @@ export function InvoiceCamera({
   const rawRef = useRef<HTMLCanvasElement | null>(null); // full-res crop, unprocessed
   const [error, setError] = useState("");
   const [shot, setShot] = useState<string | null>(null);
+  const [pages, setPages] = useState<string[]>([]); // pages captured so far
   const [mode, setMode] = useState<"scan" | "color">("scan");
   const [torch, setTorch] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -31,6 +34,7 @@ export function InvoiceCamera({
     if (!open) return;
     setError("");
     setShot(null);
+    setPages([]);
     setMode("scan");
     setTorch(false);
 
@@ -176,9 +180,18 @@ export function InvoiceCamera({
     renderShot(mode);
   }
 
-  function usePhoto() {
+  // Keep the current page and go back to the camera to shoot the next one.
+  function addPage() {
     if (!shot) return;
-    onCapture(shot);
+    setPages((p) => [...p, shot]);
+    setShot(null);
+    rawRef.current = null;
+  }
+  // Finish — hand back every captured page (including the one on screen).
+  function finish() {
+    const all = shot ? [...pages, shot] : pages;
+    if (!all.length) return;
+    onCapture(all);
     onClose();
   }
 
@@ -188,7 +201,14 @@ export function InvoiceCamera({
       <div className="flex items-center justify-between px-4 py-3 text-white">
         <div className="flex items-center gap-2">
           <Camera size={18} />
-          <span className="text-sm font-semibold">Scan invoice</span>
+          <span className="text-sm font-semibold">
+            Scan invoice
+            {pages.length > 0 && (
+              <span className="ml-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-bold">
+                {pages.length} page{pages.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {!shot && torchAvailable && (
@@ -268,7 +288,7 @@ export function InvoiceCamera({
       </div>
 
       {/* Bottom controls */}
-      <div className="flex items-center justify-center gap-6 px-4 py-5">
+      <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-5">
         {shot ? (
           <>
             <button
@@ -276,25 +296,41 @@ export function InvoiceCamera({
                 setShot(null);
                 rawRef.current = null;
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/20"
+              className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-white hover:bg-white/20"
             >
               <RefreshCw size={16} /> Retake
             </button>
             <button
-              onClick={usePhoto}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-600"
+              onClick={addPage}
+              className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold text-white hover:bg-white/25"
             >
-              <Check size={17} /> Use this scan
+              <Plus size={17} /> Add page
+            </button>
+            <button
+              onClick={finish}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-600"
+            >
+              <Check size={17} /> Done · {pages.length + 1} page{pages.length + 1 === 1 ? "" : "s"}
             </button>
           </>
         ) : !error ? (
-          <button
-            onClick={snap}
-            title="Scan"
-            className="grid h-16 w-16 place-items-center rounded-full border-4 border-white bg-white/20 transition hover:bg-white/40"
-          >
-            <span className="h-11 w-11 rounded-full bg-white" />
-          </button>
+          <>
+            {pages.length > 0 && (
+              <button
+                onClick={finish}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-600"
+              >
+                <Check size={17} /> Done · {pages.length} page{pages.length === 1 ? "" : "s"}
+              </button>
+            )}
+            <button
+              onClick={snap}
+              title={pages.length > 0 ? "Scan next page" : "Scan"}
+              className="grid h-16 w-16 place-items-center rounded-full border-4 border-white bg-white/20 transition hover:bg-white/40"
+            >
+              <span className="h-11 w-11 rounded-full bg-white" />
+            </button>
+          </>
         ) : (
           <button onClick={onClose} className="rounded-xl bg-white px-6 py-2.5 text-sm font-bold text-ink-900">
             Close
