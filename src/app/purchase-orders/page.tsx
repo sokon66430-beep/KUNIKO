@@ -157,6 +157,25 @@ export default function PurchaseOrdersPage() {
     reload();
   }
 
+  async function del(po: PurchaseOrder) {
+    if (
+      !(await confirmDialog({
+        title: "Delete purchase order",
+        message: `Permanently delete ${po.poNo}? This removes it completely and cannot be undone. (Use Cancel instead if you just want to stop it.)`,
+        confirmText: "Delete PO",
+        cancelText: "Keep it",
+      }))
+    )
+      return;
+    try {
+      await api(`/api/purchase-orders/${po.id}`, { method: "DELETE" });
+      setViewing(null);
+      reload();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -389,7 +408,13 @@ export default function PurchaseOrdersPage() {
       )}
 
       {viewing && (
-        <ViewPOModal po={viewing} onClose={() => setViewing(null)} onCancel={() => cancel(viewing)} onSaved={reload} />
+        <ViewPOModal
+          po={viewing}
+          onClose={() => setViewing(null)}
+          onCancel={() => cancel(viewing)}
+          onDelete={() => del(viewing)}
+          onSaved={reload}
+        />
       )}
 
       {viewingPR && (
@@ -790,16 +815,20 @@ function ViewPOModal({
   po,
   onClose,
   onCancel,
+  onDelete,
   onSaved,
 }: {
   po: PurchaseOrder;
   onClose: () => void;
   onCancel: () => void;
+  onDelete: () => void;
   onSaved: () => void;
 }) {
   const role = useRole();
   const canEdit = role === "owner" || role === "procurement";
   const locked = po.status === "Cancelled";
+  // Deletable only when NOTHING was received — otherwise the stock would orphan.
+  const hasReceipts = po.items.some((i) => i.qtyReceived > 0);
   // `items` is what we show; `draft` is the working copy while editing.
   const [items, setItems] = useState(po.items);
   const [draft, setDraft] = useState(po.items);
@@ -873,6 +902,14 @@ function ViewPOModal({
                 {canEdit && !locked && (
                   <button className="btn-ghost" onClick={startEdit}>
                     <Pencil size={16} /> Edit
+                  </button>
+                )}
+                {canEdit && !hasReceipts && (
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                    onClick={onDelete}
+                  >
+                    <Trash2 size={16} /> Delete
                   </button>
                 )}
                 {(po.status === "Open" || po.status === "Partial") && (

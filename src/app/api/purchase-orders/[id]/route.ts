@@ -83,12 +83,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const actor = await currentActor();
-  const ok = await mutateDB((db) => {
+  const session = await getSession();
+  if (!session || (session.role !== "owner" && session.role !== "procurement")) {
+    return NextResponse.json({ error: "Only the owner or procurement can delete a PO" }, { status: 403 });
+  }
+  const result = await mutateDB((db) => {
     const idx = db.purchaseOrders.findIndex((p) => p.id === params.id);
-    if (idx === -1) return false;
+    if (idx === -1) return { error: "not_found" as const };
+    const po = db.purchaseOrders[idx];
+    // A PO whose goods were (even partly) received can't be deleted — that stock
+    // is already on hand and would be orphaned. Cancel it instead.
+    if (po.items.some((i) => i.qtyReceived > 0)) return { error: "received" as const };
     db.purchaseOrders.splice(idx, 1);
-    return true;
+    logAudit(db, { actor, action: "Deleted", entityType: "PO", entity: po.poNo });
+    return { ok: true as const };
   });
-  if (!ok) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  if ("error" in result) {
+    if (result.error === "not_found") return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "This PO already has received goods — cancel it instead of deleting." },
+      { status: 400 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }
