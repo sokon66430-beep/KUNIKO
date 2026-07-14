@@ -22,6 +22,7 @@ import { InvoiceCamera } from "@/components/InvoiceCamera";
 import { PdfViewer } from "@/components/PdfViewer";
 import type { PurchaseOrder, GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { num, dateTime, shortDate } from "@/lib/format";
 
 export default function ReceivingPage() {
@@ -32,6 +33,13 @@ export default function ReceivingPage() {
   const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "grn">("date-desc");
+  const sortedGrns = useMemo(() => {
+    const l = [...(grns || [])];
+    if (sortBy === "date-asc") return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+    if (sortBy === "grn") return l.sort((a, b) => a.grnNo.localeCompare(b.grnNo));
+    return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [grns, sortBy]);
   // Supplier invoices scanned on each PO card (held here until the receipt is
   // confirmed, then sent with it). Keyed by PO id.
   const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string>>({});
@@ -171,14 +179,32 @@ export default function ReceivingPage() {
       )}
 
       {/* Receiving history */}
-      <div className="mb-3 mt-8 flex items-center justify-between">
+      <div className="mb-3 mt-8 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
           <History size={16} /> Recent Receipts
         </h2>
         {(grns || []).length > 0 && (
-          <a href="/api/reports/goods-receipts/export" className="btn-ghost !py-1.5 text-xs">
-            <FileSpreadsheet size={15} /> Export Excel
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              Sort by
+              <SearchSelect
+                className="w-44"
+                value={sortBy}
+                onChange={(v) => setSortBy(v as any)}
+                options={[
+                  { value: "date-desc", label: "Date · newest first" },
+                  { value: "date-asc", label: "Date · oldest first" },
+                  { value: "grn", label: "Receipt number" },
+                ]}
+              />
+            </div>
+            <a href="/api/reports/goods-receipts/export" className="btn-ghost !py-1.5 text-xs">
+              <FileSpreadsheet size={15} /> Export Excel
+            </a>
+            <a href="/api/reports/goods-receipts/export?format=pdf" className="btn-ghost !py-1.5 text-xs">
+              <FileType2 size={15} /> PDF
+            </a>
+          </div>
         )}
       </div>
       {pendingApprovals > 0 && (
@@ -207,7 +233,7 @@ export default function ReceivingPage() {
                 </tr>
               </thead>
               <tbody>
-                {(grns || []).map((g) => {
+                {sortedGrns.map((g) => {
                   const pending = g.status === "PendingApproval";
                   return (
                     <tr key={g.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
