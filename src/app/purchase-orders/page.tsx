@@ -20,8 +20,10 @@ import {
   PackageCheck as ReceiveIcon,
   Sparkles,
   ChevronRight,
+  Pencil,
+  Trash2,
 } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -386,7 +388,9 @@ export default function PurchaseOrdersPage() {
         />
       )}
 
-      {viewing && <ViewPOModal po={viewing} onClose={() => setViewing(null)} onCancel={() => cancel(viewing)} />}
+      {viewing && (
+        <ViewPOModal po={viewing} onClose={() => setViewing(null)} onCancel={() => cancel(viewing)} onSaved={reload} />
+      )}
 
       {viewingPR && (
         <ReviewPRModal
@@ -786,11 +790,60 @@ function ViewPOModal({
   po,
   onClose,
   onCancel,
+  onSaved,
 }: {
   po: PurchaseOrder;
   onClose: () => void;
   onCancel: () => void;
+  onSaved: () => void;
 }) {
+  const role = useRole();
+  const canEdit = role === "owner" || role === "procurement";
+  const locked = po.status === "Cancelled";
+  // `items` is what we show; `draft` is the working copy while editing.
+  const [items, setItems] = useState(po.items);
+  const [draft, setDraft] = useState(po.items);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setDraft(items.map((i) => ({ ...i })));
+    setEditing(true);
+  };
+  const setLine = (productId: string, patch: Partial<(typeof items)[number]>) =>
+    setDraft((d) => d.map((l) => (l.productId === productId ? { ...l, ...patch } : l)));
+  const removeLine = (productId: string) => setDraft((d) => d.filter((l) => l.productId !== productId));
+
+  const shown = editing ? draft : items;
+  const totalValue = shown.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const edits = [
+        ...draft.map((d) => ({
+          productId: d.productId,
+          qtyOrdered: Math.max(d.qtyReceived, Math.floor(Number(d.qtyOrdered) || 0)),
+          cost: Math.max(0, Number(d.cost) || 0),
+        })),
+        // Lines removed in the draft → tell the server to drop them.
+        ...items.filter((o) => !draft.some((d) => d.productId === o.productId)).map((o) => ({ productId: o.productId, remove: true })),
+      ];
+      const updated = await api<PurchaseOrder>(`/api/purchase-orders/${po.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ items: edits }),
+      });
+      setItems(updated.items); // reflect what the server actually saved (qty floored at received, etc.)
+      setDraft(updated.items);
+      setEditing(false);
+      onSaved();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Modal
       open
@@ -799,21 +852,39 @@ function ViewPOModal({
       footer={
         <div className="flex w-full items-center justify-between">
           <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
-          <div className="flex gap-2">
-            <Link href={`/purchase-orders/${po.id}/print`} className="btn-ghost">
-              <Printer size={16} /> Print PO
-            </Link>
-            <a href={`/api/purchase-orders/${po.id}/export`} className="btn-ghost">
-              <FileSpreadsheet size={16} /> Excel
-            </a>
-            {(po.status === "Open" || po.status === "Partial") && (
+          <div className="flex flex-wrap gap-2">
+            {editing ? (
               <>
-                <button className="btn-danger" onClick={onCancel}>
-                  <Ban size={16} /> Cancel PO
+                <button className="btn-ghost" disabled={busy} onClick={() => setEditing(false)}>
+                  Cancel
                 </button>
-                <Link href="/receiving" className="btn-primary">
-                  <ReceiveIcon size={16} /> Receive Goods
+                <button className="btn-primary" disabled={busy || draft.length === 0} onClick={save}>
+                  <Check size={16} /> {busy ? "Saving…" : "Save changes"}
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href={`/purchase-orders/${po.id}/print`} className="btn-ghost">
+                  <Printer size={16} /> Print PO
                 </Link>
+                <a href={`/api/purchase-orders/${po.id}/export`} className="btn-ghost">
+                  <FileSpreadsheet size={16} /> Excel
+                </a>
+                {canEdit && !locked && (
+                  <button className="btn-ghost" onClick={startEdit}>
+                    <Pencil size={16} /> Edit
+                  </button>
+                )}
+                {(po.status === "Open" || po.status === "Partial") && (
+                  <>
+                    <button className="btn-danger" onClick={onCancel}>
+                      <Ban size={16} /> Cancel PO
+                    </button>
+                    <Link href="/receiving" className="btn-primary">
+                      <ReceiveIcon size={16} /> Receive Goods
+                    </Link>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -825,19 +896,29 @@ function ViewPOModal({
         {po.prNo && <span>From <b className="text-ink-700">{po.prNo}</b></span>}
         {po.expectedDate && <span>Expected {shortDate(po.expectedDate)}</span>}
       </div>
-      {po.note && <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{po.note}</p>}
+      {editing && (
+        <p className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
+          Adjust ordered quantity or unit cost. You can’t go below what’s already received; remove a line only if none was
+          received.
+        </p>
+      )}
+      {po.note && !editing && (
+        <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{po.note}</p>
+      )}
       <div className="overflow-hidden rounded-xl border border-slate-200">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
               <th className="px-3 py-2 font-semibold">Product</th>
+              {editing && <th className="px-3 py-2 text-center font-semibold">Unit cost</th>}
               <th className="px-3 py-2 text-center font-semibold">Ordered</th>
               <th className="px-3 py-2 text-center font-semibold">Received</th>
               <th className="px-3 py-2 text-right font-semibold">Line</th>
+              {editing && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
-            {po.items.map((it) => {
+            {shown.map((it) => {
               const short = it.qtyOrdered - it.qtyReceived;
               return (
                 <tr key={it.productId} className="border-b border-slate-50 last:border-0">
@@ -845,26 +926,69 @@ function ViewPOModal({
                     <p className="font-semibold text-ink-800">{it.name}</p>
                     <p className="text-xs text-slate-400">{it.sku}</p>
                   </td>
-                  <td className="px-3 py-2 text-center">{it.qtyOrdered} {it.unit}</td>
+                  {editing && (
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={it.cost}
+                        onChange={(e) => setLine(it.productId, { cost: Number(e.target.value) })}
+                        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      />
+                    </td>
+                  )}
+                  <td className="px-3 py-2 text-center">
+                    {editing ? (
+                      <input
+                        type="number"
+                        min={it.qtyReceived}
+                        value={it.qtyOrdered}
+                        onChange={(e) => setLine(it.productId, { qtyOrdered: Number(e.target.value) })}
+                        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      />
+                    ) : (
+                      <>
+                        {it.qtyOrdered} {it.unit}
+                      </>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-center">
                     <span className={it.qtyReceived >= it.qtyOrdered ? "text-emerald-600" : "text-amber-600"}>
                       {it.qtyReceived}
                     </span>
-                    {short > 0 && it.qtyReceived > 0 && (
-                      <span className="ml-1 text-xs text-rose-500">(-{short})</span>
-                    )}
+                    {short > 0 && it.qtyReceived > 0 && <span className="ml-1 text-xs text-rose-500">(-{short})</span>}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(it.cost * it.qtyOrdered)}</td>
+                  {editing && (
+                    <td className="px-2 py-2 text-right">
+                      {it.qtyReceived === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => removeLine(it.productId)}
+                          title="Remove line"
+                          className="grid h-7 w-7 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-300" title="Some already received — can’t remove">
+                          —
+                        </span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr className="bg-slate-50">
-              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={3}>
+              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={editing ? 4 : 3}>
                 Total order value
               </td>
-              <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(poTotal(po))}</td>
+              <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(totalValue)}</td>
+              {editing && <td></td>}
             </tr>
           </tfoot>
         </table>
