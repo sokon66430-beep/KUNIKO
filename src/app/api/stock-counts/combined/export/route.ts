@@ -4,10 +4,15 @@ import { getSession } from "@/lib/session";
 import { canSeeProfit } from "@/lib/access";
 import { buildCombinedStockCountWorkbook, type CombinedCountRow } from "@/lib/excelExport";
 import { buildPdf, buildCsv, type Col, type ReportData } from "@/lib/reportExport";
+import { COUNT_PLACES } from "@/lib/types";
+import { formatLocations } from "@/lib/location";
 
 export const dynamic = "force-dynamic";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const pad = (x: number) => String(x).padStart(2, "0");
+const ddmmyyyy = (iso?: string) => (iso ? `${pad(new Date(iso).getDate())}-${pad(new Date(iso).getMonth() + 1)}-${new Date(iso).getFullYear()}` : "");
+const hhmm = (iso?: string) => (iso ? `${pad(new Date(iso).getHours())}:${pad(new Date(iso).getMinutes())}` : "");
 
 // One big report that SUMS the counted quantity of every stock count, per
 // product. You count in batches and post each, so this rolls them all up into
@@ -21,12 +26,22 @@ export async function GET(req: Request) {
   // Sum countedQty per product across every stock count, and note how many
   // counts each product appeared in.
   const prodById = new Map(db.products.map((p) => [p.id, p]));
-  const agg = new Map<string, { counted: number; reports: Set<string> }>();
+  type Agg = {
+    counted: number;
+    reports: Set<string>;
+    places: Record<(typeof COUNT_PLACES)[number], number>;
+    lastAt: string; // most recent time this product was counted
+  };
+  const agg = new Map<string, Agg>();
   for (const c of db.stockCounts) {
     for (const it of c.items) {
-      const e = agg.get(it.productId) ?? { counted: 0, reports: new Set<string>() };
+      const e: Agg =
+        agg.get(it.productId) ?? { counted: 0, reports: new Set<string>(), places: { Store: 0, Stock: 0, Vault: 0 }, lastAt: "" };
       e.counted += it.countedQty;
       e.reports.add(c.countNo);
+      for (const pl of COUNT_PLACES) e.places[pl] += it.placeQty?.[pl] ?? 0;
+      const at = it.countedAt || c.createdAt || "";
+      if (at > e.lastAt) e.lastAt = at;
       agg.set(it.productId, e);
     }
   }
@@ -40,11 +55,17 @@ export async function GET(req: Request) {
         barcode: p?.barcode ?? "",
         name: p?.name ?? "(deleted product)",
         category: p?.category ?? "",
+        location: p ? formatLocations(p) : "",
         unit: p?.unit ?? "",
+        store: e.places.Store,
+        stock: e.places.Stock,
+        vault: e.places.Vault,
         counted: e.counted,
         cost,
         price: p?.price ?? 0,
         total: round2(e.counted * cost),
+        date: ddmmyyyy(e.lastAt),
+        time: hhmm(e.lastAt),
         reports: e.reports.size,
       };
     })
@@ -73,7 +94,11 @@ export async function GET(req: Request) {
     { header: "Barcode", get: (r: CombinedCountRow) => r.barcode },
     { header: "Product Name", get: (r: CombinedCountRow) => r.name, width: 2 },
     { header: "Category", get: (r: CombinedCountRow) => r.category },
+    { header: "Location", get: (r: CombinedCountRow) => r.location },
     { header: "Unit", get: (r: CombinedCountRow) => r.unit },
+    { header: "Store", get: (r: CombinedCountRow) => r.store, num: true },
+    { header: "Stock", get: (r: CombinedCountRow) => r.stock, num: true },
+    { header: "Vault", get: (r: CombinedCountRow) => r.vault, num: true },
     { header: "Total Counted", get: (r: CombinedCountRow) => r.counted, num: true },
     ...(showValue
       ? [
@@ -82,6 +107,8 @@ export async function GET(req: Request) {
           { header: "Total Value", get: (r: CombinedCountRow) => r.total, money: true },
         ]
       : []),
+    { header: "Last Count", get: (r: CombinedCountRow) => r.date },
+    { header: "Time", get: (r: CombinedCountRow) => r.time },
     { header: "In Reports", get: (r: CombinedCountRow) => r.reports, num: true },
   ];
   const data: ReportData = {

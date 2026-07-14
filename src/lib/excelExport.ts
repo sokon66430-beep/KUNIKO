@@ -1118,11 +1118,17 @@ export type CombinedCountRow = {
   barcode: string;
   name: string;
   category: string;
+  location: string; // gondola/shelf registered on Price labels, e.g. "A12/3"
   unit: string;
-  counted: number;
+  store: number; // counted in Store
+  stock: number; // counted in Stock
+  vault: number; // counted in Vault
+  counted: number; // total across all places
   cost: number;
   price: number;
   total: number; // counted * cost
+  date: string; // last count date (dd-mm-yyyy)
+  time: string; // last count time (hh:mm)
   reports: number; // in how many counts it appeared
 };
 
@@ -1136,95 +1142,86 @@ export function buildCombinedStockCountWorkbook(
   const ws = wb.addWorksheet("Combined Count", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
-  ws.columns = showValue
-    ? [
-        { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
-        { width: 7 }, { width: 13 }, { width: 11 }, { width: 12 }, { width: 14 }, { width: 10 },
-      ]
-    : [
-        { width: 5 }, { width: 14 }, { width: 18 }, { width: 42 }, { width: 20 },
-        { width: 7 }, { width: 13 }, { width: 10 },
-      ];
 
-  const head = showValue
-    ? [
-        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
-        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "Total Counted", align: "right" as const },
-        { label: "Cost", align: "right" as const }, { label: "Sell Price", align: "right" as const },
-        { label: "Total Value", align: "right" as const }, { label: "In Reports", align: "right" as const },
-      ]
-    : [
-        { label: "No" }, { label: "Item Code" }, { label: "Barcode" }, { label: "Product Name" },
-        { label: "Category" }, { label: "Unit", align: "center" as const }, { label: "Total Counted", align: "right" as const },
-        { label: "In Reports", align: "right" as const },
-      ];
+  type Align = "left" | "center" | "right";
+  type CCol = {
+    label: string;
+    get: (r: CombinedCountRow, i: number) => ExcelJS.CellValue;
+    align?: Align;
+    money?: boolean;
+    num?: boolean;
+    total?: boolean; // summed into the TOTAL row
+    width: number;
+  };
+  const cols: CCol[] = [
+    { label: "No", get: (_r, i) => i + 1, align: "center", width: 5 },
+    { label: "Item Code", get: (r) => r.sku, width: 13 },
+    { label: "Barcode", get: (r) => r.barcode, width: 16 },
+    { label: "Product Name", get: (r) => r.name, width: 38 },
+    { label: "Category", get: (r) => r.category, width: 18 },
+    { label: "Location", get: (r) => r.location, width: 12 },
+    { label: "Unit", get: (r) => r.unit, align: "center", width: 7 },
+    { label: "Store", get: (r) => r.store, align: "right", num: true, total: true, width: 8 },
+    { label: "Stock", get: (r) => r.stock, align: "right", num: true, total: true, width: 8 },
+    { label: "Vault", get: (r) => r.vault, align: "right", num: true, total: true, width: 8 },
+    { label: "Total Counted", get: (r) => r.counted, align: "right", num: true, total: true, width: 13 },
+    ...(showValue
+      ? ([
+          { label: "Cost", get: (r) => round2(r.cost), align: "right", money: true, width: 10 },
+          { label: "Sell Price", get: (r) => round2(r.price), align: "right", money: true, width: 11 },
+          { label: "Total Value", get: (r) => round2(r.total), align: "right", money: true, total: true, width: 13 },
+        ] as CCol[])
+      : []),
+    { label: "Last Count", get: (r) => r.date, align: "center", width: 12 },
+    { label: "Time", get: (r) => r.time, align: "center", width: 8 },
+    { label: "In Reports", get: (r) => r.reports, align: "right", num: true, width: 10 },
+  ];
+
+  ws.columns = cols.map((c) => ({ width: c.width }));
 
   let row = reportHeader(ws, "COMBINED STOCK COUNT REPORT", [
     `${business.name} · ${business.branch}`,
     `Sum of ${countsIncluded} stock count${countsIncluded === 1 ? "" : "s"} · ${rows.length} products counted`,
-  ], head.length);
+  ], cols.length);
 
-  tableHead(ws, row, head);
+  tableHead(
+    ws,
+    row,
+    cols.map((c) => ({ label: c.label, align: c.align === "left" ? undefined : c.align })),
+  );
 
   const firstDataRow = row + 1;
-  const reportsCol = showValue ? 11 : 8;
+  const totals = cols.map(() => 0);
   rows.forEach((r, i) => {
     const xr = ws.getRow(firstDataRow + i);
-    const base: [ExcelJS.CellValue, ("right" | "center" | "left")?][] = [
-      [i + 1, "center"], [r.sku], [r.barcode], [r.name], [r.category],
-      [r.unit, "center"], [r.counted, "right"],
-    ];
-    base.forEach(([val, align], c) => {
-      const cell = xr.getCell(c + 1);
+    cols.forEach((c, ci) => {
+      const cell = xr.getCell(ci + 1);
+      const val = c.get(r, i);
       cell.value = val;
       cell.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-      cell.alignment = { horizontal: align || "left", vertical: "middle" };
+      cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
       cell.border = allThin;
+      if (c.money) cell.numFmt = MONEY;
+      else if (c.num) cell.numFmt = "#,##0";
+      if (c.total && typeof val === "number") totals[ci] += val;
     });
-    if (showValue) {
-      const cost = xr.getCell(8);
-      cost.value = round2(r.cost);
-      cost.numFmt = MONEY;
-      const sell = xr.getCell(9);
-      sell.value = round2(r.price);
-      sell.numFmt = MONEY;
-      const tot = xr.getCell(10);
-      tot.value = round2(r.total);
-      tot.numFmt = MONEY;
-      for (const c of [cost, sell, tot]) {
-        c.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-        c.alignment = { horizontal: "right", vertical: "middle" };
-        c.border = allThin;
-      }
-    }
-    const rep = xr.getCell(reportsCol);
-    rep.value = r.reports;
-    rep.font = { name: CALIBRI, size: 10, color: { argb: "FF0C1322" } };
-    rep.alignment = { horizontal: "right", vertical: "middle" };
-    rep.border = allThin;
   });
 
-  // Footer: sum of Total Counted (and Total Value when shown).
+  // TOTAL row — label sits in the cell just before the first summed column.
   if (rows.length) {
+    const firstTotalIdx = cols.findIndex((c) => c.total);
     const totRow = ws.getRow(firstDataRow + rows.length);
-    const lbl = totRow.getCell(6);
-    lbl.value = "TOTAL";
-    lbl.font = { name: CALIBRI, size: 11, bold: true };
-    lbl.alignment = { horizontal: "right" };
-    lbl.border = allThin;
-    const qty = totRow.getCell(7);
-    qty.value = rows.reduce((s, r) => s + r.counted, 0);
-    qty.font = { name: CALIBRI, size: 11, bold: true };
-    qty.alignment = { horizontal: "right" };
-    qty.border = allThin;
-    if (showValue) {
-      const tv = totRow.getCell(10);
-      tv.value = round2(rows.reduce((s, r) => s + r.total, 0));
-      tv.numFmt = MONEY;
-      tv.font = { name: CALIBRI, size: 11, bold: true };
-      tv.alignment = { horizontal: "right" };
-      tv.border = allThin;
-    }
+    cols.forEach((c, ci) => {
+      const cell = totRow.getCell(ci + 1);
+      if (ci === firstTotalIdx - 1) cell.value = "TOTAL";
+      else if (c.total) {
+        cell.value = c.money ? round2(totals[ci]) : totals[ci];
+        cell.numFmt = c.money ? MONEY : "#,##0";
+      }
+      cell.font = { name: CALIBRI, size: 11, bold: true, color: { argb: "FF0C1322" } };
+      cell.alignment = { horizontal: c.align || "left", vertical: "middle" };
+      cell.border = allThin;
+    });
   }
 
   ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
