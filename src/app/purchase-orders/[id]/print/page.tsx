@@ -47,14 +47,27 @@ const HEADERS = [
   "Amount",
 ];
 
-// One printed A4 page holds at most this many item rows. When an order has
-// more lines than fit, it's split across multiple pages (each labelled
-// "Page X of Y") — Chrome's print-to-PDF has no support for automatic
-// per-page footers, so the page breaks and numbers are laid out by hand here.
-const ROWS_PER_PAGE = 20;
-// If the final chunk of items has more rows than this, the totals/notes/
-// signature block gets its own trailing page instead of being squeezed in.
-const FOOTER_ROOM_ROWS = 10;
+// Chrome's print-to-PDF has no support for automatic per-page footers, so page
+// breaks and "Page X of Y" numbers are laid out by hand here. If a page's
+// content overflowed A4 the browser would auto-split it and strand the totals,
+// so per-page row capacities are derived from measured block heights (taken at
+// the ~703px print content width) with headroom, and never exceeded.
+//
+// The totals + notes + signature block ALWAYS sits directly beneath real item
+// rows — it never gets a page of its own (an empty item table with the totals
+// floating off to one side is exactly the "footer sitting too high" look), so a
+// final page that's too tall to also hold the footer is split to make room.
+const A4_USABLE_PX = 1032; // A4 portrait, 297mm − 2×12mm margins, at 96dpi
+const ROW_PX = 36; // one item row, with headroom for a two-line item name
+const TOP_MATTER_PX = 255; // page 1: logo/title/info block + column header + page number
+const CONT_MATTER_PX = 69; // continuation page: column header + page number only
+const FOOTER_PX = 402; // totals + notes + signature block
+
+const cap = (matter: number) => Math.floor((A4_USABLE_PX - matter) / ROW_PX);
+const HEADER_PAGE_CAP = cap(TOP_MATTER_PX); // page 1, items only
+const CONT_PAGE_CAP = cap(CONT_MATTER_PX); // continuation page, items only
+const HEADER_PAGE_WITH_FOOTER_CAP = cap(TOP_MATTER_PX + FOOTER_PX); // page 1 that also carries the footer
+const CONT_PAGE_WITH_FOOTER_CAP = cap(CONT_MATTER_PX + FOOTER_PX); // continuation page that also carries the footer
 
 export default function POPrintPage({ params }: { params: { id: string } }) {
   const { data, loading, error } = useFetch<{ po: PurchaseOrder; business: Business }>(
@@ -70,20 +83,56 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
   const vat = subtotal * vatRate;
   const grand = subtotal + vat;
 
-  // Split the items into per-page chunks, and decide whether the totals/notes/
-  // signature block needs a trailing page of its own.
-  const itemChunks: POItem[][] = [];
-  for (let i = 0; i < po.items.length; i += ROWS_PER_PAGE) itemChunks.push(po.items.slice(i, i + ROWS_PER_PAGE));
-  if (itemChunks.length === 0) itemChunks.push([]);
-  const footerNeedsOwnPage = itemChunks[itemChunks.length - 1].length > FOOTER_ROOM_ROWS;
+  // Split the items into per-page chunks (page 1 holds fewer rows because of the
+  // header block above it).
+  const chunks: POItem[][] = [];
+  for (let i = 0; i < po.items.length; ) {
+    const cap = chunks.length === 0 ? HEADER_PAGE_CAP : CONT_PAGE_CAP;
+    chunks.push(po.items.slice(i, i + cap));
+    i += cap;
+  }
+  if (chunks.length === 0) chunks.push([]);
 
-  type PageSpec = { items: POItem[] | null; startIndex: number; showFooter: boolean };
-  const pages: PageSpec[] = itemChunks.map((chunk, idx) => ({
-    items: chunk,
-    startIndex: idx * ROWS_PER_PAGE,
-    showFooter: idx === itemChunks.length - 1 && !footerNeedsOwnPage,
-  }));
-  if (footerNeedsOwnPage) pages.push({ items: null, startIndex: po.items.length, showFooter: true });
+  // The totals/notes/signature block goes under the LAST chunk. The footer page
+  // carries an extra FOOTER_PX, so it holds fewer item rows than a plain page —
+  // `balancedSplit` returns how many of `count` rows to keep on the (items-only)
+  // page above so the two pages come out roughly equal in height, clamped so the
+  // footer page holds ≥1 row and never exceeds its capacity.
+  const footerMatter = CONT_MATTER_PX + FOOTER_PX;
+  const balancedSplit = (count: number, precedingMatter: number, precedingCap: number) => {
+    const raw = Math.round((footerMatter - precedingMatter + count * ROW_PX) / (2 * ROW_PX));
+    return Math.max(1, count - CONT_PAGE_WITH_FOOTER_CAP, Math.min(raw, precedingCap, count - 1));
+  };
+
+  // (1) If the final chunk is too tall to also carry the footer, peel a balanced
+  //     footer page off the end so the totals never land on an empty table.
+  const lastFooterCap = chunks.length === 1 ? HEADER_PAGE_WITH_FOOTER_CAP : CONT_PAGE_WITH_FOOTER_CAP;
+  if (chunks[chunks.length - 1].length > lastFooterCap) {
+    const last = chunks[chunks.length - 1];
+    const onPageOne = chunks.length === 1;
+    const keep = balancedSplit(last.length, onPageOne ? TOP_MATTER_PX : CONT_MATTER_PX, onPageOne ? HEADER_PAGE_CAP : CONT_PAGE_CAP);
+    chunks[chunks.length - 1] = last.slice(0, keep);
+    chunks.push(last.slice(keep));
+  }
+
+  // (2) Re-balance the final two pages so a small remainder (e.g. a single row
+  //     that greedy chunking spilled onto its own page) doesn't leave the footer
+  //     page with a lone orphan row. Stable when the pages are already balanced.
+  if (chunks.length >= 2) {
+    const a = chunks.length - 2;
+    const merged = chunks[a].concat(chunks[a + 1]);
+    const onPageOne = a === 0;
+    const keep = balancedSplit(merged.length, onPageOne ? TOP_MATTER_PX : CONT_MATTER_PX, onPageOne ? HEADER_PAGE_CAP : CONT_PAGE_CAP);
+    chunks.splice(a, 2, merged.slice(0, keep), merged.slice(keep));
+  }
+
+  type PageSpec = { items: POItem[]; startIndex: number; showFooter: boolean };
+  let runningIndex = 0;
+  const pages: PageSpec[] = chunks.map((chunk, idx) => {
+    const spec: PageSpec = { items: chunk, startIndex: runningIndex, showFooter: idx === chunks.length - 1 };
+    runningIndex += chunk.length;
+    return spec;
+  });
   const totalPages = pages.length;
 
   const HeaderCell = ({ label, value, bold }: { label: string; value: string; bold?: boolean }) => (
@@ -178,11 +227,9 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             </>
           )}
 
-          {/* Line-item table. On a trailing page dedicated to totals/notes/signature
-              (pg.items === null), tbody is empty but the table still renders so the
-              totals row keeps the same column alignment as the item rows above. */}
-          {(pg.items !== null || pg.showFooter) && (
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          {/* Line-item table. The totals row (tfoot) always follows real item
+              rows on the same page, keeping the column alignment intact. */}
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <colgroup>
                 {COLW.map((w, i) => (
                   <col key={i} style={{ width: w }} />
@@ -216,7 +263,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                 </tr>
               </thead>
               <tbody>
-                {(pg.items || []).map((it, i) => {
+                {pg.items.map((it, i) => {
                   const rowNo = pg.startIndex + i + 1;
                   const cell = (extra: React.CSSProperties, i2: number): React.CSSProperties => ({
                     border,
@@ -284,12 +331,11 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                 </tfoot>
               )}
             </table>
-          )}
 
           {pg.showFooter && (
             <>
               {/* Notes — Arial */}
-              <div style={{ fontFamily: ARIAL, fontSize: 13, lineHeight: 1.5 }} className="mt-6">
+              <div style={{ fontFamily: ARIAL, fontSize: 12, lineHeight: 1.4 }} className="mt-4">
                 <p style={{ fontWeight: 700 }}>Notes:</p>
                 {business.poNotes?.map((n, i) => (
                   <p key={i}>{n}</p>
@@ -301,7 +347,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
 
               {/* Remark + signature box */}
               <div
-                className="mt-6"
+                className="mt-4"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "51.6% 17.7% 30.7%",
@@ -310,7 +356,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                 }}
               >
                 {/* Remark */}
-                <div style={{ borderRight: borderMed, padding: 8, minHeight: 150 }}>
+                <div style={{ borderRight: borderMed, padding: 8, minHeight: 112 }}>
                   <span style={{ fontWeight: 700, fontSize: 11 }}>Remark:</span>
                 </div>
                 {/* Approved / Received */}
