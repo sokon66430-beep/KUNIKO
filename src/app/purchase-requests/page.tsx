@@ -74,7 +74,19 @@ export default function PurchaseRequestsPage() {
   const [viewing, setViewing] = useState<PurchaseRequest | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const list = prs || [];
+  // Sort control for the request list (default: newest first).
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "pr">("date-desc");
+  const list = useMemo(() => {
+    const l = [...(prs || [])];
+    switch (sortBy) {
+      case "date-asc":
+        return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+      case "pr":
+        return l.sort((a, b) => a.prNo.localeCompare(b.prNo));
+      default:
+        return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    }
+  }, [prs, sortBy]);
   const drafts = list.filter((p) => p.status === "Draft").length;
   const pending = list.filter((p) => p.status === "Submitted").length;
   const inProcurement = list.filter((p) => p.status === "Approved" || p.status === "Converted").length;
@@ -225,8 +237,16 @@ export default function PurchaseRequestsPage() {
 
       {/* Requests */}
       <Card className="p-0">
-        <div className="border-b border-slate-100 px-5 py-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3.5">
           <h3 className="text-sm font-bold text-ink-900">Requests</h3>
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            Sort by
+            <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+              <option value="date-desc">Date · newest first</option>
+              <option value="date-asc">Date · oldest first</option>
+              <option value="pr">PR number</option>
+            </select>
+          </label>
         </div>
         {loading ? (
           <Spinner label="Loading requests…" />

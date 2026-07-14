@@ -140,6 +140,7 @@ export type PurchaseOrder = {
   note?: string;
   expectedDate?: string;
   createdAt: string;
+  sentToSupplier?: boolean; // ticked once the team has actually sent it out
 };
 
 export type GRNItem = {

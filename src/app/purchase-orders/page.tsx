@@ -101,12 +101,35 @@ export default function PurchaseOrdersPage() {
     }
   }, [searchParams]);
 
-  const list = pos || [];
+  // Sort control for the PO list (default: newest first).
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "po" | "sent">("date-desc");
+  const list = useMemo(() => {
+    const l = [...(pos || [])];
+    switch (sortBy) {
+      case "date-asc":
+        return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+      case "po":
+        return l.sort((a, b) => a.poNo.localeCompare(b.poNo));
+      case "sent": // not-yet-sent first, so the team sees what still needs sending
+        return l.sort((a, b) => Number(!!a.sentToSupplier) - Number(!!b.sentToSupplier) || +new Date(b.createdAt) - +new Date(a.createdAt));
+      default:
+        return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    }
+  }, [pos, sortBy]);
   const open = list.filter((p) => p.status === "Open" || p.status === "Partial").length;
   const received = list.filter((p) => p.status === "Received").length;
   const openValue = list
     .filter((p) => p.status === "Open" || p.status === "Partial")
     .reduce((s, p) => s + poTotal(p), 0);
+
+  // Tick once the PO has actually been sent out to the supplier.
+  async function markSent(po: PurchaseOrder, sent: boolean) {
+    await api(`/api/purchase-orders/${po.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ sentToSupplier: sent }),
+    });
+    reload();
+  }
 
   async function cancel(po: PurchaseOrder) {
     if (
@@ -220,6 +243,20 @@ export default function PurchaseOrdersPage() {
         </>
       )}
 
+      {/* Sort bar — and the ✓ marks which POs were already sent to the supplier */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Orders</h2>
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+          Sort by
+          <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+            <option value="date-desc">Date · newest first</option>
+            <option value="date-asc">Date · oldest first</option>
+            <option value="po">PO number</option>
+            <option value="sent">Not sent first</option>
+          </select>
+        </label>
+      </div>
+
       <Card className="p-0">
         {loading ? (
           <Spinner label="Loading orders…" />
@@ -248,6 +285,21 @@ export default function PurchaseOrdersPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                    {/* Sent to supplier — tick it once the PO has gone out */}
+                    <label
+                      className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500"
+                      title="Tick when this PO has been sent to the supplier"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!po.sentToSupplier}
+                        onChange={(e) => markSent(po, e.target.checked)}
+                        className="h-4 w-4 accent-brand-600"
+                      />
+                      <span className={po.sentToSupplier ? "font-semibold text-emerald-600" : ""}>
+                        {po.sentToSupplier ? "Sent" : "Send?"}
+                      </span>
+                    </label>
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
                         <div

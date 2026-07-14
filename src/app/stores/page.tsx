@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Users, Plus, Store as StoreIcon, Trash2 } from "lucide-react";
+import { Building2, Users, Plus, Store as StoreIcon, Trash2, Pencil } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { canManageStaff } from "@/lib/access";
 import type { Role } from "@/lib/auth";
@@ -35,6 +35,8 @@ export default function StoresPage() {
   const { data: session } = useFetch<{ user: { id: string; role: string } }>("/api/auth/session");
   const [addingStore, setAddingStore] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
+  const [editingStore, setEditingStore] = useState<StoreRow | null>(null);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
 
   const storeList = stores || [];
   const userList = users || [];
@@ -107,14 +109,25 @@ export default function StoresPage() {
           ) : (
             <ul className="divide-y divide-slate-50">
               {storeList.map((s) => (
-                <li key={s.id} className="flex items-center justify-between px-5 py-4">
-                  <div>
-                    <p className="font-semibold text-ink-800">{s.name}</p>
+                <li key={s.id} className="flex items-center justify-between gap-2 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-ink-800">{s.name}</p>
                     <p className="text-xs text-slate-400">
                       {s.id} · created {shortDate(s.createdAt)}
                     </p>
                   </div>
-                  <Badge tone="slate">{s.users} user{s.users === 1 ? "" : "s"}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="slate">{s.users} user{s.users === 1 ? "" : "s"}</Badge>
+                    {isOwner && (
+                      <button
+                        onClick={() => setEditingStore(s)}
+                        title="Rename store"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -132,6 +145,7 @@ export default function StoresPage() {
             <ul className="divide-y divide-slate-50">
               {userList.map((u) => {
                 const deletable = canManage && u.id !== myId && (isOwner || u.role !== "owner");
+                const editable = canManage && (isOwner || u.role !== "owner");
                 return (
                   <li key={u.id} className="flex items-center justify-between gap-2 px-5 py-4">
                     <div className="min-w-0">
@@ -142,6 +156,15 @@ export default function StoresPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge tone={ROLE_TONE[u.role] || "slate"}>{ROLE_LABEL[u.role] || u.role}</Badge>
+                      {editable && (
+                        <button
+                          onClick={() => setEditingUser(u)}
+                          title="Edit employee"
+                          className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                      )}
                       {deletable && (
                         <button
                           onClick={() => removeUser(u)}
@@ -181,7 +204,159 @@ export default function StoresPage() {
           }}
         />
       )}
+      {editingStore && (
+        <EditStoreModal
+          store={editingStore}
+          onClose={() => setEditingStore(null)}
+          onDone={() => {
+            setEditingStore(null);
+            reload();
+          }}
+        />
+      )}
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          stores={storeList}
+          isOwner={isOwner}
+          onClose={() => setEditingUser(null)}
+          onDone={() => {
+            setEditingUser(null);
+            reloadUsers();
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function EditStoreModal({ store, onClose, onDone }: { store: StoreRow; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState(store.name);
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/stores/${store.id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+      onDone();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Edit Store"
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={busy || !name.trim()} onClick={save}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </>
+      }
+    >
+      <label className="label">Store name / location</label>
+      <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+      <p className="mt-2 text-xs text-slate-500">Renaming a store doesn&apos;t change any of its products or history.</p>
+    </Modal>
+  );
+}
+
+function EditUserModal({
+  user,
+  stores,
+  isOwner,
+  onClose,
+  onDone,
+}: {
+  user: UserRow;
+  stores: StoreRow[];
+  isOwner: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: user.name,
+    username: user.username,
+    password: "",
+    role: user.role,
+    storeId: user.storeId,
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function save() {
+    setBusy(true);
+    try {
+      // Only send a password when the owner typed a new one.
+      const body: any = { name: form.name, username: form.username, role: form.role, storeId: form.storeId };
+      if (form.password.trim()) body.password = form.password.trim();
+      await api(`/api/users/${user.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      onDone();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Edit ${user.name}`}
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={busy || !form.username.trim() || !form.storeId} onClick={save}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">Full name</label>
+          <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Username</label>
+          <input className="input" value={form.username} onChange={(e) => set("username", e.target.value)} />
+        </div>
+        <div>
+          <label className="label">New password (leave blank to keep)</label>
+          <input className="input" type="text" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••••" />
+        </div>
+        <div>
+          <label className="label">Role</label>
+          <select className="input" value={form.role} onChange={(e) => set("role", e.target.value)}>
+            <option value="operations">Operations</option>
+            <option value="procurement">Procurement</option>
+            <option value="accountant">Accountant</option>
+            <option value="manager">Manager</option>
+            <option value="area_manager">Area Manager</option>
+            {isOwner && <option value="owner">Owner (full access)</option>}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="label">Store</label>
+          <select className="input" value={form.storeId} onChange={(e) => set("storeId", e.target.value)}>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

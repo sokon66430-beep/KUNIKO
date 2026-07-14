@@ -78,7 +78,19 @@ export default function StockCountPage() {
     }
   }
 
-  const list = counts || [];
+  // Sort control for the counts list (default: newest first).
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "no">("date-desc");
+  const list = useMemo(() => {
+    const l = [...(counts || [])];
+    switch (sortBy) {
+      case "date-asc":
+        return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+      case "no":
+        return l.sort((a, b) => a.countNo.localeCompare(b.countNo));
+      default:
+        return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    }
+  }, [counts, sortBy]);
   const openCount = list.filter((c) => c.status === "Open").length;
   const postedCount = list.filter((c) => c.status === "Posted").length;
   const lastNet = list[0]
@@ -117,7 +129,15 @@ export default function StockCountPage() {
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
             <ClipboardCheck size={16} /> All counts
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              Sort by
+              <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                <option value="date-desc">Date · newest first</option>
+                <option value="date-asc">Date · oldest first</option>
+                <option value="no">Count number</option>
+              </select>
+            </label>
             <a
               href="/api/stock-counts/combined/export?format=xlsx"
               className="btn-ghost !py-2 text-sm"

@@ -12,7 +12,8 @@ const MASTER_FILE = path.join(DATA_DIR, "master-products.json");
 let masterWriteChain: Promise<unknown> = Promise.resolve();
 
 // Fields the master OWNS and pushes to stores on sync. Everything not listed
-// stays per-store: price (selling), reorderLevel, stock, trackStock, and all
+// stays per-store: price (selling), reorderLevel, stock, trackStock, shelf
+// LOCATION (gondola/shelf/locations — every store has its own layout), and all
 // transactional data (sales/PO/receipts…).
 export const MASTER_FIELDS: (keyof Product)[] = [
   "sku",
@@ -29,9 +30,6 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "shelfLifeDays",
   "supplier",
   "supplierCode",
-  "gondola",
-  "shelf",
-  "locations",
 ];
 
 async function ensureMaster(): Promise<void> {

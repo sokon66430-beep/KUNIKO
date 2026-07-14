@@ -1,7 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, Plus, Package, Boxes, Pencil, Trash2, RefreshCw, CheckCircle2, ChevronRight } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+  Search,
+  Plus,
+  Package,
+  Boxes,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  CheckCircle2,
+  ChevronRight,
+  Upload,
+  FileSpreadsheet,
+} from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, Supplier } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
@@ -25,6 +37,28 @@ export default function MasterDataPage() {
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function importExcel(file: File) {
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/master/products/import", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Import failed (${res.status})`);
+      setImportMsg(`Master updated — ${num(data.created)} new · ${num(data.updated)} updated. Click "Sync to stores" to push it out.`);
+      reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   const categories = useMemo(() => {
     const set = new Set((products || []).map((p) => p.category).filter(Boolean));
@@ -101,8 +135,24 @@ export default function MasterDataPage() {
         subtitle="One central product catalog for every store. Edit here, then Sync — shared info flows to all stores, each keeps its own price, reorder level & stock."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <button className="btn-ghost" disabled={syncing} onClick={sync} title="Push shared info to every store">
-              <RefreshCw size={18} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing…" : "Sync to stores"}
+            <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => fileRef.current?.click()}>
+              <Upload size={16} /> {importing ? "Importing…" : "Import"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importExcel(f);
+              }}
+            />
+            <a className="btn-ghost !py-2 text-sm" href="/api/master/products/export" title="Download master as Excel">
+              <FileSpreadsheet size={16} /> Export
+            </a>
+            <button className="btn-ghost !py-2 text-sm" disabled={syncing} onClick={sync} title="Push shared info to every store">
+              <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing…" : "Sync to stores"}
             </button>
             <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
               <Plus size={18} /> Add Product
@@ -112,6 +162,12 @@ export default function MasterDataPage() {
       />
 
       {error && <ErrorBox message={error} />}
+
+      {importMsg && (
+        <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+          {importMsg}
+        </div>
+      )}
 
       {syncResult && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">

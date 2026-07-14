@@ -24,6 +24,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     if (typeof body.note === "string") po.note = body.note.trim() || undefined;
     if (typeof body.expectedDate === "string") po.expectedDate = body.expectedDate || undefined;
+    // Tick/untick "sent to supplier" — a workflow marker so the team can see
+    // at a glance which POs have already gone out.
+    if (typeof body.sentToSupplier === "boolean") {
+      po.sentToSupplier = body.sentToSupplier || undefined;
+      logAudit(db, {
+        actor,
+        action: body.sentToSupplier ? "Marked sent" : "Unmarked sent",
+        entityType: "PO",
+        entity: po.poNo,
+      });
+    }
     return po;
   });
   if (!result) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
