@@ -200,13 +200,18 @@ export type Approver = {
 // Stock Count (stocktake) — an accountant counts products on-site; the app
 // compares to system stock (variance) and adjusts once posted.
 // ---------------------------------------------------------------------------
+// The three physical places a product can be counted in.
+export type CountPlace = "Store" | "Stock" | "Vault";
+export const COUNT_PLACES: CountPlace[] = ["Store", "Stock", "Vault"];
+
 export type StockCountItem = {
   productId: string;
   sku: string;
   name: string;
   barcode?: string;
   systemQty: number; // stock recorded at the moment the item was counted
-  countedQty: number;
+  countedQty: number; // total counted across all places
+  placeQty?: Partial<Record<CountPlace, number>>; // how much was counted in each place
   countedBy?: string; // which user counted this line
   countedAt?: string;
 };

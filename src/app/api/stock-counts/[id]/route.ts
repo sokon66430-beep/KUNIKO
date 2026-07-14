@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
-import type { StockCountItem } from "@/lib/types";
+import { COUNT_PLACES, type StockCountItem, type CountPlace } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +21,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // addQty     = add to the running total (a scan of another spot). Done here
   //              on the server, inside the write-lock, so two people scanning
   //              the same product at once both count — neither overwrites.
-  const items: { productId: string; countedQty?: number; addQty?: number; remove?: boolean }[] = Array.isArray(
-    body.items,
-  )
-    ? body.items
-    : [];
+  const items: { productId: string; countedQty?: number; addQty?: number; place?: CountPlace; remove?: boolean }[] =
+    Array.isArray(body.items) ? body.items : [];
   const session = await getSession();
   const who = String(body.countedBy || "").trim() || session?.name || "Counter";
   const at = new Date().toISOString();
@@ -48,8 +45,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const adding = it.addQty != null;
       const delta = Math.max(0, Number(it.addQty) || 0);
       const setTo = Math.max(0, Number(it.countedQty) || 0);
+      const place = COUNT_PLACES.includes(it.place as CountPlace) ? (it.place as CountPlace) : undefined;
       if (existing) {
         existing.countedQty = adding ? existing.countedQty + delta : setTo;
+        if (adding && place) {
+          existing.placeQty = existing.placeQty || {};
+          existing.placeQty[place] = (existing.placeQty[place] || 0) + delta;
+        }
         existing.countedBy = who;
         existing.countedAt = at;
       } else {
@@ -60,6 +62,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           barcode: product.barcode,
           systemQty: product.stock,
           countedQty: adding ? delta : setTo,
+          placeQty: adding && place ? { [place]: delta } : undefined,
           countedBy: who,
           countedAt: at,
         };

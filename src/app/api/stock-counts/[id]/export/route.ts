@@ -25,6 +25,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   if (format === "csv" || format === "pdf") {
     const counted = new Map(count.items.map((i) => [i.productId, i.countedQty]));
+    const placeOf = new Map(
+      count.items.map((i) => [
+        i.productId,
+        i.placeQty ? (["Store", "Stock", "Vault"] as const).filter((pl) => i.placeQty![pl]).map((pl) => `${pl} ${i.placeQty![pl]}`).join(" · ") : "",
+      ]),
+    );
     const rows = db.products.map((p, i) => {
       const cq = counted.has(p.id) ? (counted.get(p.id) as number) : null;
       return {
@@ -37,6 +43,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         unit: p.unit || "",
         systemQty: p.stock,
         countedQty: cq ?? "",
+        place: placeOf.get(p.id) || "",
         variance: cq != null ? cq - p.stock : "",
         cost: p.cost,
         price: p.price,
@@ -53,6 +60,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       { header: "Unit", get: (r: any) => r.unit },
       { header: "System Qty", get: (r: any) => r.systemQty, num: true },
       { header: "Counted Qty", get: (r: any) => r.countedQty, num: true },
+      { header: "Counted In", get: (r: any) => r.place },
       { header: "Variance", get: (r: any) => r.variance, num: true },
       ...(showValue
         ? [

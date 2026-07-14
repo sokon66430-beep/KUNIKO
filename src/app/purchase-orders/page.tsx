@@ -101,10 +101,18 @@ export default function PurchaseOrdersPage() {
     }
   }, [searchParams]);
 
-  // Sort control for the PO list (default: newest first).
+  // Sort + "Today" filter for the PO list (new POs land every day).
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "po" | "sent">("date-desc");
+  const [todayOnly, setTodayOnly] = useState(false);
+  const hasAnyPOs = (pos || []).length > 0;
+  const isToday = (iso: string) => {
+    const c = new Date(iso);
+    const n = new Date();
+    return c.getFullYear() === n.getFullYear() && c.getMonth() === n.getMonth() && c.getDate() === n.getDate();
+  };
   const list = useMemo(() => {
-    const l = [...(pos || [])];
+    let l = [...(pos || [])];
+    if (todayOnly) l = l.filter((p) => isToday(p.createdAt));
     switch (sortBy) {
       case "date-asc":
         return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
@@ -115,7 +123,7 @@ export default function PurchaseOrdersPage() {
       default:
         return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     }
-  }, [pos, sortBy]);
+  }, [pos, sortBy, todayOnly]);
   const open = list.filter((p) => p.status === "Open" || p.status === "Partial").length;
   const received = list.filter((p) => p.status === "Received").length;
   const openValue = list
@@ -245,7 +253,25 @@ export default function PurchaseOrdersPage() {
 
       {/* Sort bar — and the ✓ marks which POs were already sent to the supplier */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Orders</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{todayOnly ? "Today" : "Orders"}</h2>
+          <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+            {[
+              { key: false, label: "All" },
+              { key: true, label: "Today" },
+            ].map((o) => (
+              <button
+                key={o.label}
+                onClick={() => setTodayOnly(o.key)}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  todayOnly === o.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
           Sort by
           <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
@@ -261,7 +287,11 @@ export default function PurchaseOrdersPage() {
         {loading ? (
           <Spinner label="Loading orders…" />
         ) : list.length === 0 ? (
-          <EmptyState title="No purchase orders yet" hint="Approve a request or create an order directly." />
+          todayOnly && hasAnyPOs ? (
+            <EmptyState title="No orders today" hint="Switch to “All” to see earlier purchase orders." />
+          ) : (
+            <EmptyState title="No purchase orders yet" hint="Approve a request or create an order directly." />
+          )
         ) : (
           <div>
             {list.map((po) => {

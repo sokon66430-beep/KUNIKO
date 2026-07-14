@@ -13,11 +13,18 @@ import {
   CheckCircle2,
   Calculator,
   Scale,
+  MapPin,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import { PdfViewer } from "@/components/PdfViewer";
-import type { Product, StockCount, StockCountItem } from "@/lib/types";
+import { COUNT_PLACES, type Product, type StockCount, type StockCountItem, type CountPlace } from "@/lib/types";
+
+// "Store 12 · Vault 5" — the per-place breakdown of a counted item.
+function formatPlaces(it: StockCountItem): string {
+  if (!it.placeQty) return "";
+  return COUNT_PLACES.filter((pl) => it.placeQty![pl]).map((pl) => `${pl} ${it.placeQty![pl]}`).join(" · ");
+}
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { num, dateTime, usd } from "@/lib/format";
@@ -357,6 +364,9 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: count, reload } = useFetch<StockCount>(`/api/stock-counts/${id}`);
   const { data: products } = useFetch<Product[]>("/api/products");
   const [query, setQuery] = useState("");
+  // Where the counter is standing right now — every scan is tagged with this
+  // place (Store / Stock / Vault) so the report shows where it was counted.
+  const [place, setPlace] = useState<CountPlace>("Store");
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -437,7 +447,10 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   // patch = either { countedQty } (set absolute — manual edit) or
   // { addQty } (add this spot's count — a scan; the server sums it so two
   // people scanning the same product at once both count).
-  async function writeCount(productId: string, patch: { countedQty: number } | { addQty: number }) {
+  async function writeCount(
+    productId: string,
+    patch: { countedQty: number } | { addQty: number; place: CountPlace },
+  ) {
     seqRef.current += 1;
     const s = seqRef.current;
     setScanOrder((o) => ({ ...o, [productId]: s })); // this item floats to the top
@@ -471,11 +484,14 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     const seen = Math.max(0, Number(countValue) || 0);
     setCountTarget(null);
     setCountValue("");
-    // Send the delta — the server adds it to whatever's already there.
-    await writeCount(p.id, { addQty: seen });
+    // Send the delta with the current place — the server adds it and tags it.
+    await writeCount(p.id, { addQty: seen, place });
     setNotice({
       tone: "ok",
-      text: alreadyCounted > 0 ? `${p.name} — +${seen}, total ${alreadyCounted + seen}` : `${p.name} — counted ${seen}`,
+      text:
+        alreadyCounted > 0
+          ? `${p.name} — +${seen} in ${place}, total ${alreadyCounted + seen}`
+          : `${p.name} — counted ${seen} in ${place}`,
     });
     scanRef.current?.focus(); // ready for the next scan
   }
@@ -677,6 +693,33 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
           )}
 
+          {/* Where are you counting? — set before scanning; every scan is tagged */}
+          {!posted && (
+            <div className="mb-3">
+              <label className="label flex items-center gap-1.5">
+                <MapPin size={13} /> Where are you counting?
+              </label>
+              <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                {COUNT_PLACES.map((pl) => (
+                  <button
+                    key={pl}
+                    type="button"
+                    onClick={() => setPlace(pl)}
+                    className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+                      place === pl ? "bg-brand-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-800"
+                    }`}
+                  >
+                    {pl}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Everything you scan now is recorded as counted in <b className="text-brand-600">{place}</b>. Switch when
+                you move to another area.
+              </p>
+            </div>
+          )}
+
           {/* Scan (L3 / phone camera) or search to count on screen */}
           {!posted && (
             <div className="mb-4">
@@ -749,6 +792,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
                   <th className="px-3 py-2 font-semibold">Product</th>
+                  <th className="px-3 py-2 font-semibold">Place</th>
                   <th className="px-3 py-2 text-center font-semibold">System</th>
                   <th className="px-3 py-2 text-center font-semibold">Counted</th>
                   <th className="px-3 py-2 text-center font-semibold">Variance</th>
@@ -769,6 +813,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                           {it.barcode ? ` · ${it.barcode}` : ""}
                         </p>
                       </td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{formatPlaces(it) || "—"}</td>
                       <td className="px-3 py-2 text-center text-slate-400">{it.systemQty}</td>
                       <td className="px-3 py-2 text-center">
                         {posted ? (
@@ -815,7 +860,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                 })}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={posted ? 5 : 6} className="px-3 py-10 text-center text-sm text-slate-400">
+                    <td colSpan={posted ? 6 : 7} className="px-3 py-10 text-center text-sm text-slate-400">
                       <ClipboardCheck className="mx-auto mb-2 text-slate-300" size={22} />
                       Nothing counted yet. Scan items above, or download the sheet, fill it, and import.
                     </td>
@@ -828,6 +873,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       {items.length} item{items.length === 1 ? "" : "s"} counted
                     </td>
+                    <td></td>
                     <td></td>
                     <td className="px-3 py-2.5 text-center text-xs font-semibold uppercase text-slate-500">Net</td>
                     <td className={`px-3 py-2.5 text-center font-bold ${netUnits === 0 ? "text-slate-500" : netUnits > 0 ? "text-emerald-600" : "text-rose-500"}`}>

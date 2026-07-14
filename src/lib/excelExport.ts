@@ -980,7 +980,7 @@ export function buildStockCountWorkbook(
   });
 
   // Column-driven so inserting columns can't break the formula references.
-  type Kind = "no" | "text" | "num" | "input" | "variance" | "money" | "total" | "by";
+  type Kind = "no" | "text" | "num" | "input" | "variance" | "money" | "total" | "by" | "place";
   type SCCol = {
     label: string;
     width: number;
@@ -999,6 +999,7 @@ export function buildStockCountWorkbook(
     { label: "Unit", width: 7, align: "center", kind: "text", get: (p) => p.unit || "" },
     { label: "System Qty", width: 11, align: "right", kind: "num", get: (p) => p.stock },
     { label: "Counted Qty", width: 12, align: "right", kind: "input" },
+    { label: "Counted In", width: 22, kind: "place" },
     { label: "Variance", width: 10, align: "right", kind: "variance" },
     { label: "Cost", width: 11, align: "right", kind: "money", value: true, get: (p) => round2(p.cost) },
     { label: "Sell Price", width: 12, align: "right", kind: "money", value: true, get: (p) => round2(p.price) },
@@ -1024,6 +1025,12 @@ export function buildStockCountWorkbook(
 
   const countedMap = new Map(count.items.map((i) => [i.productId, i.countedQty]));
   const counterMap = new Map(count.items.map((i) => [i.productId, i.countedBy || ""]));
+  const placeMap = new Map(
+    count.items.map((i) => [
+      i.productId,
+      i.placeQty ? (["Store", "Stock", "Vault"] as const).filter((pl) => i.placeQty![pl]).map((pl) => `${pl} ${i.placeQty![pl]}`).join(" · ") : "",
+    ]),
+  );
   const firstDataRow = row + 1;
 
   products.forEach((p, i) => {
@@ -1056,6 +1063,9 @@ export function buildStockCountWorkbook(
           break;
         case "by":
           cell.value = counterMap.get(p.id) || "";
+          break;
+        case "place":
+          cell.value = placeMap.get(p.id) || "";
           break;
         default:
           cell.value = c.get ? c.get(p) : "";
