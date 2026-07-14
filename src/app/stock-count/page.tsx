@@ -26,6 +26,7 @@ function formatPlaces(it: StockCountItem): string {
   return COUNT_PLACES.filter((pl) => it.placeQty![pl]).map((pl) => `${pl} ${it.placeQty![pl]}`).join(" · ");
 }
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { confirmDialog } from "@/components/confirm";
 import { num, dateTime, usd } from "@/lib/format";
 
@@ -164,14 +165,19 @@ export default function StockCountPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
               Sort by
-              <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
-                <option value="date-desc">Date · newest first</option>
-                <option value="date-asc">Date · oldest first</option>
-                <option value="no">Count number</option>
-              </select>
-            </label>
+              <SearchSelect
+                className="w-44"
+                value={sortBy}
+                onChange={(v) => setSortBy(v as any)}
+                options={[
+                  { value: "date-desc", label: "Date · newest first" },
+                  { value: "date-asc", label: "Date · oldest first" },
+                  { value: "no", label: "Count number" },
+                ]}
+              />
+            </div>
             <a
               href="/api/stock-counts/combined/export?format=xlsx"
               className="btn-ghost !py-2 text-sm"

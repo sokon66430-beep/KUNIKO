@@ -24,6 +24,7 @@ import {
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
 import { OpeningOrderModal } from "@/components/OpeningOrderModal";
@@ -272,15 +273,20 @@ export default function PurchaseOrdersPage() {
             ))}
           </div>
         </div>
-        <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
           Sort by
-          <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
-            <option value="date-desc">Date · newest first</option>
-            <option value="date-asc">Date · oldest first</option>
-            <option value="po">PO number</option>
-            <option value="sent">Not sent first</option>
-          </select>
-        </label>
+          <SearchSelect
+            className="w-44"
+            value={sortBy}
+            onChange={(v) => setSortBy(v as any)}
+            options={[
+              { value: "date-desc", label: "Date · newest first" },
+              { value: "date-asc", label: "Date · oldest first" },
+              { value: "po", label: "PO number" },
+              { value: "sent", label: "Not sent first" },
+            ]}
+          />
+        </div>
       </div>
 
       <Card className="p-0">

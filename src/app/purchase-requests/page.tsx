@@ -20,6 +20,7 @@ import {
 import { useFetch, api } from "@/lib/client";
 import type { Product, PurchaseRequest, PRStatus } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
 import { usd, num, dateTime } from "@/lib/format";
@@ -239,14 +240,19 @@ export default function PurchaseRequestsPage() {
       <Card className="p-0">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3.5">
           <h3 className="text-sm font-bold text-ink-900">Requests</h3>
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
             Sort by
-            <select className="input !w-auto !py-1.5 text-xs" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
-              <option value="date-desc">Date · newest first</option>
-              <option value="date-asc">Date · oldest first</option>
-              <option value="pr">PR number</option>
-            </select>
-          </label>
+            <SearchSelect
+              className="w-44"
+              value={sortBy}
+              onChange={(v) => setSortBy(v as any)}
+              options={[
+                { value: "date-desc", label: "Date · newest first" },
+                { value: "date-asc", label: "Date · oldest first" },
+                { value: "pr", label: "PR number" },
+              ]}
+            />
+          </div>
         </div>
         {loading ? (
           <Spinner label="Loading requests…" />
