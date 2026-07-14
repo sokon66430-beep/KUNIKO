@@ -123,46 +123,26 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
   }
   if (chunks.length === 0) chunks.push([]);
 
-  // The totals/notes/signature block goes under the LAST chunk. The footer page
-  // carries an extra FOOTER_PX, so it holds fewer item rows than a plain page —
-  // `balancedSplit` returns how many of `count` rows to keep on the (items-only)
-  // page above so the two pages come out roughly equal in height, clamped so the
-  // footer page holds ≥1 row and never exceeds its capacity.
-  const footerMatter = CONT_MATTER_PX + FOOTER_PX;
-  const balancedSplit = (count: number, precedingMatter: number, precedingCap: number) => {
-    const raw = Math.round((footerMatter - precedingMatter + count * ROW_PX) / (2 * ROW_PX));
-    return Math.max(1, count - CONT_PAGE_WITH_FOOTER_CAP, Math.min(raw, precedingCap, count - 1));
-  };
-
-  // (1) If the final chunk is too tall to also carry the footer, peel a balanced
-  //     footer page off the end so the totals never land on an empty table.
+  // "All items first, totals last": items are packed onto pages at full capacity
+  // (no balancing, no gaps between rows). The totals/notes/signature block sits
+  // directly under the last item when it fits; if that final page of items is too
+  // full to also hold the footer, the footer takes its own trailing page (which
+  // may be short — that's fine).
   const lastFooterCap = chunks.length === 1 ? HEADER_PAGE_WITH_FOOTER_CAP : CONT_PAGE_WITH_FOOTER_CAP;
-  if (chunks[chunks.length - 1].length > lastFooterCap) {
-    const last = chunks[chunks.length - 1];
-    const onPageOne = chunks.length === 1;
-    const keep = balancedSplit(last.length, onPageOne ? TOP_MATTER_PX : CONT_MATTER_PX, onPageOne ? HEADER_PAGE_CAP : CONT_PAGE_CAP);
-    chunks[chunks.length - 1] = last.slice(0, keep);
-    chunks.push(last.slice(keep));
-  }
-
-  // (2) Re-balance the final two pages so a small remainder (e.g. a single row
-  //     that greedy chunking spilled onto its own page) doesn't leave the footer
-  //     page with a lone orphan row. Stable when the pages are already balanced.
-  if (chunks.length >= 2) {
-    const a = chunks.length - 2;
-    const merged = chunks[a].concat(chunks[a + 1]);
-    const onPageOne = a === 0;
-    const keep = balancedSplit(merged.length, onPageOne ? TOP_MATTER_PX : CONT_MATTER_PX, onPageOne ? HEADER_PAGE_CAP : CONT_PAGE_CAP);
-    chunks.splice(a, 2, merged.slice(0, keep), merged.slice(keep));
-  }
+  const footerOwnPage = chunks[chunks.length - 1].length > lastFooterCap;
 
   type PageSpec = { items: POItem[]; startIndex: number; showFooter: boolean };
   let runningIndex = 0;
   const pages: PageSpec[] = chunks.map((chunk, idx) => {
-    const spec: PageSpec = { items: chunk, startIndex: runningIndex, showFooter: idx === chunks.length - 1 };
+    const spec: PageSpec = {
+      items: chunk,
+      startIndex: runningIndex,
+      showFooter: idx === chunks.length - 1 && !footerOwnPage,
+    };
     runningIndex += chunk.length;
     return spec;
   });
+  if (footerOwnPage) pages.push({ items: [], startIndex: po.items.length, showFooter: true });
   const totalPages = pages.length;
 
   const HeaderCell = ({ label, value, bold }: { label: string; value: string; bold?: boolean }) => (
@@ -257,14 +237,15 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
             </>
           )}
 
-          {/* Line-item table. The totals row (tfoot) always follows real item
-              rows on the same page, keeping the column alignment intact. */}
+          {/* Line-item table. Item pages show the column header; the trailing
+              totals-only page omits it (colgroup keeps the totals aligned). */}
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <colgroup>
                 {COLW.map((w, i) => (
                   <col key={i} style={{ width: w }} />
                 ))}
               </colgroup>
+              {pg.items.length > 0 && (
               <thead>
                 <tr>
                   {HEADERS.map((h, i) => (
@@ -292,6 +273,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
                   ))}
                 </tr>
               </thead>
+              )}
               <tbody>
                 {pg.items.map((it, i) => {
                   const rowNo = pg.startIndex + i + 1;
