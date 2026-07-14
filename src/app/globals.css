@@ -261,6 +261,24 @@ html.dark .po-sheet.bg-white {
   size: A4 portrait;
   margin: 12mm;
 }
+/* PO/PR sheets print on a named page so a "Page X of Y" number is drawn in the
+   bottom margin by the document itself (Chrome ≥131 supports @page margin
+   boxes). This means the customer can turn OFF the browser print dialog's
+   "Headers and footers" — removing the URL, title and date — and still keep a
+   page number. Price labels keep the plain @page above. */
+@page docpage {
+  size: A4 portrait;
+  margin: 12mm;
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: "Calibri", "Segoe UI", sans-serif;
+    font-size: 9pt;
+    color: #6b7280;
+  }
+}
+.po-sheet {
+  page: docpage;
+}
 
 /* Thin scrollbars */
 ::-webkit-scrollbar {
