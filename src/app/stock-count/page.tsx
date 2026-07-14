@@ -78,10 +78,18 @@ export default function StockCountPage() {
     }
   }
 
-  // Sort control for the counts list (default: newest first).
+  // Sort + "Today" quick filter for the counts list (default: newest first).
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "no">("date-desc");
+  const [todayOnly, setTodayOnly] = useState(false);
+  const hasAnyCounts = (counts || []).length > 0;
+  const isToday = (iso: string) => {
+    const c = new Date(iso);
+    const n = new Date();
+    return c.getFullYear() === n.getFullYear() && c.getMonth() === n.getMonth() && c.getDate() === n.getDate();
+  };
   const list = useMemo(() => {
-    const l = [...(counts || [])];
+    let l = [...(counts || [])];
+    if (todayOnly) l = l.filter((c) => isToday(c.createdAt));
     switch (sortBy) {
       case "date-asc":
         return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
@@ -90,7 +98,7 @@ export default function StockCountPage() {
       default:
         return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     }
-  }, [counts, sortBy]);
+  }, [counts, sortBy, todayOnly]);
   const openCount = list.filter((c) => c.status === "Open").length;
   const postedCount = list.filter((c) => c.status === "Posted").length;
   const lastNet = list[0]
@@ -124,11 +132,30 @@ export default function StockCountPage() {
       </div>
 
       {/* Combined report — sums every count into one, right above the list */}
-      {list.length > 0 && (
+      {hasAnyCounts && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-            <ClipboardCheck size={16} /> All counts
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+              <ClipboardCheck size={16} /> {todayOnly ? "Today" : "All counts"}
+            </h2>
+            {/* Today quick filter — click to show only what was counted today */}
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+              {[
+                { key: false, label: "All" },
+                { key: true, label: "Today" },
+              ].map((o) => (
+                <button
+                  key={o.label}
+                  onClick={() => setTodayOnly(o.key)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    todayOnly === o.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
               Sort by
@@ -161,7 +188,11 @@ export default function StockCountPage() {
         {loading ? (
           <Spinner label="Loading counts…" />
         ) : list.length === 0 ? (
-          <EmptyState title="No stock counts yet" hint="Start a count, hand the Excel sheet to your accountant, then import it back." />
+          todayOnly ? (
+            <EmptyState title="Nothing counted today" hint="Switch to “All” to see earlier counts, or open today’s count to start." />
+          ) : (
+            <EmptyState title="No stock counts yet" hint="Start a count, hand the Excel sheet to your accountant, then import it back." />
+          )
         ) : (
           <div>
             {list.map((c) => {
