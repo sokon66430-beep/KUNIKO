@@ -530,17 +530,17 @@ export function buildGRNReportWorkbook(
   const ws = wb.addWorksheet("Receiving Report", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
-  // No · Date · GRN · PO · Supplier · Item Code · Barcode · Item Name · Cost · Qty · Line Cost
+  // No · Date · Time · GRN · PO · Supplier · Item Code · Barcode · Item Name · Cost · Qty · Line Cost
   ws.columns = [
-    { width: 5 }, { width: 12 }, { width: 15 }, { width: 16 }, { width: 26 },
+    { width: 5 }, { width: 12 }, { width: 8 }, { width: 15 }, { width: 16 }, { width: 26 },
     { width: 12 }, { width: 15 }, { width: 34 }, { width: 11 }, { width: 7 }, { width: 13 },
   ];
 
   const prodById = new Map(products.map((p) => [p.id, p]));
-  let row = reportHeader(ws, "GOODS RECEIVING REPORT", [`${business.name} · ${business.branch}`, filterNote], 11);
+  let row = reportHeader(ws, "GOODS RECEIVING REPORT", [`${business.name} · ${business.branch}`, filterNote], 12);
 
   tableHead(ws, row, [
-    { label: "No" }, { label: "Date" }, { label: "GRN No" }, { label: "PO Number" }, { label: "Supplier" },
+    { label: "No" }, { label: "Date" }, { label: "Time" }, { label: "GRN No" }, { label: "PO Number" }, { label: "Supplier" },
     { label: "Item Code" }, { label: "Barcode" }, { label: "Item Name" },
     { label: "Cost", align: "right" }, { label: "Qty", align: "right" }, { label: "Line Cost", align: "right" },
   ]);
@@ -552,6 +552,7 @@ export function buildGRNReportWorkbook(
       const cost = p?.cost ?? 0;
       return {
         date: ddmmyyyy(g.createdAt),
+        time: hhmm(g.createdAt),
         grnNo: g.grnNo,
         poNo: g.poNo,
         supplier: g.supplier,
@@ -573,7 +574,7 @@ export function buildGRNReportWorkbook(
     grandQty += li.qty;
     grandCost += li.lineCost;
     const cells: [ExcelJS.CellValue, ("right" | "center" | "left")?, string?][] = [
-      [i + 1, "center"], [li.date, "center"], [li.grnNo], [li.poNo], [li.supplier],
+      [i + 1, "center"], [li.date, "center"], [li.time, "center"], [li.grnNo], [li.poNo], [li.supplier],
       [li.sku], [li.barcode], [li.name],
       [round2(li.cost), "right", MONEY], [li.qty, "right"], [li.lineCost, "right", MONEY],
     ];
@@ -589,24 +590,24 @@ export function buildGRNReportWorkbook(
 
   const totalRow = firstDataRow + lineRows.length;
   const tr = ws.getRow(totalRow);
-  const lbl = tr.getCell(8);
+  const lbl = tr.getCell(9);
   lbl.value = "TOTAL";
   lbl.font = { name: CALIBRI, size: 11, bold: true };
   lbl.alignment = { horizontal: "right" };
   lbl.border = allThin;
-  const qCell = tr.getCell(10);
+  const qCell = tr.getCell(11);
   qCell.value = grandQty;
   qCell.font = { name: CALIBRI, size: 11, bold: true };
   qCell.alignment = { horizontal: "right" };
   qCell.border = allThin;
-  const cCell = tr.getCell(11);
+  const cCell = tr.getCell(12);
   cCell.value = round2(grandCost);
   cCell.numFmt = MONEY;
   cCell.font = { name: CALIBRI, size: 11, bold: true };
   cCell.alignment = { horizontal: "right" };
   cCell.border = allThin;
   // border the gap cell for a clean total band
-  tr.getCell(9).border = allThin;
+  tr.getCell(10).border = allThin;
 
   ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;

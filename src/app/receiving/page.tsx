@@ -147,7 +147,10 @@ export default function ReceivingPage() {
                     {received}/{ordered}
                   </span>
                 </div>
-                <p className="mt-3 text-xs text-slate-400">
+                <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
+                  <Clock size={12} className="shrink-0 text-slate-400" /> Ordered {dateTime(po.createdAt)}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
                   {po.items.length} line{po.items.length === 1 ? "" : "s"}
                   {po.expectedDate ? ` · due ${shortDate(po.expectedDate)}` : ""}
                 </p>

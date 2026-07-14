@@ -398,6 +398,7 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery, showProfit
           const cost = p?.cost ?? 0;
           return {
             date: ddmmyyyy(g.createdAt),
+            time: hhmm(g.createdAt),
             grnNo: g.grnNo,
             poNo: g.poNo,
             supplier: g.supplier,
@@ -419,6 +420,7 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery, showProfit
         fancyXlsx: async () => buildGRNReportWorkbook(grns, db.products, db.meta.business, note),
         cols: [
           { header: "Date", get: (r) => r.date },
+          { header: "Time", get: (r) => r.time },
           { header: "GRN No", get: (r) => r.grnNo },
           { header: "PO No", get: (r) => r.poNo },
           { header: "Supplier", get: (r) => r.supplier, width: 1.6 },
