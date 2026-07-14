@@ -101,6 +101,18 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
   const vat = subtotal * vatRate;
   const grand = subtotal + vat;
 
+  // The price-basis note (#3) reads "Prices are EX VAT; VAT 10% added separately"
+  // for a taxed PO. On a tax-free PO (no VAT added) the prices are quoted VAT-
+  // inclusive, so it becomes "Prices are IN VAT, VAT 10%". The leading number is
+  // kept intact.
+  const poNotes = (business.poNotes || []).map((n) => {
+    if (vatRate === 0 && /ex vat/i.test(n)) {
+      const prefix = n.match(/^\s*\d+\.\s*/)?.[0] || "";
+      return `${prefix}Prices are IN VAT, VAT 10%`;
+    }
+    return n;
+  });
+
   // Split the items into per-page chunks (page 1 holds fewer rows because of the
   // header block above it).
   const chunks: POItem[][] = [];
@@ -355,7 +367,7 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
               {/* Notes — Arial */}
               <div style={{ fontFamily: ARIAL, fontSize: 12, lineHeight: 1.4 }} className="mt-4">
                 <p style={{ fontWeight: 700 }}>Notes:</p>
-                {business.poNotes?.map((n, i) => (
+                {poNotes.map((n, i) => (
                   <p key={i}>{n}</p>
                 ))}
                 {business.invoiceTo?.map((n, i) => (

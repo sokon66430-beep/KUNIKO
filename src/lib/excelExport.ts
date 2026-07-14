@@ -183,7 +183,14 @@ export function buildPOWorkbook(
   notesTitle.value = "Notes:";
   notesTitle.font = { name: ARIAL, size: 14, bold: true, color: { argb: "FF000000" } };
   row++;
-  const noteLines = [...(business.poNotes || []), ...(business.invoiceTo || [])];
+  // On a tax-free PO the price-basis note (#3) switches from "EX VAT … added
+  // separately" to "IN VAT" (prices are quoted VAT-inclusive).
+  const poNotes = (business.poNotes || []).map((n) =>
+    vatRate === 0 && /ex vat/i.test(n)
+      ? `${n.match(/^\s*\d+\.\s*/)?.[0] || ""}Prices are IN VAT, VAT 10%`
+      : n,
+  );
+  const noteLines = [...poNotes, ...(business.invoiceTo || [])];
   noteLines.forEach((line, i) => {
     ws.mergeCells(`A${row}:I${row}`);
     const cell = ws.getCell(`A${row}`);
