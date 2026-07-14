@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { Printer, ArrowLeft } from "lucide-react";
 import { useFetch } from "@/lib/client";
@@ -73,6 +74,22 @@ export default function POPrintPage({ params }: { params: { id: string } }) {
   const { data, loading, error } = useFetch<{ po: PurchaseOrder; business: Business }>(
     `/api/purchase-orders/${params.id}`,
   );
+
+  // Name the saved file "<PO number>-<Supplier name>" — the browser uses the
+  // document title as the default "Save as PDF" filename. Strip characters that
+  // aren't allowed in filenames, and drop the supplier when it's blank.
+  useEffect(() => {
+    if (!data) return;
+    const clean = (s: string) => s.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+    const poNo = clean(data.po.poNo || "");
+    const supplier = clean(data.po.supplier || "");
+    const name = supplier && supplier !== "—" ? `${poNo}-${supplier}` : poNo;
+    const prev = document.title;
+    if (name) document.title = name;
+    return () => {
+      document.title = prev;
+    };
+  }, [data]);
 
   if (loading) return <Spinner label="Loading purchase order…" />;
   if (error || !data) return <ErrorBox message={error || "Not found"} />;

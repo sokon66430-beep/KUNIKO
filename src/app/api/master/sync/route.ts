@@ -10,11 +10,12 @@ import type { Product } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 // Push the master catalog into every store. Shared fields (name, barcode,
-// category, cost, location, supplier…) are copied; each store's own price,
-// reorder level and stock are left untouched. New master products are added
-// (stock 0, price/reorder seeded from the master as a starting point). Nothing
-// is ever deleted — products a store has that aren't in the master are just
-// reported as "extra", so no stock or history is lost.
+// category, cost, supplier…) are copied; each store's own price, reorder level,
+// stock and shelf LOCATION are left untouched — location is registered per store
+// on the Price labels page, never dictated by the master. New master products
+// are added (stock 0, no location, price/reorder seeded from the master as a
+// starting point). Nothing is ever deleted — products a store has that aren't in
+// the master are just reported as "extra", so no stock or history is lost.
 export async function POST() {
   const session = await getSession();
   if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
@@ -43,6 +44,11 @@ export async function POST() {
             reorderLevel: Math.max(0, Number(m.reorderLevel) || 0),
             stock: 0,
           };
+          // Drop the master's shelf location — a new store registers its own on
+          // the Price labels page.
+          delete product.gondola;
+          delete product.shelf;
+          delete product.locations;
           db.products.push(product);
           added++;
         }
