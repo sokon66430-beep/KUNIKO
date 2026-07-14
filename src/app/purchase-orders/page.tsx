@@ -829,6 +829,7 @@ function ViewPOModal({
   const locked = po.status === "Cancelled";
   // Deletable only when NOTHING was received — otherwise the stock would orphan.
   const hasReceipts = po.items.some((i) => i.qtyReceived > 0);
+  const showActions = canEdit && !locked; // per-line trash column
   // `items` is what we show; `draft` is the working copy while editing.
   const [items, setItems] = useState(po.items);
   const [draft, setDraft] = useState(po.items);
@@ -842,6 +843,30 @@ function ViewPOModal({
   const setLine = (productId: string, patch: Partial<(typeof items)[number]>) =>
     setDraft((d) => d.map((l) => (l.productId === productId ? { ...l, ...patch } : l)));
   const removeLine = (productId: string) => setDraft((d) => d.filter((l) => l.productId !== productId));
+
+  // Delete a single item straight from the view (no edit mode). Only when that
+  // line has no receipts. Removes just this product, keeps the rest of the PO.
+  async function deleteLine(it: (typeof items)[number]) {
+    if (it.qtyReceived > 0) return;
+    const ok = await confirmDialog({
+      title: "Remove item",
+      message: `Remove "${it.name}" from ${po.poNo}? The rest of the order stays.`,
+      confirmText: "Remove item",
+      cancelText: "Keep it",
+    });
+    if (!ok) return;
+    try {
+      const updated = await api<PurchaseOrder>(`/api/purchase-orders/${po.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ items: [{ productId: it.productId, remove: true }] }),
+      });
+      setItems(updated.items);
+      setDraft(updated.items);
+      onSaved();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
 
   const shown = editing ? draft : items;
   const totalValue = shown.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
@@ -951,7 +976,7 @@ function ViewPOModal({
               <th className="px-3 py-2 text-center font-semibold">Ordered</th>
               <th className="px-3 py-2 text-center font-semibold">Received</th>
               <th className="px-3 py-2 text-right font-semibold">Line</th>
-              {editing && <th className="px-3 py-2"></th>}
+              {showActions && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -997,13 +1022,13 @@ function ViewPOModal({
                     {short > 0 && it.qtyReceived > 0 && <span className="ml-1 text-xs text-rose-500">(-{short})</span>}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(it.cost * it.qtyOrdered)}</td>
-                  {editing && (
+                  {showActions && (
                     <td className="px-2 py-2 text-right">
                       {it.qtyReceived === 0 ? (
                         <button
                           type="button"
-                          onClick={() => removeLine(it.productId)}
-                          title="Remove line"
+                          onClick={() => (editing ? removeLine(it.productId) : deleteLine(it))}
+                          title="Remove this item"
                           className="grid h-7 w-7 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
                         >
                           <Trash2 size={15} />
@@ -1025,7 +1050,7 @@ function ViewPOModal({
                 Total order value
               </td>
               <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(totalValue)}</td>
-              {editing && <td></td>}
+              {showActions && <td></td>}
             </tr>
           </tfoot>
         </table>
