@@ -34,12 +34,29 @@ export default function ReceivingPage() {
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "grn">("date-desc");
+  // Filter the receipt history to a date range (inclusive) so the team can track
+  // and adjust stock for a period. Empty = all dates.
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const sortedGrns = useMemo(() => {
-    const l = [...(grns || [])];
+    const l = (grns || []).filter((g) => {
+      const day = (g.createdAt || "").slice(0, 10);
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    });
     if (sortBy === "date-asc") return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
     if (sortBy === "grn") return l.sort((a, b) => a.grnNo.localeCompare(b.grnNo));
     return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-  }, [grns, sortBy]);
+  }, [grns, sortBy, from, to]);
+  // Query string for the export links so Excel/PDF match the on-screen range.
+  const rangeQs = [from && `from=${from}`, to && `to=${to}`].filter(Boolean).join("&");
+  const setToday = () => {
+    const now = new Date();
+    const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    setFrom(d);
+    setTo(d);
+  };
   // Supplier invoices scanned on each PO card (held here until the receipt is
   // confirmed, then sent with it). Keyed by PO id.
   const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string[]>>({});
@@ -189,6 +206,40 @@ export default function ReceivingPage() {
         </h2>
         {(grns || []).length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
+            {/* Date range — track/adjust stock for a period */}
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <span>From</span>
+              <input
+                type="date"
+                value={from}
+                max={to || undefined}
+                onChange={(e) => setFrom(e.target.value)}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              />
+              <span>To</span>
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(e) => setTo(e.target.value)}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              />
+              <button type="button" onClick={setToday} className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-200">
+                Today
+              </button>
+              {(from || to) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFrom("");
+                    setTo("");
+                  }}
+                  className="rounded-lg px-2 py-1 text-slate-400 hover:text-rose-500"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
               Sort by
               <SearchSelect
@@ -202,10 +253,16 @@ export default function ReceivingPage() {
                 ]}
               />
             </div>
-            <a href="/api/reports/goods-receipts/export" className="btn-ghost !py-1.5 text-xs">
+            <a
+              href={`/api/reports/goods-receipts/export${rangeQs ? `?${rangeQs}` : ""}`}
+              className="btn-ghost !py-1.5 text-xs"
+            >
               <FileSpreadsheet size={15} /> Export Excel
             </a>
-            <a href="/api/reports/goods-receipts/export?format=pdf" className="btn-ghost !py-1.5 text-xs">
+            <a
+              href={`/api/reports/goods-receipts/export?format=pdf${rangeQs ? `&${rangeQs}` : ""}`}
+              className="btn-ghost !py-1.5 text-xs"
+            >
               <FileType2 size={15} /> PDF
             </a>
           </div>
@@ -223,6 +280,8 @@ export default function ReceivingPage() {
       <Card className="p-0">
         {(grns || []).length === 0 ? (
           <EmptyState title="No receipts yet" hint="Received goods will be logged here." />
+        ) : sortedGrns.length === 0 ? (
+          <EmptyState title="No receipts in this date range" hint="Adjust the From / To dates or Clear the filter." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
