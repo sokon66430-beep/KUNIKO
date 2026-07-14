@@ -10,12 +10,13 @@ import type { Product } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 // Push the master catalog into every store. Shared fields (name, barcode,
-// category, cost, supplier…) are copied; each store's own price, reorder level,
-// stock and shelf LOCATION are left untouched — location is registered per store
-// on the Price labels page, never dictated by the master. New master products
-// are added (stock 0, no location, price/reorder seeded from the master as a
-// starting point). Nothing is ever deleted — products a store has that aren't in
-// the master are just reported as "extra", so no stock or history is lost.
+// category, cost, selling PRICE, supplier…) are copied — every store follows the
+// master, including price. Each store keeps its own reorder level, stock and
+// shelf LOCATION (location is registered per store on the Price labels page,
+// never dictated by the master). New master products are added (stock 0, no
+// location, reorder seeded from the master as a starting point). Nothing is ever
+// deleted — products a store has that aren't in the master are just reported as
+// "extra", so no stock or history is lost.
 export async function POST() {
   const session = await getSession();
   if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
@@ -40,8 +41,8 @@ export async function POST() {
         } else {
           const product: Product = {
             ...m,
-            price: Math.max(0, Number(m.price) || 0), // per-store, seeded from master
-            reorderLevel: Math.max(0, Number(m.reorderLevel) || 0),
+            price: Math.max(0, Number(m.price) || 0), // follows master (kept in sync every run)
+            reorderLevel: Math.max(0, Number(m.reorderLevel) || 0), // per-store, seeded from master
             stock: 0,
           };
           // Drop the master's shelf location — a new store registers its own on

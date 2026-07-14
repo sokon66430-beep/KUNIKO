@@ -110,7 +110,7 @@ export default function MasterDataPage() {
       !(await confirmDialog({
         title: "Sync master to all stores",
         message:
-          "Push the master's shared info (name, barcode, category, cost, location, supplier) to every store. Each store keeps its own price, reorder level and stock. New products are added with stock 0. Nothing is deleted.",
+          "Push the master's info (name, barcode, category, cost, selling price, supplier) to every store — every store follows the master, including price. Each store keeps its own reorder level, stock and shelf location. New products are added with stock 0. Nothing is deleted.",
         confirmText: "Sync to stores",
         tone: "brand",
       }))
@@ -132,7 +132,7 @@ export default function MasterDataPage() {
     <div>
       <PageHeader
         title="Master Data"
-        subtitle="One central product catalog for every store. Edit here, then Sync — shared info flows to all stores, each keeps its own price, reorder level & stock."
+        subtitle="One central product catalog for every store. Edit here, then Sync — every store follows the master (including selling price); each keeps its own reorder level, stock & shelf location."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => fileRef.current?.click()}>
@@ -259,8 +259,9 @@ export default function MasterDataPage() {
       </Card>
 
       <p className="mt-3 text-xs text-slate-400">
-        Price, reorder level and stock shown in the editor are only the starting values for a brand-new product — each
-        store sets and keeps its own. Editing them here never overrides a store on Sync.
+        Selling price is central — editing it here updates every store on the next Sync. Reorder level and stock in the
+        editor are only starting values for a brand-new product; each store then sets and keeps its own, and shelf
+        location is always per-store (set on the Price labels page).
       </p>
 
       {editing && (

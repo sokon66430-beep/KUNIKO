@@ -11,10 +11,11 @@ import { readDB } from "./db";
 const MASTER_FILE = path.join(DATA_DIR, "master-products.json");
 let masterWriteChain: Promise<unknown> = Promise.resolve();
 
-// Fields the master OWNS and pushes to stores on sync. Everything not listed
-// stays per-store: price (selling), reorderLevel, stock, trackStock, shelf
-// LOCATION (gondola/shelf/locations — every store has its own layout), and all
-// transactional data (sales/PO/receipts…).
+// Fields the master OWNS and pushes to stores on sync. Selling price is central
+// too — every store follows the master price. Everything not listed stays per
+// store: reorderLevel, stock, trackStock, shelf LOCATION (gondola/shelf/
+// locations — every store has its own layout), and all transactional data
+// (sales/PO/receipts…).
 export const MASTER_FIELDS: (keyof Product)[] = [
   "sku",
   "name",
@@ -23,6 +24,7 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "category",
   "unit",
   "cost",
+  "price",
   "ranking",
   "groupCode",
   "subGroupCode",
