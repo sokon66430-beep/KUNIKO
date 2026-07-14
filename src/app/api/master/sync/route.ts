@@ -9,14 +9,17 @@ import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Push the master catalog into every store. Shared fields (name, barcode,
-// category, cost, selling PRICE, supplier…) are copied — every store follows the
-// master, including price. Each store keeps its own reorder level, stock and
-// shelf LOCATION (location is registered per store on the Price labels page,
-// never dictated by the master). New master products are added (stock 0, no
-// location, reorder seeded from the master as a starting point). Nothing is ever
-// deleted — products a store has that aren't in the master are just reported as
-// "extra", so no stock or history is lost.
+// Push the master catalog into every store so each store is an exact mirror of
+// the master. Shared fields (name, barcode, category, cost, selling PRICE,
+// supplier…) are copied — every store follows the master, including price. Each
+// store keeps its own reorder level, stock and shelf LOCATION (registered per
+// store on the Price labels page). New master products are added (stock 0, no
+// location, reorder seeded from the master).
+//
+// The master is the single source of truth, so products a store has that AREN'T
+// in the master are removed — EXCEPT any that still hold stock, which are kept
+// (never silently lose inventory) and reported back as "keptWithStock" so the
+// owner can add them to the master or write them off first.
 export async function POST() {
   const session = await getSession();
   if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
@@ -26,7 +29,7 @@ export async function POST() {
   const masterIds = new Set(master.map((m) => m.id));
   const sys = await readSystem();
 
-  const results: { store: string; added: number; updated: number; extra: number }[] = [];
+  const results: { store: string; added: number; updated: number; removed: number; keptWithStock: number }[] = [];
 
   for (const store of sys.stores) {
     const r = await mutateDB((db) => {
@@ -54,15 +57,27 @@ export async function POST() {
           added++;
         }
       }
-      const extra = db.products.filter((p) => !masterIds.has(p.id)).length;
+      // Remove store-only products (not in the master) that hold no stock; keep
+      // and report any that still have stock so nothing is lost by surprise.
+      let removed = 0;
+      let keptWithStock = 0;
+      db.products = db.products.filter((p) => {
+        if (masterIds.has(p.id)) return true;
+        if ((Number(p.stock) || 0) > 0) {
+          keptWithStock++;
+          return true;
+        }
+        removed++;
+        return false;
+      });
       logAudit(db, {
         actor,
         action: "Synced",
         entityType: "Product",
         entity: "Master catalog",
-        detail: `${added} added · ${updated} updated`,
+        detail: `${added} added · ${updated} updated · ${removed} removed`,
       });
-      return { added, updated, extra };
+      return { added, updated, removed, keptWithStock };
     }, store.id);
     results.push({ store: store.name, ...r });
   }

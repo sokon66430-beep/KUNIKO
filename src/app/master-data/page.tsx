@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 
 type SyncResult = {
   masterCount: number;
-  stores: { store: string; added: number; updated: number; extra: number }[];
+  stores: { store: string; added: number; updated: number; removed: number; keptWithStock: number }[];
 };
 
 export default function MasterDataPage() {
@@ -110,7 +110,7 @@ export default function MasterDataPage() {
       !(await confirmDialog({
         title: "Sync master to all stores",
         message:
-          "Push the master's info (name, barcode, category, cost, selling price, supplier) to every store — every store follows the master, including price. Each store keeps its own reorder level, stock and shelf location. New products are added with stock 0. Nothing is deleted.",
+          "Make every store an exact mirror of the master: master info (name, barcode, category, cost, selling price, supplier) is pushed to all stores; new products are added (stock 0). Each store keeps its own reorder level, stock and shelf location. Products a store has that are NOT in the master are removed — except any that still hold stock, which are kept and reported.",
         confirmText: "Sync to stores",
         tone: "brand",
       }))
@@ -181,7 +181,10 @@ export default function MasterDataPage() {
                 <span className="font-medium">{s.store}:</span>
                 <span>{num(s.added)} added</span>
                 <span>· {num(s.updated)} updated</span>
-                {s.extra > 0 && <span className="text-amber-600">· {num(s.extra)} store-only (kept)</span>}
+                {s.removed > 0 && <span className="text-rose-600">· {num(s.removed)} removed</span>}
+                {s.keptWithStock > 0 && (
+                  <span className="text-amber-600">· {num(s.keptWithStock)} kept (still has stock)</span>
+                )}
               </div>
             ))}
           </div>
