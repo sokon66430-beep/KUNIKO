@@ -1,19 +1,33 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
+import { getSession } from "@/lib/session";
+import { storeExists } from "@/lib/system";
 import { nextPoNumber } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
 import type { PurchaseOrder, POItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Opening order for a new store: a set of { productId | sku, qty } lines that
-// are grouped into one Purchase Order per supplier.
+// Opening order to STOCK A (usually new) STORE: a set of { productId | sku, qty }
+// lines grouped into one Purchase Order per supplier. The POs are created in the
+// chosen destination store (body.storeId) so its own stock fills when received.
+// Targeting a store other than your own requires the owner.
 export async function POST(req: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   const actor = await currentActor();
   const body = await req.json().catch(() => ({}));
   const rawItems: { productId?: string; sku?: string; qty: number }[] = Array.isArray(body?.items) ? body.items : [];
   if (rawItems.length === 0) return NextResponse.json({ error: "No items to order" }, { status: 400 });
+
+  const targetStoreId = String(body.storeId || "").trim() || session.storeId;
+  if (targetStoreId !== session.storeId && session.role !== "owner") {
+    return NextResponse.json({ error: "Only the owner can stock another store" }, { status: 403 });
+  }
+  if (!(await storeExists(targetStoreId))) {
+    return NextResponse.json({ error: "That store doesn't exist" }, { status: 404 });
+  }
 
   const result = await mutateDB((db) => {
     const bySku = new Map(db.products.map((p) => [p.sku, p]));
@@ -69,7 +83,7 @@ export async function POST(req: Request) {
       detail: `New store opening — ${rawItems.length} lines across ${created.length} supplier${created.length === 1 ? "" : "s"}`,
     });
     return { created };
-  });
+  }, targetStoreId);
 
-  return NextResponse.json(result, { status: 201 });
+  return NextResponse.json({ ...result, storeId: targetStoreId }, { status: 201 });
 }

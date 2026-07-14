@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, X, Trash2, ClipboardList } from "lucide-react";
-import { api } from "@/lib/client";
+import { Sparkles, X, Trash2, ClipboardList, Store as StoreIcon } from "lucide-react";
+import { api, useFetch } from "@/lib/client";
 import type { Product } from "@/lib/types";
 import { num } from "@/lib/format";
+import { SearchSelect } from "@/components/SearchSelect";
+
+type StoreRow = { id: string; name: string };
 
 // Stock a new store — order best sellers from your other stores. Pick how many
 // SKUs, adjust quantities, then create one Purchase Order per supplier.
@@ -26,6 +29,16 @@ export function OpeningOrderModal({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const bySku = useMemo(() => new Map(products.map((p) => [p.sku, p])), [products]);
+
+  // Which store are we stocking? All its POs land here; suggestions come from
+  // the OTHER stores' sales. Default to the current store.
+  const { data: stores } = useFetch<StoreRow[]>("/api/stores");
+  const { data: session } = useFetch<{ user: { storeId: string } }>("/api/auth/session");
+  const [storeId, setStoreId] = useState("");
+  useEffect(() => {
+    if (!storeId && session) setStoreId(session.user.storeId);
+  }, [session, storeId]);
+  const targetStore = (stores || []).find((s) => s.id === storeId);
   const presets: { label: string; value: number }[] = [
     { label: "25", value: 25 },
     { label: "50", value: 50 },
@@ -36,9 +49,13 @@ export function OpeningOrderModal({
   ];
 
   useEffect(() => {
+    if (!storeId) return;
     let cancelled = false;
     setLoading(true);
-    fetch(count > 0 ? `/api/cross-store-bestsellers?limit=${count}` : "/api/cross-store-bestsellers")
+    // Suggestions = best sellers across every store EXCEPT the one we're stocking.
+    const qs = new URLSearchParams({ exclude: storeId });
+    if (count > 0) qs.set("limit", String(count));
+    fetch(`/api/cross-store-bestsellers?${qs}`)
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
@@ -59,7 +76,7 @@ export function OpeningOrderModal({
     return () => {
       cancelled = true;
     };
-  }, [count, bySku]);
+  }, [count, bySku, storeId]);
 
   const totalUnits = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
   const supplierCount = new Set(rows.map((r) => r.supplier)).size;
@@ -77,14 +94,20 @@ export function OpeningOrderModal({
       alert("Nothing to order — set at least one quantity.");
       return;
     }
+    if (!storeId) {
+      alert("Pick which store to stock first.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await api<{ created: { poNo: string; supplier: string; items: number }[] }>(
         "/api/purchase-orders/opening",
-        { method: "POST", body: JSON.stringify({ items, note: note.trim() || undefined }) },
+        { method: "POST", body: JSON.stringify({ items, storeId, note: note.trim() || undefined }) },
       );
       const n = res.created.length;
-      alert(`Created ${n} purchase order${n === 1 ? "" : "s"} across ${n} supplier${n === 1 ? "" : "s"} (${items.length} items).`);
+      alert(
+        `Created ${n} purchase order${n === 1 ? "" : "s"} for ${targetStore?.name || "the store"} across ${n} supplier${n === 1 ? "" : "s"} (${items.length} items).`,
+      );
       onDone();
     } catch (e: any) {
       alert(e.message);
@@ -107,6 +130,25 @@ export function OpeningOrderModal({
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
             <X size={17} />
           </button>
+        </div>
+
+        {/* Destination store — every PO below is created here */}
+        <div className="border-b border-slate-100 bg-brand-50/40 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
+              <StoreIcon size={14} className="text-brand-600" /> Stock which store?
+            </span>
+            <SearchSelect
+              className="w-60"
+              value={storeId}
+              onChange={setStoreId}
+              placeholder="Choose a store…"
+              options={(stores || []).map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <span className="text-xs font-normal text-slate-400">
+              All POs below are created for this store — suggestions come from your other stores.
+            </span>
+          </div>
         </div>
 
         <div className="border-b border-slate-100 px-5 py-3">
