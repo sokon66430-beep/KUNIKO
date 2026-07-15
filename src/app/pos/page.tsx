@@ -90,7 +90,17 @@ export default function PosPage() {
         });
         return;
       }
-      setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)`);
+      const skipped: string[] = data.skippedDates || [];
+      if (data.matched === 0 && skipped.length) {
+        // Whole file overlapped days already on record — nothing new added.
+        setToast(
+          `Nothing new to import — ${skipped.length} date${skipped.length === 1 ? "" : "s"} already on record (${skipped.join(", ")})`,
+        );
+      } else {
+        let msg = `Imported ${data.matched} sale lines (${data.salesCreated} days)`;
+        if (skipped.length) msg += ` · skipped ${skipped.length} date${skipped.length === 1 ? "" : "s"} already on record (${skipped.join(", ")})`;
+        setToast(msg);
+      }
       reload();
     } catch (e: any) {
       setToast(e.message);

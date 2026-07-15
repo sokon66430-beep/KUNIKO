@@ -276,28 +276,23 @@ export async function POST(req: Request) {
     );
   }
 
-  // Every date in the file must be new — re-importing a day (by accident or
-  // because the same report was uploaded twice) would double-count it.
-  const daysInFile = [...new Set(matched.map((m) => m.day))];
+  // A day that's already on record is SKIPPED (never double-counted), and the
+  // rest of the file still imports. This lets an overlapping report through —
+  // e.g. a June report whose night-shift sales after midnight already landed on
+  // 1 July — instead of blocking the whole file over one shared day. Skipping is
+  // by whole calendar day: a day is either entirely new (imported) or already
+  // present (left untouched), so figures can never be partially double-counted.
   const existingDays = new Set(db.sales.map((s) => s.createdAt.slice(0, 10)));
-  const duplicateDates = daysInFile.filter((d) => existingDays.has(d)).sort();
-  if (duplicateDates.length > 0) {
-    return NextResponse.json(
-      {
-        error: `${duplicateDates.length} date${duplicateDates.length === 1 ? "" : "s"} already ${
-          duplicateDates.length === 1 ? "has" : "have"
-        } sales on record — nothing was imported. Remove ${
-          duplicateDates.length === 1 ? "it" : "them"
-        } from the file, or delete the existing sales for that day first.`,
-        duplicateDates,
-      },
-      { status: 400 },
-    );
+  const skippedDates = [...new Set(matched.map((m) => m.day))].filter((d) => existingDays.has(d)).sort();
+  const toImport = matched.filter((m) => !existingDays.has(m.day));
+  if (toImport.length === 0) {
+    // Every day in the file is already recorded — nothing new to add.
+    return NextResponse.json({ matched: 0, salesCreated: 0, totalRows: rows.length, skippedDates });
   }
 
   const result = await mutateDB((db) => {
     const byDay = new Map<string, SaleItem[]>();
-    for (const row of matched) {
+    for (const row of toImport) {
       const items = byDay.get(row.day) ?? byDay.set(row.day, []).get(row.day)!;
       items.push({ productId: row.productId, sku: row.sku, name: row.name, qty: row.qty, price: row.price, cost: row.cost });
     }
@@ -336,9 +331,11 @@ export async function POST(req: Request) {
       action: "Imported",
       entityType: "Sale",
       entity: file.name || "Excel file",
-      detail: `${matched.length} lines · ${salesCreated} day-sales`,
+      detail: `${toImport.length} lines · ${salesCreated} day-sales${
+        skippedDates.length ? ` · skipped ${skippedDates.length} day(s) already on record` : ""
+      }`,
     });
-    return { matched: matched.length, salesCreated, totalRows: rows.length };
+    return { matched: toImport.length, salesCreated, totalRows: rows.length, skippedDates };
   });
 
   return NextResponse.json(result);
