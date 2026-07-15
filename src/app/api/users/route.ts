@@ -6,7 +6,7 @@ import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const ROLES: Role[] = ["owner", "area_manager", "manager", "accountant", "procurement", "operations"];
+const ROLES: Role[] = ["owner", "management", "area_manager", "manager", "accountant", "procurement", "operations"];
 
 export async function GET() {
   const s = await getSession();
@@ -39,8 +39,10 @@ export async function POST(req: Request) {
   let storeId = String(body.storeId || "");
   if (!isOwner) {
     storeId = s.storeId;
-    if (role === "owner") {
-      return NextResponse.json({ error: "Only an owner can create an owner account" }, { status: 403 });
+    // Owner and Management are cross-store, high-privilege roles — a store user
+    // can never mint one (no privilege escalation).
+    if (role === "owner" || role === "management") {
+      return NextResponse.json({ error: "Only an owner can create an owner or management account" }, { status: 403 });
     }
   }
 

@@ -14,6 +14,7 @@ type UserRow = { id: string; username: string; name: string; role: string; store
 
 const ROLE_TONE: Record<string, "brand" | "violet" | "amber" | "emerald" | "rose" | "gold"> = {
   owner: "violet",
+  management: "violet",
   area_manager: "rose",
   manager: "gold",
   accountant: "emerald",
@@ -22,6 +23,7 @@ const ROLE_TONE: Record<string, "brand" | "violet" | "amber" | "emerald" | "rose
 };
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
+  management: "Management",
   area_manager: "Area Manager",
   manager: "Manager",
   accountant: "Accountant",
@@ -342,6 +344,7 @@ function EditUserModal({
             <option value="accountant">Accountant</option>
             <option value="manager">Manager</option>
             <option value="area_manager">Area Manager</option>
+            {isOwner && <option value="management">Management (CEO / Board — view only)</option>}
             {isOwner && <option value="owner">Owner (full access)</option>}
           </select>
         </div>
@@ -479,7 +482,8 @@ function AddUserModal({
             <option value="accountant">Accountant</option>
             <option value="manager">Manager (can remove staff)</option>
             <option value="area_manager">Area Manager (can remove staff)</option>
-            {/* Only an owner can create another owner (no privilege escalation). */}
+            {/* Management + Owner are cross-store roles — only an owner can assign them. */}
+            {isOwner && <option value="management">Management (CEO / Board — view only)</option>}
             {isOwner && <option value="owner">Owner (full access)</option>}
           </select>
         </div>

@@ -4,6 +4,9 @@
 
 export type Role =
   | "owner"
+  // Management (CEO / Board): sees every screen and all financials across all
+  // stores, but can't change anything — enforced as a hard write-block server-side.
+  | "management"
   | "area_manager"
   | "manager"
   | "accountant"

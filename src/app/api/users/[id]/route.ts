@@ -7,7 +7,7 @@ import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const ROLES: Role[] = ["owner", "area_manager", "manager", "accountant", "procurement", "operations"];
+const ROLES: Role[] = ["owner", "management", "area_manager", "manager", "accountant", "procurement", "operations"];
 
 // Edit an employee (name, username, role, store, and optionally a new
 // password). Same permission model as delete: owners edit anyone; store
@@ -27,8 +27,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (s.role !== "owner") {
       if (target.storeId !== s.storeId) return { error: "You can only edit staff in your own store", status: 403 };
-      if (target.role === "owner") return { error: "Only an owner can edit an owner", status: 403 };
-      if (body.role === "owner") return { error: "Only an owner can grant the owner role", status: 403 };
+      // Owner and Management are cross-store, high-privilege roles: a store user
+      // can neither edit one nor promote anyone into one.
+      if (target.role === "owner" || target.role === "management")
+        return { error: "Only an owner can edit an owner or management account", status: 403 };
+      if (body.role === "owner" || body.role === "management")
+        return { error: "Only an owner can grant the owner or management role", status: 403 };
     }
 
     if (typeof body.username === "string" && body.username.trim()) {

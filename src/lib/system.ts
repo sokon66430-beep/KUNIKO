@@ -65,9 +65,20 @@ function buildSystemSeed(): SystemData {
         storeId: STORE_TK592_ID,
         createdAt: now,
       },
+      {
+        // Management (CEO / Board): view-only across every store. Change the
+        // password after first sign-in.
+        id: "u3",
+        username: "management",
+        name: "Management",
+        passwordHash: hashPassword(process.env.MANAGEMENT_PASSWORD || "board2026"),
+        role: "management",
+        storeId: DEFAULT_STORE_ID,
+        createdAt: now,
+      },
     ],
     nextStore: 3,
-    nextUser: 3,
+    nextUser: 4,
   };
 }
 

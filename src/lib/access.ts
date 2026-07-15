@@ -56,6 +56,9 @@ function matches(pathname: string, base: string): boolean {
 // omit it (as middleware does) to fall back to the static baseline.
 export function canAccessPage(role: Role, pathname: string, denied?: string[]): boolean {
   if (role === "owner") return true;
+  // Management (CEO / Board) may open every screen — the write-block (middleware
+  // + client guard) is what keeps them from changing anything.
+  if (role === "management") return true;
   if (OWNER_ONLY.some((p) => matches(pathname, p))) return false;
   const list = denied ?? DEFAULT_ROLE_DENIED[role];
   if (list && list.some((p) => matches(pathname, p))) return false;
@@ -73,12 +76,19 @@ export function canManageStaff(role: Role): boolean {
 // negotiate cost, plus the owner. Cost is gated the same way: showing revenue
 // and cost side by side lets anyone back out the profit anyway.
 export function canSeeProfit(role: Role): boolean {
-  return role === "owner" || role === "procurement";
+  return role === "owner" || role === "procurement" || role === "management";
+}
+
+// View-only roles: may read every screen but can never change data. Enforced as
+// a hard block on mutating API calls in middleware, mirrored by a client guard
+// so edit controls fail with a clear message instead of a raw 403.
+export function isReadOnly(role: Role): boolean {
+  return role === "management";
 }
 
 // Who may switch the active store from the sidebar. The owner (all stores),
 // plus Procurement and Accounting, who work across stores (ordering,
 // invoices/reports). Shop-floor roles stay pinned to their own store.
 export function canSwitchStores(role: Role): boolean {
-  return role === "owner" || role === "procurement" || role === "accountant";
+  return role === "owner" || role === "procurement" || role === "accountant" || role === "management";
 }

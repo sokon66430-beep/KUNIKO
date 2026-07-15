@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Role } from "./auth";
 
+// Mirrors the server-side write-block for view-only roles (Management / Board).
+// Set once the session role is known (see useRole). Purely for UX — the real
+// guarantee is the middleware block — so an edit control gives a clear message
+// instead of a raw 403. Defaults to false, so a mutation attempted before the
+// role loads is still caught server-side.
+let viewOnly = false;
+export function setViewOnly(v: boolean) {
+  viewOnly = v;
+}
+
 export async function api<T = any>(url: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method || "GET").toUpperCase();
+  if (viewOnly && method !== "GET" && method !== "HEAD" && !url.startsWith("/api/auth/")) {
+    throw new Error("Management is a view-only account — changes are disabled.");
+  }
   const res = await fetch(url, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
@@ -68,5 +82,8 @@ export function useFetch<T>(url: string): {
 // AppShell/Sidebar via canAccessPage instead.
 export function useRole(): Role | null {
   const { data } = useFetch<{ user: { role: Role } }>("/api/auth/session");
-  return data?.user.role ?? null;
+  const role = data?.user.role ?? null;
+  // Keep the client write-guard in sync with the signed-in role.
+  if (role) setViewOnly(role === "management");
+  return role;
 }

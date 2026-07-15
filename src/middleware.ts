@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth";
-import { canAccessPage } from "@/lib/access";
+import { canAccessPage, isReadOnly } from "@/lib/access";
+
+// Methods that only read. Anything else changes data.
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 // Gate the whole app behind a login. Public: the login page and the auth API.
 export async function middleware(req: NextRequest) {
@@ -25,6 +28,17 @@ export async function middleware(req: NextRequest) {
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
+  }
+
+  // View-only roles (Management / Board) may open every screen but must never
+  // change data. Block every mutating API call at this single choke point, so
+  // the guarantee holds no matter which route or button is used. Auth endpoints
+  // returned above as public, so sign-in, sign-out and store-switching still work.
+  if (isReadOnly(session.role) && pathname.startsWith("/api/") && !SAFE_METHODS.has(req.method)) {
+    return NextResponse.json(
+      { error: "Management is a view-only account and can't make changes." },
+      { status: 403 },
+    );
   }
 
   // Authenticated — enforce role-based access on page navigations. A role that
