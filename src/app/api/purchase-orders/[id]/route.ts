@@ -26,11 +26,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // the request scope, before the write-lock.
   const session = await getSession();
   // Any signed-in user may adjust the ORDERED QTY (and remove a not-yet-received
-  // line). Unit cost is the negotiated price — only owner / procurement may
-  // change it. Deleting a whole PO stays restricted to owner / procurement in
-  // the DELETE handler below.
+  // line). Unit cost is NEVER editable on a PO — for anyone, owner included:
+  // product prices are managed in Master Data only. Deleting a whole PO stays
+  // restricted to owner / procurement in the DELETE handler below.
   const canEditItems = !!session;
-  const canEditCost = !!session && (session.role === "owner" || session.role === "procurement");
   const result = await mutateDB((db) => {
     const po = db.purchaseOrders.find((p) => p.id === params.id);
     if (!po) return null;
@@ -38,9 +37,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       po.status = "Cancelled";
       logAudit(db, { actor, action: "Cancelled", entityType: "PO", entity: po.poNo });
     }
-    // Procurement adjusts the PO's lines directly: change ordered qty / unit
-    // cost, or remove a line. Never below what's already received. Cancelled
-    // POs are locked.
+    // Adjust the PO's lines: change ordered qty or remove a line. Never below
+    // what's already received. Cancelled POs are locked.
     if (Array.isArray(body.items) && po.status !== "Cancelled" && canEditItems) {
       let changed = false;
       for (const edit of body.items as { productId: string; qtyOrdered?: number; cost?: number; remove?: boolean }[]) {
@@ -60,14 +58,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             changed = true;
           }
         }
-        // Cost changes are silently ignored for roles that may not set prices.
-        if (edit.cost != null && canEditCost) {
-          const c = Math.max(0, Number(edit.cost) || 0);
-          if (c !== line.cost) {
-            line.cost = c;
-            changed = true;
-          }
-        }
+        // Cost edits are ignored outright — unit cost only changes via Master Data.
       }
       if (po.items.length) po.status = poStatus(po); // keep status in sync with new totals
       if (changed) logAudit(db, { actor, action: "Edited", entityType: "PO", entity: po.poNo });
