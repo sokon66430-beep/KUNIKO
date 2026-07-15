@@ -1040,6 +1040,14 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                       </p>
                     </div>
                     <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          <th className="px-3.5 py-1.5 text-left">Item</th>
+                          <th className="px-3 py-1.5 text-right">Qty</th>
+                          <th className="px-3 py-1.5 text-right">Revenue</th>
+                          {showProfit && <th className="px-3.5 py-1.5 text-right">Profit</th>}
+                        </tr>
+                      </thead>
                       <tbody>
                         {g.items.map((it) => (
                           <tr key={it.sku} className="border-b border-slate-50 last:border-0">
