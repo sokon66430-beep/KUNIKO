@@ -821,9 +821,11 @@ function ViewPOModal({
   onSaved: () => void;
 }) {
   const role = useRole();
-  // Any signed-in user can adjust ordered qty / unit cost on a PO. Deleting the
-  // whole PO stays limited to owner / procurement.
+  // Any signed-in user can adjust the ORDERED QTY on a PO. Unit cost is the
+  // negotiated price, so only owner / procurement may change it. Deleting the
+  // whole PO also stays limited to owner / procurement.
   const canEdit = !!role;
+  const canEditCost = role === "owner" || role === "procurement";
   const canDelete = role === "owner" || role === "procurement";
   const locked = po.status === "Cancelled";
   // Deletable only when NOTHING was received — otherwise the stock would orphan.
@@ -883,7 +885,8 @@ function ViewPOModal({
         ...draft.map((d) => ({
           productId: d.productId,
           qtyOrdered: Math.max(d.qtyReceived, Math.floor(Number(d.qtyOrdered) || 0)),
-          cost: Math.max(0, Number(d.cost) || 0),
+          // Unit cost only travels for roles allowed to change it.
+          ...(canEditCost ? { cost: Math.max(0, Number(d.cost) || 0) } : {}),
         })),
         // Lines removed in the draft → tell the server to drop them.
         ...items.filter((o) => !draft.some((d) => d.productId === o.productId)).map((o) => ({ productId: o.productId, remove: true })),
@@ -995,17 +998,24 @@ function ViewPOModal({
                   </td>
                   {editing && (
                     <td className="px-3 py-2 text-center">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={raw[it.productId]?.cost ?? String(it.cost)}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setRaw((r) => ({ ...r, [it.productId]: { ...r[it.productId], cost: v } }));
-                          setLine(it.productId, { cost: Number(v) || 0 });
-                        }}
-                        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                      />
+                      {canEditCost ? (
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={raw[it.productId]?.cost ?? String(it.cost)}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setRaw((r) => ({ ...r, [it.productId]: { ...r[it.productId], cost: v } }));
+                            setLine(it.productId, { cost: Number(v) || 0 });
+                          }}
+                          className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                        />
+                      ) : (
+                        // Cost is the negotiated price — read-only outside owner/procurement.
+                        <span className="text-sm text-slate-500" title="Only owner or procurement can change the unit cost">
+                          {usd(it.cost)}
+                        </span>
+                      )}
                     </td>
                   )}
                   <td className="px-3 py-2 text-center">

@@ -25,10 +25,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // Editing the PO's line items is a procurement action — resolve the role in
   // the request scope, before the write-lock.
   const session = await getSession();
-  // Any signed-in user may adjust ordered qty / unit cost (and remove a not-yet-
-  // received line). Deleting a whole PO stays restricted to owner / procurement
-  // in the DELETE handler below.
+  // Any signed-in user may adjust the ORDERED QTY (and remove a not-yet-received
+  // line). Unit cost is the negotiated price — only owner / procurement may
+  // change it. Deleting a whole PO stays restricted to owner / procurement in
+  // the DELETE handler below.
   const canEditItems = !!session;
+  const canEditCost = !!session && (session.role === "owner" || session.role === "procurement");
   const result = await mutateDB((db) => {
     const po = db.purchaseOrders.find((p) => p.id === params.id);
     if (!po) return null;
@@ -58,7 +60,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             changed = true;
           }
         }
-        if (edit.cost != null) {
+        // Cost changes are silently ignored for roles that may not set prices.
+        if (edit.cost != null && canEditCost) {
           const c = Math.max(0, Number(edit.cost) || 0);
           if (c !== line.cost) {
             line.cost = c;
