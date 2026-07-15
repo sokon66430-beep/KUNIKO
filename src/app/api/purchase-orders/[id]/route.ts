@@ -25,7 +25,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // Editing the PO's line items is a procurement action — resolve the role in
   // the request scope, before the write-lock.
   const session = await getSession();
-  const canEditItems = !!session && (session.role === "owner" || session.role === "procurement");
+  // Any signed-in user may adjust ordered qty / unit cost (and remove a not-yet-
+  // received line). Deleting a whole PO stays restricted to owner / procurement
+  // in the DELETE handler below.
+  const canEditItems = !!session;
   const result = await mutateDB((db) => {
     const po = db.purchaseOrders.find((p) => p.id === params.id);
     if (!po) return null;

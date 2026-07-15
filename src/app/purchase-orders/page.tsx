@@ -825,7 +825,10 @@ function ViewPOModal({
   onSaved: () => void;
 }) {
   const role = useRole();
-  const canEdit = role === "owner" || role === "procurement";
+  // Any signed-in user can adjust ordered qty / unit cost on a PO. Deleting the
+  // whole PO stays limited to owner / procurement.
+  const canEdit = !!role;
+  const canDelete = role === "owner" || role === "procurement";
   const locked = po.status === "Cancelled";
   // Deletable only when NOTHING was received — otherwise the stock would orphan.
   const hasReceipts = po.items.some((i) => i.qtyReceived > 0);
@@ -929,7 +932,7 @@ function ViewPOModal({
                     <Pencil size={16} /> Edit
                   </button>
                 )}
-                {canEdit && !hasReceipts && (
+                {canDelete && !hasReceipts && (
                   <button
                     className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
                     onClick={onDelete}

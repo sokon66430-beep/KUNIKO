@@ -50,10 +50,15 @@ export async function GET(req: Request) {
   const showProfit = !!session && canSeeProfit(session.role);
 
   const period = from && from === to ? from : `${from || "start"} → ${to || "today"}`;
+  // Stamp the report with the date & time it was generated, in Cambodia local
+  // time (UTC+7) regardless of where the server runs.
+  const nowKh = new Date(Date.now() + 7 * 3600 * 1000);
+  const p2 = (x: number) => String(x).padStart(2, "0");
+  const generated = `${p2(nowKh.getUTCDate())}-${p2(nowKh.getUTCMonth() + 1)}-${nowKh.getUTCFullYear()} ${p2(nowKh.getUTCHours())}:${p2(nowKh.getUTCMinutes())}`;
   const data: ReportData = {
     title: "Sales by Category",
     filename: "Sales-by-Category",
-    subtitle: `${db.meta.business.name} · ${db.meta.business.branch}   ·   ${period}`,
+    subtitle: `${db.meta.business.name} · ${db.meta.business.branch}   ·   Period: ${period}   ·   Generated: ${generated}`,
     rows,
     cols: [
       { header: "Category", get: (r: any) => r.category, width: 1.5 },
