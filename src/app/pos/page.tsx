@@ -90,16 +90,19 @@ export default function PosPage() {
         });
         return;
       }
-      const skipped: string[] = data.skippedDates || [];
-      if (data.matched === 0 && skipped.length) {
-        // Whole file overlapped days already on record — nothing new added.
-        setToast(
-          `Nothing new to import — ${skipped.length} date${skipped.length === 1 ? "" : "s"} already on record (${skipped.join(", ")})`,
-        );
+      const dupes: number = data.skippedDuplicates || 0;
+      const skippedDates: string[] = data.skippedDates || [];
+      // A skipped tail: either individual duplicate transactions (invoice-level)
+      // or whole dates (when the file has no invoice column to match on).
+      const skipNote = dupes
+        ? ` · skipped ${dupes} duplicate transaction${dupes === 1 ? "" : "s"} already on record`
+        : skippedDates.length
+          ? ` · skipped ${skippedDates.length} date${skippedDates.length === 1 ? "" : "s"} already on record (${skippedDates.join(", ")})`
+          : "";
+      if (data.matched === 0 && (dupes || skippedDates.length)) {
+        setToast(`Nothing new to import${skipNote.replace(" · ", " — ")}`);
       } else {
-        let msg = `Imported ${data.matched} sale lines (${data.salesCreated} days)`;
-        if (skipped.length) msg += ` · skipped ${skipped.length} date${skipped.length === 1 ? "" : "s"} already on record (${skipped.join(", ")})`;
-        setToast(msg);
+        setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)${skipNote}`);
       }
       reload();
     } catch (e: any) {

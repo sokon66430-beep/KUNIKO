@@ -85,6 +85,11 @@ export type Sale = {
   paymentRef?: string; // e.g. KHQR md5 of the confirmed Bakong transaction
   createdAt: string;
   imported?: boolean; // true when brought in from a sales-history import (no stock change)
+  // For imported day-sales: the source invoice numbers (from the report's Invoice
+  // column) that make up this day. Lets a later import skip only the transactions
+  // already on record — e.g. a night shift's after-midnight invoices — instead of
+  // rejecting the whole overlapping day.
+  sourceInvoices?: string[];
 };
 
 // ---------------------------------------------------------------------------

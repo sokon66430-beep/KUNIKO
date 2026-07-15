@@ -27,6 +27,7 @@ const ALIASES: Record<string, string[]> = {
   name: ["item name", "product name", "name"],
   qty: ["qty", "quantity", "units", "qty sold", "units sold"],
   price: ["price", "unit price", "sell price", "selling price"],
+  invoice: ["invoice no", "invoice", "invoice number", "invoice #", "receipt no", "receipt", "bill no"],
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -179,7 +180,7 @@ export async function POST(req: Request) {
   // all (spacer rows, section footers holding only summed numbers) aren't
   // items, so they're skipped like blank rows — but a real item row missing
   // its qty/date is still a hard problem, never silently dropped.
-  type Row = { day: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
+  type Row = { day: string; invoice: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
   // Structured so the UI can lay it out as a table (Row · Product · Issue · Qty).
   type Problem = { row: number; product: string; issue: string; qty: number };
   const rows: Row[] = [];
@@ -207,6 +208,7 @@ export async function POST(req: Request) {
     }
     rows.push({
       day,
+      invoice: colOf.invoice ? cellText(r, colOf.invoice) : "",
       sku,
       barcode,
       name,
@@ -230,7 +232,7 @@ export async function POST(req: Request) {
     byName.set(cleanName(p.name), p);
   }
 
-  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string };
+  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string; invoice: string };
   const matched: Matched[] = [];
   const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
   for (const row of rows) {
@@ -258,6 +260,7 @@ export async function POST(req: Request) {
       price: row.price || p.price,
       cost: p.cost,
       day: row.day,
+      invoice: row.invoice,
     });
   }
 
@@ -276,29 +279,58 @@ export async function POST(req: Request) {
     );
   }
 
-  // A day that's already on record is SKIPPED (never double-counted), and the
-  // rest of the file still imports. This lets an overlapping report through —
-  // e.g. a June report whose night-shift sales after midnight already landed on
-  // 1 July — instead of blocking the whole file over one shared day. Skipping is
-  // by whole calendar day: a day is either entirely new (imported) or already
-  // present (left untouched), so figures can never be partially double-counted.
+  // De-duplicate at the TRANSACTION level, not the whole day. Each imported
+  // day-sale remembers the source invoice numbers it was built from, so a row
+  // whose (day + invoice) is already on record is skipped while the rest of that
+  // day still imports. This is what lets a June report's after-midnight sales
+  // (which already landed on 1 July) coexist with the July report's daytime
+  // 1 July sales — only the shared midnight invoices are skipped, never the whole
+  // day. The (day + invoice) pairing is safe even if a POS resets invoice numbers
+  // each day. When the file has no Invoice column we can't tell transactions
+  // apart, so we fall back to skipping any day already on record (never
+  // double-counts).
+  const hasInvoiceCol = !!colOf.invoice;
+  const existingInvoiceKeys = new Set(
+    db.sales.flatMap((s) => (s.sourceInvoices ?? []).map((inv) => `${s.createdAt.slice(0, 10)}|${inv}`)),
+  );
   const existingDays = new Set(db.sales.map((s) => s.createdAt.slice(0, 10)));
-  const skippedDates = [...new Set(matched.map((m) => m.day))].filter((d) => existingDays.has(d)).sort();
-  const toImport = matched.filter((m) => !existingDays.has(m.day));
+
+  let toImport: Matched[];
+  let skippedDuplicates = 0; // transactions (or day-rows) already on record
+  const skippedDates: string[] = [];
+  if (hasInvoiceCol) {
+    toImport = matched.filter((m) => {
+      if (m.invoice && existingInvoiceKeys.has(`${m.day}|${m.invoice}`)) {
+        skippedDuplicates++;
+        return false;
+      }
+      return true;
+    });
+  } else {
+    skippedDates.push(...[...new Set(matched.map((m) => m.day))].filter((d) => existingDays.has(d)).sort());
+    const skipDays = new Set(skippedDates);
+    toImport = matched.filter((m) => !skipDays.has(m.day));
+    skippedDuplicates = matched.length - toImport.length;
+  }
+
   if (toImport.length === 0) {
-    // Every day in the file is already recorded — nothing new to add.
-    return NextResponse.json({ matched: 0, salesCreated: 0, totalRows: rows.length, skippedDates });
+    // Everything in the file is already on record — nothing new to add.
+    return NextResponse.json({ matched: 0, salesCreated: 0, totalRows: rows.length, skippedDuplicates, skippedDates });
   }
 
   const result = await mutateDB((db) => {
-    const byDay = new Map<string, SaleItem[]>();
+    // Group the new rows per day; remember which source invoices each day covers
+    // so a later overlapping import can skip exactly these transactions.
+    const byDay = new Map<string, { items: SaleItem[]; invoices: Set<string> }>();
     for (const row of toImport) {
-      const items = byDay.get(row.day) ?? byDay.set(row.day, []).get(row.day)!;
-      items.push({ productId: row.productId, sku: row.sku, name: row.name, qty: row.qty, price: row.price, cost: row.cost });
+      const g = byDay.get(row.day) ?? byDay.set(row.day, { items: [], invoices: new Set() }).get(row.day)!;
+      g.items.push({ productId: row.productId, sku: row.sku, name: row.name, qty: row.qty, price: row.price, cost: row.cost });
+      if (row.invoice) g.invoices.add(row.invoice);
     }
 
     let salesCreated = 0;
-    for (const [day, items] of byDay) {
+    for (const [day, g] of byDay) {
+      const items = g.items;
       const subtotal = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
       const cost = round2(items.reduce((s, it) => s + it.cost * it.qty, 0));
       const tax = round2(subtotal * db.meta.business.vatRate);
@@ -320,6 +352,7 @@ export async function POST(req: Request) {
         // means the stored date-part is exactly `day` on any server timezone.
         createdAt: new Date(`${day}T12:00:00Z`).toISOString(),
         imported: true,
+        sourceInvoices: g.invoices.size ? [...g.invoices] : undefined,
       };
       db.meta.nextInvoice += 1;
       db.sales.push(sale);
@@ -332,10 +365,10 @@ export async function POST(req: Request) {
       entityType: "Sale",
       entity: file.name || "Excel file",
       detail: `${toImport.length} lines · ${salesCreated} day-sales${
-        skippedDates.length ? ` · skipped ${skippedDates.length} day(s) already on record` : ""
+        skippedDuplicates ? ` · skipped ${skippedDuplicates} duplicate transaction(s) already on record` : ""
       }`,
     });
-    return { matched: toImport.length, salesCreated, totalRows: rows.length, skippedDates };
+    return { matched: toImport.length, salesCreated, totalRows: rows.length, skippedDuplicates, skippedDates };
   });
 
   return NextResponse.json(result);
