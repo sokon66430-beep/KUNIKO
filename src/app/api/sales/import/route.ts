@@ -45,6 +45,18 @@ const cleanBarcode = (s: string) => s.replace(/\s+/g, "");
 const cleanSku = (s: string) => s.trim().toLowerCase();
 const cleanName = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
+// Build a yyyy-mm-dd only if (y, mo, d) is a REAL calendar day. This rejects
+// impossible dates like 31 June or 30 Feb instead of letting `new Date` silently
+// roll them into the next month (e.g. 31 June → 1 July), which would file a sale
+// on the wrong day.
+function ymd(y: number, mo: number, d: number): string | null {
+  if (!Number.isInteger(y) || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${y}-${p(mo)}-${p(d)}`;
+}
+
 // Best-effort date parse → yyyy-mm-dd. Accepts Excel Date cells (including a
 // formula cell whose computed result is a Date) and common text.
 function toDayKey(cellValue: any, text: string): string | null {
@@ -55,21 +67,19 @@ function toDayKey(cellValue: any, text: string): string | null {
     // A spreadsheet date carries no timezone — it's just a calendar day. Read
     // its own year/month/day (NOT via toISOString, which converts to UTC and
     // can slip the day backward one when the file and server disagree on zone).
-    const p = (x: number) => String(x).padStart(2, "0");
-    return `${cellValue.getFullYear()}-${p(cellValue.getMonth() + 1)}-${p(cellValue.getDate())}`;
+    return ymd(cellValue.getFullYear(), cellValue.getMonth() + 1, cellValue.getDate());
   }
   const t = (text || "").trim();
   if (!t) return null;
   // yyyy-mm-dd or yyyy/mm/dd
   let m = t.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  if (m) return ymd(+m[1], +m[2], +m[3]);
   // dd/mm/yyyy or dd-mm-yyyy (day first — the shop's local convention)
   m = t.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  if (m) return ymd(+m[3], +m[2], +m[1]);
   const d = new Date(t);
   if (isNaN(d.getTime())) return null;
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
 export async function POST(req: Request) {
@@ -310,7 +320,9 @@ export async function POST(req: Request) {
         cost,
         profit: round2(subtotal - cost),
         paymentMethod: "Cash",
-        createdAt: new Date(`${day}T12:00:00`).toISOString(),
+        // Noon UTC — the day is already a validated calendar date, and using UTC
+        // means the stored date-part is exactly `day` on any server timezone.
+        createdAt: new Date(`${day}T12:00:00Z`).toISOString(),
         imported: true,
       };
       db.meta.nextInvoice += 1;
