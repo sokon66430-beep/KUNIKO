@@ -34,6 +34,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/purchase-requests", label: "Purchase Requests" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },
+  { href: "/business-reports", label: "Business Reports" },
   { href: "/products", label: "Products" },
   { href: "/suppliers", label: "Suppliers" },
   { href: "/purchase-orders", label: "Purchase Orders" },
