@@ -35,7 +35,70 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: "90d", label: "90 days" },
 ];
 
-const PIE_COLORS = ["#1f5ff5", "#3380ff", "#59a5ff", "#8ec6ff", "#a78bfa", "#34d399", "#fbbf24"];
+// Distinct, modern palette for the category donut (top 5 + a neutral "Other").
+const CAT_COLORS = ["#6366f1", "#3b82f6", "#06b6d4", "#a855f7", "#ec4899", "#f59e0b"];
+const OTHER_COLOR = "#cbd5e1";
+
+// Sales-by-category donut: groups the long tail into "Other" so the ring stays
+// clean (never a spiral of slivers), rounds the slice ends, and shows the total
+// in the centre with a %-share legend.
+function CategoryMix({ categories }: { categories: { name: string; value: number }[] }) {
+  const total = categories.reduce((s, c) => s + c.value, 0);
+  const top = categories.slice(0, 5).map((c, i) => ({ ...c, color: CAT_COLORS[i % CAT_COLORS.length] }));
+  const restVal = categories.slice(5).reduce((s, c) => s + c.value, 0);
+  const rows = restVal > 0 ? [...top, { name: "Other", value: restVal, color: OTHER_COLOR }] : top;
+
+  return (
+    <Card>
+      <h3 className="mb-1 text-base font-bold text-ink-900">Sales by Category</h3>
+      <p className="mb-2 text-xs text-slate-500">Share of revenue</p>
+      <div className="relative h-52">
+        {total > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={rows}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={62}
+                  outerRadius={88}
+                  paddingAngle={rows.length > 1 ? 3 : 0}
+                  cornerRadius={6}
+                  stroke="none"
+                >
+                  {rows.map((r, i) => (
+                    <Cell key={i} fill={r.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip money />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Total</span>
+              <span className="text-xl font-extrabold tracking-[-0.02em] tabular-nums text-ink-900">{usd(total)}</span>
+            </div>
+          </>
+        ) : (
+          <div className="grid h-full place-items-center text-sm text-slate-400">No sales yet</div>
+        )}
+      </div>
+      <div className="mt-3 space-y-2">
+        {rows.map((r) => {
+          const share = total > 0 ? Math.round((r.value / total) * 100) : 0;
+          return (
+            <div key={r.name} className="flex items-center gap-2.5 text-[13px]">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+              <span className="min-w-0 flex-1 truncate text-slate-600">{r.name}</span>
+              <span className="w-8 text-right tabular-nums text-slate-400">{share}%</span>
+              <span className="w-24 text-right font-semibold tabular-nums text-ink-800">{usd(r.value)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
 
 export default function DashboardPage() {
   const [range, setRange] = useState<RangeKey>("30d");
@@ -170,40 +233,7 @@ export default function DashboardPage() {
             </Card>
 
             {/* Category mix */}
-            <Card>
-              <h3 className="mb-1 text-base font-bold text-ink-900">Sales by Category</h3>
-              <p className="mb-2 text-xs text-slate-500">Share of revenue</p>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={data.byCategory}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={48}
-                      outerRadius={75}
-                      paddingAngle={2}
-                    >
-                      {data.byCategory.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip money />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 space-y-1.5">
-                {data.byCategory.slice(0, 5).map((c, i) => (
-                  <div key={c.name} className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2 text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      {c.name}
-                    </span>
-                    <span className="font-semibold text-ink-800">{usd(c.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
+            <CategoryMix categories={data.byCategory} />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
