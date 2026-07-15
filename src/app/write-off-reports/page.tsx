@@ -5,6 +5,7 @@ import { FileSpreadsheet, FileText, Package, Layers, ListChecks, DollarSign } fr
 import { useFetch } from "@/lib/client";
 import type { WriteOff } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState } from "@/components/ui";
+import { DatePicker } from "@/components/DatePicker";
 import { num, usd } from "@/lib/format";
 
 type Preset = "today" | "yesterday" | "week" | "month" | "custom";
@@ -106,11 +107,11 @@ export default function WriteOffReportsPage() {
           <div className="flex items-end gap-2">
             <div>
               <label className="label">Start date</label>
-              <input type="date" className="input" value={start} onChange={(e) => { setStart(e.target.value); setPreset("custom"); }} />
+              <DatePicker value={start} onChange={(v) => { setStart(v); setPreset("custom"); }} />
             </div>
             <div>
               <label className="label">End date</label>
-              <input type="date" className="input" value={end} onChange={(e) => { setEnd(e.target.value); setPreset("custom"); }} />
+              <DatePicker value={end} onChange={(v) => { setEnd(v); setPreset("custom"); }} />
             </div>
             <button
               onClick={() => setPreset("custom")}

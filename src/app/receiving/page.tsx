@@ -20,6 +20,7 @@ import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
 import { PdfViewer } from "@/components/PdfViewer";
+import { DatePicker } from "@/components/DatePicker";
 import type { PurchaseOrder, GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -209,21 +210,9 @@ export default function ReceivingPage() {
             {/* Date range — track/adjust stock for a period */}
             <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
               <span>From</span>
-              <input
-                type="date"
-                value={from}
-                max={to || undefined}
-                onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-              />
+              <DatePicker value={from} max={to || undefined} onChange={setFrom} />
               <span>To</span>
-              <input
-                type="date"
-                value={to}
-                min={from || undefined}
-                onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-              />
+              <DatePicker value={to} min={from || undefined} onChange={setTo} />
               <button type="button" onClick={setToday} className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-200">
                 Today
               </button>

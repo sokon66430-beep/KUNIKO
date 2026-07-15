@@ -24,6 +24,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
+import { DatePicker } from "@/components/DatePicker";
 import type { Product, PurchaseOrder, POStatus, Supplier, PurchaseRequest } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -645,12 +646,7 @@ function CreatePOModal({
         </p>
         <div>
           <label className="label mb-0.5">Expected date</label>
-          <input
-            className="input"
-            type="date"
-            value={expectedDate}
-            onChange={(e) => setExpectedDate(e.target.value)}
-          />
+          <DatePicker value={expectedDate} onChange={setExpectedDate} />
         </div>
       </div>
 
@@ -838,9 +834,15 @@ function ViewPOModal({
   const [draft, setDraft] = useState(po.items);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Raw text the user is typing, per line. A number input bound straight to a
+  // number coerces every keystroke, which strips a decimal point mid-type (you
+  // could never enter "1.75"). Keep the raw string for display and parse on save.
+  const [raw, setRaw] = useState<Record<string, { cost: string; qtyOrdered: string }>>({});
 
   const startEdit = () => {
-    setDraft(items.map((i) => ({ ...i })));
+    const copy = items.map((i) => ({ ...i }));
+    setDraft(copy);
+    setRaw(Object.fromEntries(copy.map((i) => [i.productId, { cost: String(i.cost), qtyOrdered: String(i.qtyOrdered) }])));
     setEditing(true);
   };
   const setLine = (productId: string, patch: Partial<(typeof items)[number]>) =>
@@ -994,11 +996,14 @@ function ViewPOModal({
                   {editing && (
                     <td className="px-3 py-2 text-center">
                       <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={it.cost}
-                        onChange={(e) => setLine(it.productId, { cost: Number(e.target.value) })}
+                        type="text"
+                        inputMode="decimal"
+                        value={raw[it.productId]?.cost ?? String(it.cost)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setRaw((r) => ({ ...r, [it.productId]: { ...r[it.productId], cost: v } }));
+                          setLine(it.productId, { cost: Number(v) || 0 });
+                        }}
                         className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                       />
                     </td>
@@ -1006,10 +1011,14 @@ function ViewPOModal({
                   <td className="px-3 py-2 text-center">
                     {editing ? (
                       <input
-                        type="number"
-                        min={it.qtyReceived}
-                        value={it.qtyOrdered}
-                        onChange={(e) => setLine(it.productId, { qtyOrdered: Number(e.target.value) })}
+                        type="text"
+                        inputMode="numeric"
+                        value={raw[it.productId]?.qtyOrdered ?? String(it.qtyOrdered)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setRaw((r) => ({ ...r, [it.productId]: { ...r[it.productId], qtyOrdered: v } }));
+                          setLine(it.productId, { qtyOrdered: Number(v) || 0 });
+                        }}
                         className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                       />
                     ) : (

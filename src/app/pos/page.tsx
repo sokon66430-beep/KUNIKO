@@ -21,6 +21,7 @@ import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
+import { DatePicker } from "@/components/DatePicker";
 import { canSeeProfit } from "@/lib/access";
 
 type CartLine = { product: Product; qty: number; seq: number };
@@ -899,12 +900,17 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
         items: its,
         qty: its.reduce((s, x) => s + x.qty, 0),
         revenue: its.reduce((s, x) => s + x.revenue, 0),
+        cost: its.reduce((s, x) => s + x.cost, 0),
         profit: its.reduce((s, x) => s + x.profit, 0),
       }))
       .sort((a, b) => b.revenue - a.revenue);
   }, [items]);
   const shown = useMemo(
-    () => items.reduce((a, it) => ({ qty: a.qty + it.qty, revenue: a.revenue + it.revenue, profit: a.profit + it.profit }), { qty: 0, revenue: 0, profit: 0 }),
+    () =>
+      items.reduce(
+        (a, it) => ({ qty: a.qty + it.qty, revenue: a.revenue + it.revenue, cost: a.cost + it.cost, profit: a.profit + it.profit }),
+        { qty: 0, revenue: 0, cost: 0, profit: 0 },
+      ),
     [items],
   );
 
@@ -949,7 +955,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
             {mode === "day" ? (
-              <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className="input !w-auto !py-2 text-sm" />
+              <DatePicker value={day} max={today} onChange={setDay} />
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
@@ -967,22 +973,9 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
                   <span>From</span>
-                  <input
-                    type="date"
-                    value={rangeFrom}
-                    max={rangeTo}
-                    onChange={(e) => setRangeFrom(e.target.value)}
-                    className="input !w-auto !py-2 text-sm"
-                  />
+                  <DatePicker value={rangeFrom} max={rangeTo} onChange={setRangeFrom} />
                   <span>to</span>
-                  <input
-                    type="date"
-                    value={rangeTo}
-                    min={rangeFrom}
-                    max={today}
-                    onChange={(e) => setRangeTo(e.target.value)}
-                    className="input !w-auto !py-2 text-sm"
-                  />
+                  <DatePicker value={rangeTo} min={rangeFrom} max={today} onChange={setRangeTo} />
                 </div>
               </div>
             )}
@@ -1022,6 +1015,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                   { label: "Items", value: num(items.length) },
                   { label: "Units sold", value: num(shown.qty) },
                   { label: "Revenue", value: usd(shown.revenue) },
+                  ...(showProfit ? [{ label: "Cost", value: usd(shown.cost) }] : []),
                   ...(showProfit ? [{ label: "Profit", value: usd(shown.profit) }] : []),
                 ].map((s) => (
                   <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
@@ -1048,6 +1042,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                           <th className="px-3.5 py-1.5 text-left">Item</th>
                           <th className="px-3 py-1.5 text-right">Qty</th>
                           <th className="px-3 py-1.5 text-right">Revenue</th>
+                          {showProfit && <th className="px-3 py-1.5 text-right">Cost</th>}
                           {showProfit && <th className="px-3.5 py-1.5 text-right">Profit</th>}
                         </tr>
                       </thead>
@@ -1060,6 +1055,7 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                             </td>
                             <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(it.qty)}</td>
                             <td className="px-3 py-2 text-right text-slate-600">{usd(it.revenue)}</td>
+                            {showProfit && <td className="px-3 py-2 text-right text-slate-500">{usd(it.cost)}</td>}
                             {showProfit && <td className="px-3.5 py-2 text-right text-emerald-600">{usd(it.profit)}</td>}
                           </tr>
                         ))}

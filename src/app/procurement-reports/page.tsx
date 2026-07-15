@@ -5,6 +5,7 @@ import { ClipboardList, FileText, DollarSign, PackageCheck, Truck, Clock, FileSp
 import { useFetch } from "@/lib/client";
 import type { PurchaseOrder, PurchaseRequest, Supplier, POStatus, PRStatus } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, Badge, EmptyState } from "@/components/ui";
+import { DatePicker } from "@/components/DatePicker";
 import { usd, num, shortDate } from "@/lib/format";
 
 type Tab = "po" | "pr";
@@ -145,11 +146,11 @@ export default function ProcurementReportsPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="label">From</label>
-            <input className="input sm:w-40" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DatePicker value={from} onChange={setFrom} />
           </div>
           <div>
             <label className="label">To</label>
-            <input className="input sm:w-40" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DatePicker value={to} onChange={setTo} />
           </div>
           {tab === "po" ? (
             <div>
