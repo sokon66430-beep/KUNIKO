@@ -28,6 +28,10 @@ const ALIASES: Record<string, string[]> = {
   qty: ["qty", "quantity", "units", "qty sold", "units sold"],
   price: ["price", "unit price", "sell price", "selling price"],
   invoice: ["invoice no", "invoice", "invoice number", "invoice #", "receipt no", "receipt", "bill no"],
+  // Line discount amount (money off this line), e.g. the report's "Discount"
+  // column. NOT "After Dis." (the post-discount total) — that normalizes to
+  // "afterdis" and won't match these aliases.
+  discount: ["discount", "disc", "discount amount", "discount amt"],
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -180,7 +184,7 @@ export async function POST(req: Request) {
   // all (spacer rows, section footers holding only summed numbers) aren't
   // items, so they're skipped like blank rows — but a real item row missing
   // its qty/date is still a hard problem, never silently dropped.
-  type Row = { day: string; invoice: string; sku: string; barcode: string; name: string; qty: number; price: number; rowNum: number };
+  type Row = { day: string; invoice: string; sku: string; barcode: string; name: string; qty: number; price: number; discount: number; rowNum: number };
   // Structured so the UI can lay it out as a table (Row · Product · Issue · Qty).
   type Problem = { row: number; product: string; issue: string; qty: number };
   const rows: Row[] = [];
@@ -214,6 +218,7 @@ export async function POST(req: Request) {
       name,
       qty,
       price: colOf.price ? num(cellText(r, colOf.price)) : 0,
+      discount: colOf.discount ? num(cellText(r, colOf.discount)) : 0,
       rowNum: r,
     });
   }
@@ -232,7 +237,7 @@ export async function POST(req: Request) {
     byName.set(cleanName(p.name), p);
   }
 
-  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string; invoice: string };
+  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string; invoice: string; discount: number };
   const matched: Matched[] = [];
   const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
   for (const row of rows) {
@@ -261,6 +266,7 @@ export async function POST(req: Request) {
       cost: p.cost,
       day: row.day,
       invoice: row.invoice,
+      discount: row.discount,
     });
   }
 
@@ -321,10 +327,11 @@ export async function POST(req: Request) {
   const result = await mutateDB((db) => {
     // Group the new rows per day; remember which source invoices each day covers
     // so a later overlapping import can skip exactly these transactions.
-    const byDay = new Map<string, { items: SaleItem[]; invoices: Set<string> }>();
+    const byDay = new Map<string, { items: SaleItem[]; invoices: Set<string>; discount: number }>();
     for (const row of toImport) {
-      const g = byDay.get(row.day) ?? byDay.set(row.day, { items: [], invoices: new Set() }).get(row.day)!;
+      const g = byDay.get(row.day) ?? byDay.set(row.day, { items: [], invoices: new Set(), discount: 0 }).get(row.day)!;
       g.items.push({ productId: row.productId, sku: row.sku, name: row.name, qty: row.qty, price: row.price, cost: row.cost });
+      g.discount += row.discount;
       if (row.invoice) g.invoices.add(row.invoice);
     }
 
@@ -332,12 +339,14 @@ export async function POST(req: Request) {
     for (const [day, g] of byDay) {
       const items = g.items;
       // Imported prices are VAT-INCLUSIVE (same as live sales): the line total is
-      // what was paid; VAT is the portion already inside it.
+      // what was paid; VAT is the portion already inside it. The report's Discount
+      // column is money actually taken off, so it reduces the amount paid.
       const gross = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
       const cost = round2(items.reduce((s, it) => s + it.cost * it.qty, 0));
-      const total = gross;
-      const subtotal = round2(gross / (1 + db.meta.business.vatRate)); // net of VAT
-      const tax = round2(gross - subtotal); // VAT already contained in the price
+      const discount = round2(Math.min(g.discount, gross));
+      const total = round2(gross - discount); // actually paid, after discount
+      const subtotal = round2(total / (1 + db.meta.business.vatRate)); // net of VAT
+      const tax = round2(total - subtotal); // VAT already contained in the price
       const invoiceNo = `INV-${db.meta.nextInvoice}`;
       const sale: Sale = {
         id: `s${db.meta.nextInvoice}`,
@@ -345,7 +354,7 @@ export async function POST(req: Request) {
         items,
         customerId: null,
         subtotal,
-        discount: 0,
+        discount,
         tax,
         total,
         cost,
