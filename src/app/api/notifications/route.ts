@@ -15,12 +15,30 @@ export async function GET() {
   if (submittedPRs.length > 0) {
     actions.push({
       id: "prs-awaiting",
-      title: `${submittedPRs.length} purchase request${submittedPRs.length === 1 ? "" : "s"} awaiting approval`,
+      title: `${submittedPRs.length} purchase order${submittedPRs.length === 1 ? "" : "s"} waiting approval`,
       detail: submittedPRs
         .slice(0, 3)
         .map((p) => p.prNo)
         .join(", "),
-      href: "/purchase-orders",
+      href: "/purchase-requests",
+      tone: "rose",
+    });
+  }
+
+  // Goods still to receive: orders sent out (Open/Partial) with lines not yet
+  // fully received — deliveries the team is still waiting on.
+  const receivingPending = db.purchaseOrders.filter(
+    (po) => (po.status === "Open" || po.status === "Partial") && po.items.some((i) => i.qtyReceived < i.qtyOrdered),
+  );
+  if (receivingPending.length > 0) {
+    actions.push({
+      id: "receiving-pending",
+      title: `${receivingPending.length} goods receiving${receivingPending.length === 1 ? "" : "s"} pending`,
+      detail: `Orders awaiting delivery — ${receivingPending
+        .slice(0, 3)
+        .map((p) => p.poNo)
+        .join(", ")}`,
+      href: "/receiving",
       tone: "amber",
     });
   }
@@ -63,17 +81,6 @@ export async function GET() {
       detail: "Approve or reject the scanned supplier invoices",
       href: "/invoices",
       tone: "amber",
-    });
-  }
-
-  const low = db.products.filter((p) => p.reorderLevel > 0 && p.stock <= p.reorderLevel).length;
-  if (low > 0) {
-    actions.push({
-      id: "low-stock",
-      title: `${low} item${low === 1 ? "" : "s"} at or below minimum stock`,
-      detail: "Review reorder suggestions",
-      href: "/purchase-requests",
-      tone: "brand",
     });
   }
 

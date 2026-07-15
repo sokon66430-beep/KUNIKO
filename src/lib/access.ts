@@ -86,6 +86,12 @@ export function isReadOnly(role: Role): boolean {
   return role === "management";
 }
 
+// Cross-store overview + Store Performance: leadership only (owner + the
+// CEO/Board management role).
+export function canSeeAllStores(role: Role): boolean {
+  return role === "owner" || role === "management";
+}
+
 // Who may switch the active store from the sidebar. The owner (all stores),
 // plus Procurement and Accounting, who work across stores (ordering,
 // invoices/reports). Shop-floor roles stay pinned to their own store.

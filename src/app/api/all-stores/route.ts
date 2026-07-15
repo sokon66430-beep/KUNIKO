@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { readSystem } from "@/lib/system";
 import { readDB } from "@/lib/db";
+import { canSeeAllStores } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
-// Owner-only cross-store overview: one summary row per store, plus totals.
+// Cross-store overview (owner + Management): one summary row per store, plus totals.
 export async function GET() {
   const s = await getSession();
-  if (!s || s.role !== "owner") {
-    return NextResponse.json({ error: "Owners only" }, { status: 403 });
+  if (!s || !canSeeAllStores(s.role)) {
+    return NextResponse.json({ error: "Leadership only" }, { status: 403 });
   }
 
   const sys = await readSystem();

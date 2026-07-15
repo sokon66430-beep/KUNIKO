@@ -23,8 +23,33 @@ export function PageHeader({
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`card p-5 ${className}`}>{children}</div>;
+export function Card({
+  children,
+  className = "",
+  title,
+  subtitle,
+  icon,
+}: {
+  children: ReactNode;
+  className?: string;
+  title?: ReactNode;
+  subtitle?: string;
+  icon?: ReactNode;
+}) {
+  return (
+    <div className={`card p-5 ${className}`}>
+      {(title || icon) && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-ink-900">
+            {icon}
+            {title}
+          </div>
+          {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+        </div>
+      )}
+      {children}
+    </div>
+  );
 }
 
 export function StatCard({

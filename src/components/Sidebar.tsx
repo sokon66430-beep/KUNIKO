@@ -13,6 +13,7 @@ import {
   Package,
   Users,
   BarChart3,
+  TrendingUp,
   Menu,
   X,
   FileText,
@@ -54,6 +55,7 @@ const OPERATIONS = {
     { href: "/purchase-requests", label: "Purchase Requests", icon: FileText },
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/reports-center", label: "Reports", icon: BarChart3 },
+    { href: "/business-reports", label: "Business Reports", icon: TrendingUp },
   ],
 };
 const PROCUREMENT = {
