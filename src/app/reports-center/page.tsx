@@ -17,6 +17,7 @@ import {
 import { useFetch } from "@/lib/client";
 import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount } from "@/lib/types";
 import { PageHeader, Card } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { num } from "@/lib/format";
 
 type Accent = "brand" | "violet" | "emerald" | "amber" | "rose" | "slate";
@@ -109,18 +110,11 @@ export default function ReportsCenterPage() {
           <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Supplier
           </span>
-          <select
+          <SearchSelect
             value={grnSupplier}
-            onChange={(e) => setGrnSupplier(e.target.value)}
-            className="input !py-2 text-sm"
-          >
-            <option value="All">All suppliers</option>
-            {grnSuppliers.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+            onChange={setGrnSupplier}
+            options={[{ value: "All", label: "All suppliers" }, ...grnSuppliers.map((s) => ({ value: s, label: s }))]}
+          />
         </label>
       ),
     },

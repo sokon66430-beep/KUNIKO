@@ -20,12 +20,16 @@ export function Select({
   onChange,
   placeholder = "Select…",
   className = "",
+  buttonClassName = "",
+  disabled = false,
 }: {
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  buttonClassName?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -116,8 +120,11 @@ export function Select({
       <button
         ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`input flex items-center justify-between gap-2 text-left ${open ? "border-brand-500 ring-4 ring-brand-500/10" : ""}`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        className={`input flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
+          open ? "border-brand-500 ring-4 ring-brand-500/10" : ""
+        } ${buttonClassName}`}
       >
         <span className={`min-w-0 flex-1 truncate ${current ? "" : "text-slate-400"}`}>
           {current ? current.label : placeholder}

@@ -18,6 +18,7 @@ import { useFetch } from "@/lib/client";
 import type { AuditEvent, AuditEntityType } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, EmptyState } from "@/components/ui";
 import { DatePicker } from "@/components/DatePicker";
+import { Select } from "@/components/Select";
 import { num } from "@/lib/format";
 
 const TYPE_META: Record<AuditEntityType, { icon: any; tint: string }> = {
@@ -104,20 +105,21 @@ export default function AuditPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="label">Type</label>
-            <select className="input sm:w-40" value={type} onChange={(e) => setType(e.target.value)}>
-              {["All", "PR", "PO", "GRN", "Product", "Supplier", "Stock"].map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
+            <Select
+              className="sm:w-40"
+              value={type}
+              onChange={setType}
+              options={["All", "PR", "PO", "GRN", "Product", "Supplier", "Stock"].map((t) => ({ value: t, label: t }))}
+            />
           </div>
           <div>
             <label className="label">Actor</label>
-            <select className="input sm:w-44" value={actor} onChange={(e) => setActor(e.target.value)}>
-              <option>All</option>
-              {actors.map((a) => (
-                <option key={a}>{a}</option>
-              ))}
-            </select>
+            <Select
+              className="sm:w-44"
+              value={actor}
+              onChange={setActor}
+              options={["All", ...actors].map((a) => ({ value: a, label: a }))}
+            />
           </div>
           <div>
             <label className="label">From</label>

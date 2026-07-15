@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Check, Truck, Tag, Sparkles } from "lucide-react";
 import type { Product, Supplier } from "@/lib/types";
 import { Modal } from "@/components/ui";
+import { Select } from "@/components/Select";
 import { itemIdPrefix } from "@/lib/itemId";
 
 export const EMPTY_PRODUCT: Partial<Product> = {
@@ -297,12 +298,11 @@ export function ProductModal({
         </div>
         <div>
           <label className="label">Product ranking</label>
-          <select className="input" value={form.ranking || "A"} onChange={(e) => set("ranking", e.target.value)}>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-          </select>
+          <Select
+            value={form.ranking || "A"}
+            onChange={(v) => set("ranking", v)}
+            options={["A", "B", "C", "D"].map((r) => ({ value: r, label: r }))}
+          />
         </div>
         <div>
           <label className="label">Shelf life (days)</label>

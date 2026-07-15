@@ -452,14 +452,11 @@ export default function PosPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="label">Customer</label>
-                  <select className="input py-2" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                    <option value="">Walk-in</option>
-                    {(customers || []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    value={customerId}
+                    onChange={setCustomerId}
+                    options={[{ value: "", label: "Walk-in" }, ...(customers || []).map((c) => ({ value: c.id, label: c.name }))]}
+                  />
                 </div>
                 <div>
                   <label className="label">Discount $</label>

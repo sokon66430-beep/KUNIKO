@@ -21,6 +21,7 @@ import type { Product, WriteOff } from "@/lib/types";
 import { WRITE_OFF_REASONS } from "@/lib/types";
 import { measureType, UNIT_TYPE_LABEL, qtyStep } from "@/lib/writeoff";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
+import { Select } from "@/components/Select";
 import { confirmDialog } from "@/components/confirm";
 import { num, dateTime } from "@/lib/format";
 
@@ -351,25 +352,18 @@ export default function WriteOffsPage() {
                 placeholder={chosenType === "unit" ? "e.g. 5" : chosenType === "weight" ? "e.g. 0.25" : "e.g. 0.5"}
                 className="input h-12 flex-1 text-lg font-semibold tabular-nums disabled:bg-slate-50"
               />
-              <select
+              <Select
                 value={unitChoice}
                 disabled={!product}
-                onChange={(e) => setUnitChoice(e.target.value)}
-                className="input h-12 w-28 text-base font-semibold disabled:bg-slate-50"
-                title="Measurement unit"
-              >
-                {UNIT_OPTIONS.map((u) => (
-                  <option key={u.value} value={u.value}>{u.label}</option>
-                ))}
-              </select>
+                onChange={setUnitChoice}
+                options={UNIT_OPTIONS.map((u) => ({ value: u.value, label: u.label }))}
+                className="w-28"
+                buttonClassName="h-12 text-base font-semibold"
+              />
             </div>
 
             <label className="label mt-4">Reason</label>
-            <select className="input" value={reason} onChange={(e) => setReason(e.target.value)}>
-              {WRITE_OFF_REASONS.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+            <Select value={reason} onChange={setReason} options={WRITE_OFF_REASONS.map((r) => ({ value: r, label: r }))} />
 
             <label className="label mt-4">Note (optional)</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. water-damaged carton" />

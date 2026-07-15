@@ -6,6 +6,8 @@ import { useFetch } from "@/lib/client";
 import type { PurchaseOrder, PurchaseRequest, Supplier, POStatus, PRStatus } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, Badge, EmptyState } from "@/components/ui";
 import { DatePicker } from "@/components/DatePicker";
+import { Select } from "@/components/Select";
+import { SearchSelect } from "@/components/SearchSelect";
 import { usd, num, shortDate } from "@/lib/format";
 
 type Tab = "po" | "pr";
@@ -155,35 +157,37 @@ export default function ProcurementReportsPage() {
           {tab === "po" ? (
             <div>
               <label className="label">Supplier</label>
-              <select className="input sm:w-56" value={supplier} onChange={(e) => setSupplier(e.target.value)}>
-                <option>All</option>
-                {supplierNames.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
+              <SearchSelect
+                className="sm:w-56"
+                value={supplier}
+                onChange={setSupplier}
+                options={["All", ...supplierNames].map((s) => ({ value: s, label: s }))}
+              />
             </div>
           ) : (
             <div>
               <label className="label">Requested by</label>
-              <select className="input sm:w-48" value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)}>
-                <option>All</option>
-                {requesters.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
+              <Select
+                className="sm:w-48"
+                value={requestedBy}
+                onChange={setRequestedBy}
+                options={["All", ...requesters].map((s) => ({ value: s, label: s }))}
+              />
             </div>
           )}
           <div>
             <label className="label">Status</label>
-            <select className="input sm:w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option>All</option>
-              {(tab === "po"
-                ? ["Open", "Partial", "Received", "Cancelled"]
-                : ["Draft", "Submitted", "Approved", "Rejected", "Converted"]
-              ).map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+            <Select
+              className="sm:w-40"
+              value={status}
+              onChange={setStatus}
+              options={[
+                "All",
+                ...(tab === "po"
+                  ? ["Open", "Partial", "Received", "Cancelled"]
+                  : ["Draft", "Submitted", "Approved", "Rejected", "Converted"]),
+              ].map((s) => ({ value: s, label: s }))}
+            />
           </div>
           <button onClick={resetFilters} className="btn-ghost">
             <Filter size={16} /> Reset
