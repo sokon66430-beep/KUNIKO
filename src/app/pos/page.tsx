@@ -154,11 +154,13 @@ export default function PosPage() {
 
   // Newest-added line on top so the cashier always sees what they just scanned.
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
-  const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
-  const discountNum = Math.min(Number(discount) || 0, subtotal);
-  const taxed = subtotal - discountNum;
-  const tax = taxed * VAT_RATE;
-  const total = taxed + tax;
+  // Selling prices are VAT-INCLUSIVE: the sticker price already contains VAT, so
+  // the customer pays it as-is — VAT is the portion inside, never added on top.
+  const gross = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
+  const discountNum = Math.min(Number(discount) || 0, gross);
+  const total = gross - discountNum; // what the customer pays (VAT included)
+  const subtotal = total / (1 + VAT_RATE); // net of the included VAT
+  const tax = total - subtotal; // VAT already contained in the price
 
   function addToCart(product: Product) {
     setCart((prev) => {
@@ -494,7 +496,7 @@ export default function PosPage() {
               <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
                 <Row label="Subtotal" value={usd(subtotal)} />
                 {discountNum > 0 && <Row label="Discount" value={`- ${usd(discountNum)}`} tone="rose" />}
-                <Row label={`VAT (${Math.round(VAT_RATE * 100)}%)`} value={usd(tax)} />
+                <Row label={`VAT (${Math.round(VAT_RATE * 100)}%) incl.`} value={usd(tax)} />
                 <div className="my-1 border-t border-dashed border-slate-200" />
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-ink-900">Total</span>

@@ -55,13 +55,15 @@ export async function POST(req: Request) {
       });
     }
 
-    const subtotal = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
+    // Selling prices are VAT-INCLUSIVE: the sticker total is what the customer
+    // pays; VAT is the portion already inside it, not added on top.
+    const gross = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
     const cost = round2(items.reduce((s, it) => s + it.cost * it.qty, 0));
-    const discount = round2(Math.min(Number(body.discount) || 0, subtotal));
-    const taxed = subtotal - discount;
-    const tax = round2(taxed * db.meta.business.vatRate);
-    const total = round2(taxed + tax);
-    const profit = round2(taxed - cost);
+    const discount = round2(Math.min(Number(body.discount) || 0, gross));
+    const total = round2(gross - discount);
+    const subtotal = round2(total / (1 + db.meta.business.vatRate)); // net of VAT
+    const tax = round2(total - subtotal); // VAT already contained in the price
+    const profit = round2(total - cost);
 
     // Commit stock changes
     for (const it of items) {

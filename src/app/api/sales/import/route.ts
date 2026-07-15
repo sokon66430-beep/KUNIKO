@@ -331,10 +331,13 @@ export async function POST(req: Request) {
     let salesCreated = 0;
     for (const [day, g] of byDay) {
       const items = g.items;
-      const subtotal = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
+      // Imported prices are VAT-INCLUSIVE (same as live sales): the line total is
+      // what was paid; VAT is the portion already inside it.
+      const gross = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
       const cost = round2(items.reduce((s, it) => s + it.cost * it.qty, 0));
-      const tax = round2(subtotal * db.meta.business.vatRate);
-      const total = round2(subtotal + tax);
+      const total = gross;
+      const subtotal = round2(gross / (1 + db.meta.business.vatRate)); // net of VAT
+      const tax = round2(gross - subtotal); // VAT already contained in the price
       const invoiceNo = `INV-${db.meta.nextInvoice}`;
       const sale: Sale = {
         id: `s${db.meta.nextInvoice}`,
@@ -346,7 +349,7 @@ export async function POST(req: Request) {
         tax,
         total,
         cost,
-        profit: round2(subtotal - cost),
+        profit: round2(total - cost),
         paymentMethod: "Cash",
         // Noon UTC — the day is already a validated calendar date, and using UTC
         // means the stored date-part is exactly `day` on any server timezone.
