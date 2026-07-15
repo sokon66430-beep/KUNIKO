@@ -11,8 +11,10 @@ export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   const sys = await readSystem();
-  // Owner sees every store; a store user sees only their own store.
-  const visible = s.role === "owner" ? sys.stores : sys.stores.filter((st) => st.id === s.storeId);
+  // Owner and Management (cross-store oversight) see every store; a store user
+  // sees only their own.
+  const seesAll = s.role === "owner" || s.role === "management";
+  const visible = seesAll ? sys.stores : sys.stores.filter((st) => st.id === s.storeId);
   const list = visible.map((st) => ({
     ...st,
     users: sys.users.filter((u) => u.storeId === st.id).length,

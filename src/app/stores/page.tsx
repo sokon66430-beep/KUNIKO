@@ -7,7 +7,27 @@ import { canManageStaff } from "@/lib/access";
 import type { Role } from "@/lib/auth";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
+import { Select, type SelectOption } from "@/components/Select";
 import { num, shortDate } from "@/lib/format";
+
+// Role choices for the employee forms, with a one-line description each. Owner
+// and Management are cross-store, high-privilege roles — only an owner may assign
+// them (the server enforces this too).
+function roleOptions(isOwner: boolean): SelectOption[] {
+  return [
+    { value: "operations", label: "Operations", description: "Shop floor — POS, inventory, receiving" },
+    { value: "procurement", label: "Procurement", description: "Ordering & suppliers; sees cost / profit" },
+    { value: "accountant", label: "Accountant", description: "Invoices and reports" },
+    { value: "manager", label: "Manager", description: "Runs a store; can remove staff" },
+    { value: "area_manager", label: "Area Manager", description: "Oversees stores; can remove staff" },
+    ...(isOwner
+      ? [
+          { value: "management", label: "Management (CEO / Board)", description: "Sees everything, every store — view only" },
+          { value: "owner", label: "Owner", description: "Full access to everything" },
+        ]
+      : []),
+  ];
+}
 
 type StoreRow = { id: string; name: string; createdAt: string; users: number };
 type UserRow = { id: string; username: string; name: string; role: string; storeId: string; storeName: string };
@@ -338,25 +358,16 @@ function EditUserModal({
         </div>
         <div>
           <label className="label">Role</label>
-          <select className="input" value={form.role} onChange={(e) => set("role", e.target.value)}>
-            <option value="operations">Operations</option>
-            <option value="procurement">Procurement</option>
-            <option value="accountant">Accountant</option>
-            <option value="manager">Manager</option>
-            <option value="area_manager">Area Manager</option>
-            {isOwner && <option value="management">Management (CEO / Board — view only)</option>}
-            {isOwner && <option value="owner">Owner (full access)</option>}
-          </select>
+          <Select value={form.role} onChange={(v) => set("role", v)} options={roleOptions(isOwner)} />
         </div>
         <div className="col-span-2">
           <label className="label">Store</label>
-          <select className="input" value={form.storeId} onChange={(e) => set("storeId", e.target.value)}>
-            {stores.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={form.storeId}
+            onChange={(v) => set("storeId", v)}
+            options={stores.map((s) => ({ value: s.id, label: s.name }))}
+            placeholder="Pick a store"
+          />
         </div>
       </div>
     </Modal>
@@ -476,26 +487,16 @@ function AddUserModal({
         </div>
         <div>
           <label className="label">Role</label>
-          <select className="input" value={form.role} onChange={(e) => set("role", e.target.value)}>
-            <option value="operations">Operations</option>
-            <option value="procurement">Procurement</option>
-            <option value="accountant">Accountant</option>
-            <option value="manager">Manager (can remove staff)</option>
-            <option value="area_manager">Area Manager (can remove staff)</option>
-            {/* Management + Owner are cross-store roles — only an owner can assign them. */}
-            {isOwner && <option value="management">Management (CEO / Board — view only)</option>}
-            {isOwner && <option value="owner">Owner (full access)</option>}
-          </select>
+          <Select value={form.role} onChange={(v) => set("role", v)} options={roleOptions(isOwner)} />
         </div>
         <div className="col-span-2">
           <label className="label">Store</label>
-          <select className="input" value={form.storeId} onChange={(e) => set("storeId", e.target.value)}>
-            {stores.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={form.storeId}
+            onChange={(v) => set("storeId", v)}
+            options={stores.map((s) => ({ value: s.id, label: s.name }))}
+            placeholder="Pick a store"
+          />
         </div>
       </div>
     </Modal>
