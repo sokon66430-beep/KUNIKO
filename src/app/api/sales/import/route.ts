@@ -64,10 +64,11 @@ function toDayKey(cellValue: any, text: string): string | null {
     cellValue = (cellValue as any).result;
   }
   if (cellValue instanceof Date && !isNaN(cellValue.getTime())) {
-    // A spreadsheet date carries no timezone — it's just a calendar day. Read
-    // its own year/month/day (NOT via toISOString, which converts to UTC and
-    // can slip the day backward one when the file and server disagree on zone).
-    return ymd(cellValue.getFullYear(), cellValue.getMonth() + 1, cellValue.getDate());
+    // ExcelJS stores a spreadsheet date as a UTC instant, so read the calendar
+    // day in UTC. Using the server-LOCAL getDate() would slip a late-night time
+    // (e.g. a sale at 11:21 PM on 30 June) into the next day on a server whose
+    // timezone is ahead of UTC — which is exactly what put June sales on 1 July.
+    return ymd(cellValue.getUTCFullYear(), cellValue.getUTCMonth() + 1, cellValue.getUTCDate());
   }
   const t = (text || "").trim();
   if (!t) return null;
@@ -79,7 +80,7 @@ function toDayKey(cellValue: any, text: string): string | null {
   if (m) return ymd(+m[3], +m[2], +m[1]);
   const d = new Date(t);
   if (isNaN(d.getTime())) return null;
-  return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  return ymd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
 
 export async function POST(req: Request) {
