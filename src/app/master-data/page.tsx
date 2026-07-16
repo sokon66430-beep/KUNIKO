@@ -152,7 +152,9 @@ export default function MasterDataPage() {
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         (p.barcode || "").includes(q) ||
-        (p.category || "").toLowerCase().includes(q),
+        (p.category || "").toLowerCase().includes(q) ||
+        (p.supplier || "").toLowerCase().includes(q) ||
+        (p.supplierCode || "").toLowerCase().includes(q),
     );
   }, [products, query]);
 
@@ -329,7 +331,7 @@ export default function MasterDataPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               className="input pl-10"
-              placeholder="Search master by name, Item ID, barcode or category…"
+              placeholder="Search master by name, Item ID, barcode, category or supplier…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
