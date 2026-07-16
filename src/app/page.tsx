@@ -20,7 +20,7 @@ import {
   Receipt,
   AlertTriangle,
   Package,
-  ArrowUpRight,
+  PackageCheck,
 } from "lucide-react";
 import { useFetch, useRole } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
@@ -112,13 +112,13 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Live overview of sales, profit and inventory health"
         actions={
-          <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+          <div className="inline-flex rounded-xl bg-slate-100 p-1">
             {RANGES.map((r) => (
               <button
                 key={r.key}
                 onClick={() => setRange(r.key)}
                 className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
-                  range === r.key ? "bg-brand-600 text-white" : "text-slate-500 hover:text-slate-800"
+                  range === r.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 {r.label}
@@ -175,8 +175,8 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-500">Daily over the selected period</p>
               </div>
               <div className="flex gap-4 text-xs">
-                <Legend color="#1f5ff5" label="Revenue" />
-                {showProfit && <Legend color="#34d399" label="Profit" />}
+                <Legend color="#2549e8" label="Revenue" />
+                {showProfit && <Legend color="#10b981" label="Profit" />}
               </div>
             </div>
             <div className="h-72 w-full">
@@ -184,19 +184,19 @@ export default function DashboardPage() {
                 <AreaChart data={data.series} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
                   <defs>
                     <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#1f5ff5" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#1f5ff5" stopOpacity={0} />
+                      <stop offset="0%" stopColor="#2549e8" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2549e8" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="prof" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} minTickGap={24} />
                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={48} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="revenue" stroke="#1f5ff5" strokeWidth={2.5} fill="url(#rev)" />
-                  {showProfit && <Area type="monotone" dataKey="profit" stroke="#34d399" strokeWidth={2.5} fill="url(#prof)" />}
+                  <Area type="monotone" dataKey="revenue" stroke="#2549e8" strokeWidth={2.5} fill="url(#rev)" />
+                  {showProfit && <Area type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2.5} fill="url(#prof)" />}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -212,7 +212,7 @@ export default function DashboardPage() {
                   const max = data.topProducts[0]?.revenue || 1;
                   return (
                     <div key={p.id} className="flex items-center gap-3">
-                      <span className="w-5 text-sm font-bold text-slate-300">{i + 1}</span>
+                      <span className="w-5 text-sm font-bold tabular-nums text-slate-400">{i + 1}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-semibold text-ink-800">{p.name}</p>
@@ -220,7 +220,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600"
+                            className="h-full rounded-full bg-brand-500"
                             style={{ width: `${Math.max(6, (p.revenue / max) * 100)}%` }}
                           />
                         </div>
@@ -246,7 +246,12 @@ export default function DashboardPage() {
                 </Badge>
               </div>
               {data.lowStock.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-400">All stock levels healthy 🎉</p>
+                <div className="flex flex-col items-center gap-2.5 py-8 text-center">
+                  <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+                    <PackageCheck size={18} />
+                  </div>
+                  <p className="text-sm font-medium text-slate-500">All stock levels are healthy</p>
+                </div>
               ) : (
                 <div className="space-y-2.5">
                   {data.lowStock.slice(0, 6).map((p) => (
@@ -280,7 +285,7 @@ export default function DashboardPage() {
                     <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} interval={1} />
                     <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={40} />
                     <Tooltip content={<ChartTooltip money />} />
-                    <Bar dataKey="revenue" radius={[4, 4, 0, 0]} fill="#3380ff" />
+                    <Bar dataKey="revenue" radius={[4, 4, 0, 0]} fill="#3b66f5" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
