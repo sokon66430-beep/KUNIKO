@@ -912,6 +912,7 @@ function ViewPOModal({
   return (
     <Modal
       open
+      size="xl"
       onClose={onClose}
       title={`${po.poNo} · ${po.supplier}`}
       footer={
@@ -978,8 +979,8 @@ function ViewPOModal({
       {po.note && !editing && (
         <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{po.note}</p>
       )}
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full min-w-[34rem] text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
               <th className="px-3 py-2 font-semibold">Product</th>
@@ -987,7 +988,7 @@ function ViewPOModal({
               <th className="px-3 py-2 text-center font-semibold">Ordered</th>
               <th className="px-3 py-2 text-center font-semibold">Received</th>
               <th className="px-3 py-2 text-right font-semibold">Line</th>
-              {showActions && <th className="px-3 py-2"></th>}
+              {showActions && <th className="px-3 py-2 text-center font-semibold">{editing ? "Remove" : ""}</th>}
             </tr>
           </thead>
           <tbody>
@@ -1034,15 +1035,16 @@ function ViewPOModal({
                   </td>
                   <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(it.cost * it.qtyOrdered)}</td>
                   {showActions && (
-                    <td className="px-2 py-2 text-right">
+                    <td className="px-2 py-2 text-center">
                       {it.qtyReceived === 0 ? (
                         <button
                           type="button"
                           onClick={() => (editing ? removeLine(it.productId) : deleteLine(it))}
+                          aria-label={`Remove ${it.name}`}
                           title="Remove this item"
-                          className="grid h-7 w-7 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                          className="mx-auto grid h-9 w-9 place-items-center rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 active:bg-rose-200"
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={16} />
                         </button>
                       ) : (
                         <span className="text-[10px] text-slate-300" title="Some already received — can’t remove">

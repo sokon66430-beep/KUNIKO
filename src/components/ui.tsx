@@ -145,18 +145,23 @@ export function Modal({
   title,
   children,
   footer,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  size?: "md" | "lg" | "xl";
 }) {
   if (!open) return null;
+  const maxW = size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-[4px]" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg animate-fade-up overflow-hidden rounded-2xl bg-white shadow-lift ring-1 ring-slate-900/[0.08]">
+      <div
+        className={`relative z-10 w-full ${maxW} animate-fade-up overflow-hidden rounded-2xl bg-white shadow-lift ring-1 ring-slate-900/[0.08]`}
+      >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="text-base font-bold tracking-[-0.01em] text-ink-900">{title}</h3>
           <button
