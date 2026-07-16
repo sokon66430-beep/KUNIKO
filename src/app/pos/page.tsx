@@ -235,8 +235,10 @@ export default function PosPage() {
     }
   }
 
+  const cartCount = lines.reduce((s, l) => s + l.qty, 0);
+
   return (
-    <div>
+    <div className={lines.length > 0 ? "pb-24 lg:pb-0" : undefined}>
       <PageHeader
         title="Point of Sale"
         subtitle="Ring up a sale — stock and loyalty update automatically"
@@ -334,17 +336,40 @@ export default function PosPage() {
                 placeholder="Search product, Item ID or barcode…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  // Barcode-scanner path (Sunmi L3): the scanner types the code
+                  // then presses Enter. An exact barcode/SKU match rings it up
+                  // instantly; otherwise a single filtered result is added too.
+                  if (e.key !== "Enter") return;
+                  const q = query.trim();
+                  if (!q) return;
+                  const exact = (products || []).find(
+                    (p) => p.barcode === q || p.sku.toLowerCase() === q.toLowerCase(),
+                  );
+                  const target = exact || (filtered.length === 1 ? filtered[0] : null);
+                  if (!target) return;
+                  if (target.stock <= 0) {
+                    setToast(`${target.name} is out of stock`);
+                    return;
+                  }
+                  addToCart(target);
+                  setQuery("");
+                }}
+                inputMode="search"
+                autoComplete="off"
               />
             </div>
           </div>
 
-          <div className="mb-4 flex flex-wrap gap-2">
+          {/* One-row, swipeable category strip — keeps products visible right
+              below on the Sunmi L3 and phones instead of a 100-row chip cloud. */}
+          <div className="no-scrollbar -mx-4 mb-4 flex snap-x gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             {categories.map((c) => (
               <button
                 key={c}
                 onClick={() => setCategory(c)}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  category === c ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"
+                className={`shrink-0 snap-start whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-semibold transition ${
+                  category === c ? "bg-brand-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
                 }`}
               >
                 {c}
@@ -420,16 +445,18 @@ export default function PosPage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => setQty(l.product.id, l.qty - 1)}
-                          className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          aria-label="Decrease quantity"
+                          className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
-                          <Minus size={14} />
+                          <Minus size={16} />
                         </button>
-                        <span className="w-7 text-center text-sm font-bold">{l.qty}</span>
+                        <span className="w-7 text-center text-sm font-bold tabular-nums">{l.qty}</span>
                         <button
                           onClick={() => setQty(l.product.id, l.qty + 1)}
-                          className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          aria-label="Increase quantity"
+                          className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
-                          <Plus size={14} />
+                          <Plus size={16} />
                         </button>
                       </div>
                       <span className="w-16 shrink-0 text-right text-sm font-bold text-ink-900">
@@ -437,9 +464,10 @@ export default function PosPage() {
                       </span>
                       <button
                         onClick={() => setQty(l.product.id, 0)}
-                        className="text-slate-300 hover:text-rose-500"
+                        aria-label="Remove item"
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:bg-rose-100"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   ))}
@@ -479,7 +507,7 @@ export default function PosPage() {
                     <button
                       key={p}
                       onClick={() => setPayment(p)}
-                      className={`flex items-center justify-center gap-1 rounded-lg py-2 text-xs font-bold transition ${
+                      className={`flex items-center justify-center gap-1 rounded-lg py-2.5 text-xs font-bold transition active:scale-[0.98] ${
                         payment === p ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
@@ -520,6 +548,29 @@ export default function PosPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile sticky checkout — keeps "Charge" one tap away on the Sunmi L3
+          and phones, where the cart otherwise sits below the product grid.
+          Hidden on lg+ where the cart rail is always visible. */}
+      {lines.length > 0 && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden"
+          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        >
+          <div className="mx-auto flex max-w-6xl items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                {cartCount} item{cartCount === 1 ? "" : "s"} · {lines.length} line{lines.length === 1 ? "" : "s"}
+              </p>
+              <p className="text-lg font-extrabold leading-tight text-ink-900">{usd(total)}</p>
+            </div>
+            <button onClick={handleCharge} disabled={submitting} className="btn-primary min-w-[9rem] py-3 text-base">
+              {payment === "KHQR" && <QrCode size={18} />}
+              {submitting ? "Processing…" : payment === "KHQR" ? "Pay KHQR" : "Charge"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* KHQR payment modal */}
       {khqrOpen && (

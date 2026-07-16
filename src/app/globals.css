@@ -13,6 +13,13 @@ body {
   margin: 0;
 }
 
+/* Stop iOS/Android from auto-inflating text (e.g. in landscape on the Sunmi L3
+   and phones) so our responsive type scale is honoured exactly as authored. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   /* Clean neutral canvas — a soft cool gray so white cards/sidebar read as layered surfaces. */
   background-color: #f6f8fb;
@@ -53,6 +60,52 @@ body {
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+}
+
+/* ==========================================================================
+   TOUCH & MULTI-DEVICE HARDENING
+   The app runs every day on the Sunmi L3 handheld, phones, tablets, iPads and
+   desktops. On finger-driven devices we guarantee comfortable 44px+ tap
+   targets and momentum scrolling, WITHOUT bulking up the dense desktop layout
+   that mouse users rely on. Everything below is gated on `pointer: coarse`, so
+   it only affects touch hardware.
+   ========================================================================== */
+
+/* Momentum scrolling + contained overscroll on every scroll region, so long
+   product grids and data tables feel native on touch and don't rubber-band the
+   whole page. */
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Horizontal chip/filter strips (POS category bar, tab rows) hide their
+   scrollbar but stay swipeable — one row tall on every device so content below
+   is never pushed off-screen. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  /* Primary controls meet the 44px minimum tap target on touch devices. This
+     uses min-height (not padding) so it never disturbs desktop density and
+     even lifts buttons that locally shrink their padding (e.g. `!py-2`). */
+  .btn,
+  .input {
+    min-height: 44px;
+  }
+  /* Native inputs/selects/textareas that aren't using our `.input` class. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea,
+  button {
+    touch-action: manipulation; /* remove the 300ms tap delay */
   }
 }
 
