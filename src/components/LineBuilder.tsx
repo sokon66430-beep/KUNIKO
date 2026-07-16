@@ -6,6 +6,13 @@ import type { Product } from "@/lib/types";
 import { usd } from "@/lib/format";
 import { useFetch } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
+import {
+  effectiveShelfLifeDays,
+  shelfClass,
+  targetCoverDays,
+  recommendedOrderQty,
+  type AbcClass,
+} from "@/lib/shelflife";
 
 export type Line = { product: Product; qty: number };
 
@@ -14,55 +21,108 @@ export type Suggestion = {
   suggestedQty: number;
 };
 
-// Sales velocity per product (from /api/product-velocity): units sold in the
-// last 3 and 7 days, plus a per-weekday tally (Mon..Sun) over the last 4 weeks.
-type Velocity = { d3: number; d7: number; dow: number[] };
+// Sales signal per product (from /api/product-velocity): units sold in the last
+// 3 / 7 / 30 days, a per-weekday tally (Mon..Sun) over the last 4 weeks, and the
+// ABC class by 90-day revenue.
+type Velocity = { d3: number; d7: number; d30: number; dow: number[]; abc?: AbcClass };
 const DOW_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
-// Recommended order quantity: enough to cover `coverDays` days of recent sales
-// (daily rate from the last 7 days), minus what's on hand. Falls back to the
-// reorder-level gap when there's no recent sales data.
-function recommendQty(p: Product, v: Velocity | undefined, coverDays: number): number {
-  if (v && v.d7 > 0) {
-    const target = Math.ceil((v.d7 / 7) * coverDays);
-    return Math.max(target - p.stock, 1);
-  }
-  if (p.reorderLevel > 0) return Math.max(p.reorderLevel * 2 - p.stock, 1);
-  return 1;
+// Average units sold per day — 30-day rate, falling back to 7-day.
+function ratePerDay(v?: Velocity): number {
+  if (!v) return 0;
+  if (v.d30 > 0) return v.d30 / 30;
+  if (v.d7 > 0) return v.d7 / 7;
+  return 0;
 }
 
-// Compact sales-performance readout for one order line: last 3d / 7d units sold,
-// units on hand, and a tiny Mon..Sun bar chart (today highlighted).
-function SalesMini({ v, stock }: { v?: Velocity; stock: number }) {
+// Raw recommended order quantity: enough to reach the ABC- and shelf-life-aware
+// target cover, minus what's on hand. Can be ≤ 0 when a perishable is already
+// overstocked (the UI flags that instead of pushing more).
+function recQtyRaw(p: Product, v: Velocity | undefined, coverDays: number): number {
+  const shelf = effectiveShelfLifeDays(p);
+  const cover = targetCoverDays(v?.abc, shelf, coverDays);
+  return recommendedOrderQty({ ratePerDay: ratePerDay(v), onHand: p.stock, cover, reorderLevel: p.reorderLevel });
+}
+
+// Quantity to use when ADDING a line — always at least 1.
+function recommendQty(p: Product, v: Velocity | undefined, coverDays: number): number {
+  return Math.max(1, recQtyRaw(p, v, coverDays));
+}
+
+function AbcBadge({ abc }: { abc: AbcClass }) {
+  const tone =
+    abc === "A" ? "bg-brand-100 text-brand-700" : abc === "B" ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-500";
+  return <span className={`chip ${tone} !px-2 !py-0.5`} title={`ABC class ${abc} — by 90-day revenue`}>{abc}</span>;
+}
+
+// Perishability flag — only shown for short/chilled items (ambient shows nothing).
+function ShelfFlag({ shelf }: { shelf: number | null }) {
+  const cls = shelfClass(shelf);
+  if (cls === "ambient") return null;
+  const label = cls === "short" ? "🕒" : "❄";
+  const tone = cls === "short" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700";
+  return (
+    <span className={`chip ${tone} !px-2 !py-0.5`} title={`Short shelf life — ${shelf} days`}>
+      {label} {shelf}d
+    </span>
+  );
+}
+
+// Compact sales-performance readout for one order line: ABC class, shelf-life
+// flag and days-of-cover on top; then 30/7/3-day units sold, on-hand, and a tiny
+// Mon..Sun bar chart (today highlighted).
+function SalesMini({ v, product }: { v?: Velocity; product: Product }) {
   const d3 = v?.d3 ?? 0;
   const d7 = v?.d7 ?? 0;
+  const d30 = v?.d30 ?? 0;
   const dow = v?.dow ?? [0, 0, 0, 0, 0, 0, 0];
   const max = Math.max(1, ...dow);
   const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
-  // Always show the weekday breakdown — a day with no sales reads as a clear 0
-  // (rather than hiding the whole row), so every day is accounted for.
+  const shelf = effectiveShelfLifeDays(product);
+  const rate = ratePerDay(v);
+  const cover = rate > 0 ? product.stock / rate : null; // days of stock left
+  const perishable = shelfClass(shelf) !== "ambient";
+  const coverTone =
+    cover == null
+      ? "text-slate-400"
+      : perishable && shelf != null && cover > shelf
+        ? "text-rose-600" // would expire before it sells
+        : cover < 1
+          ? "text-rose-600" // about to stock out
+          : "text-slate-500";
   return (
-    <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1 text-[11px] text-slate-500">
-      <span>
-        Sold <b className="text-ink-700">3d {d3}</b> · <b className="text-ink-700">7d {d7}</b>
-      </span>
-      <span className="text-slate-400">on hand {stock}</span>
-      <span className="flex items-end gap-[3px]" title="Units sold per weekday (last 4 weeks)">
-        {dow.map((n, i) => (
-          <span key={i} className="flex w-3 flex-col items-center">
-            <span className="text-[9px] leading-none text-slate-400">{n}</span>
-            <span
-              className={`mt-0.5 block w-2 rounded-sm ${i === todayIdx ? "bg-brand-500" : "bg-slate-300"}`}
-              style={{ height: `${3 + Math.round((n / max) * 12)}px` }}
-            />
-            <span
-              className={`text-[9px] leading-none ${i === todayIdx ? "font-bold text-brand-600" : "text-slate-400"}`}
-            >
-              {DOW_LABELS[i]}
-            </span>
+    <div className="mt-1 space-y-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {v?.abc && <AbcBadge abc={v.abc} />}
+        <ShelfFlag shelf={shelf} />
+        {cover != null && (
+          <span className={`text-[11px] font-semibold ${coverTone}`} title="Days of stock left at the current sales rate">
+            {cover < 10 ? cover.toFixed(1) : Math.round(cover)}d cover
           </span>
-        ))}
-      </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-1 text-[11px] text-slate-500">
+        <span>
+          Sold <b className="text-ink-700">30d {d30}</b> · 7d {d7} · 3d {d3}
+        </span>
+        <span className="text-slate-400">on hand {product.stock}</span>
+        <span className="flex items-end gap-[3px]" title="Units sold per weekday (last 4 weeks)">
+          {dow.map((n, i) => (
+            <span key={i} className="flex w-3 flex-col items-center">
+              <span className="text-[9px] leading-none text-slate-400">{n}</span>
+              <span
+                className={`mt-0.5 block w-2 rounded-sm ${i === todayIdx ? "bg-brand-500" : "bg-slate-300"}`}
+                style={{ height: `${3 + Math.round((n / max) * 12)}px` }}
+              />
+              <span
+                className={`text-[9px] leading-none ${i === todayIdx ? "font-bold text-brand-600" : "text-slate-400"}`}
+              >
+                {DOW_LABELS[i]}
+              </span>
+            </span>
+          ))}
+        </span>
+      </div>
     </div>
   );
 }
@@ -398,7 +458,9 @@ export function LineBuilder({
             className="h-7 w-14 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-bold text-ink-900 outline-none focus:border-brand-500"
             title="Days of sales the recommended quantity should cover"
           />
-          <span className="text-xs text-slate-400">days of sales</span>
+          <span className="text-xs text-slate-400" title="Applies to ambient goods. Short-shelf-life items (🕒) are automatically capped to a tight, ABC-based cover so they can't be over-ordered.">
+            days · perishables auto-capped
+          </span>
         </div>
         {suggestions && suggestions.length > 0 && (
           <button type="button" onClick={autofillLowStock} className="btn-ghost !py-2 text-xs">
@@ -436,7 +498,7 @@ export function LineBuilder({
                   <p className="text-xs text-slate-400">
                     {l.product.sku} · {l.product.supplier}
                   </p>
-                  <SalesMini v={velocity?.[l.product.id]} stock={l.product.stock} />
+                  <SalesMini v={velocity?.[l.product.id]} product={l.product} />
                 </td>
                 <td className="px-3 py-2 text-right text-slate-500">{usd(l.product.cost)}</td>
                 <td className="px-3 py-2 align-top">
@@ -467,7 +529,16 @@ export function LineBuilder({
                     className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                   />
                   {(() => {
-                    const rec = recommendQty(l.product, velocity?.[l.product.id], coverDays);
+                    const rec = Math.max(0, recQtyRaw(l.product, velocity?.[l.product.id], coverDays));
+                    if (rec <= 0)
+                      return (
+                        <p
+                          className="mt-1 text-center text-[10px] font-semibold text-amber-600"
+                          title="Already have enough on hand for the target cover — ordering more risks spoilage"
+                        >
+                          Enough on hand
+                        </p>
+                      );
                     return rec === l.qty ? (
                       <p className="mt-1 text-center text-[10px] font-semibold text-emerald-600">✓ Rec {rec}</p>
                     ) : (
@@ -478,7 +549,7 @@ export function LineBuilder({
                             prev.map((x) => (x.product.id === l.product.id ? { ...x, qty: rec } : x)),
                           )
                         }
-                        title="Apply the recommended quantity"
+                        title="Apply the recommended (shelf-life-capped) quantity"
                         className="mx-auto mt-1 block text-[10px] font-semibold text-brand-600 hover:underline"
                       >
                         Rec {rec} ↺
