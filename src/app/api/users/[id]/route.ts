@@ -1,13 +1,25 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { readSystem, mutateSystem } from "@/lib/system";
-import { canManageStaff } from "@/lib/access";
+import { canManageStaff, isCrossStoreRole } from "@/lib/access";
 import { hashPassword } from "@/lib/password";
 import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const ROLES: Role[] = ["owner", "management", "area_manager", "manager", "accountant", "procurement", "operations"];
+const ROLES: Role[] = [
+  "owner",
+  "management",
+  "ops_manager",
+  "area_manager",
+  "store_manager",
+  "asst_store_manager",
+  "store_crew",
+  "manager",
+  "accountant",
+  "procurement",
+  "operations",
+];
 
 // Edit an employee (name, username, role, store, and optionally a new
 // password). Same permission model as delete: owners edit anyone; store
@@ -27,12 +39,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (s.role !== "owner") {
       if (target.storeId !== s.storeId) return { error: "You can only edit staff in your own store", status: 403 };
-      // Owner and Management are cross-store, high-privilege roles: a store user
-      // can neither edit one nor promote anyone into one.
-      if (target.role === "owner" || target.role === "management")
-        return { error: "Only an owner can edit an owner or management account", status: 403 };
-      if (body.role === "owner" || body.role === "management")
-        return { error: "Only an owner can grant the owner or management role", status: 403 };
+      // Cross-store, elevated roles (owner, management, ops/area manager): a store
+      // user can neither edit one nor promote anyone into one.
+      if (isCrossStoreRole(target.role))
+        return { error: "Only an owner can edit a cross-store account", status: 403 };
+      if (typeof body.role === "string" && isCrossStoreRole(body.role as Role))
+        return { error: "Only an owner can grant a cross-store role", status: 403 };
     }
 
     if (typeof body.username === "string" && body.username.trim()) {
@@ -53,10 +65,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (typeof body.storeId === "string" && body.storeId && sys.stores.some((st) => st.id === body.storeId)) {
       target.storeId = body.storeId;
     }
+    // Owner-assigned extra stores for an Area Manager. Cleared automatically if
+    // the role is no longer Area Manager.
+    if (target.role === "area_manager") {
+      if (Array.isArray(body.storeIds)) {
+        target.storeIds = body.storeIds.filter(
+          (id: unknown) => typeof id === "string" && sys.stores.some((st) => st.id === id),
+        );
+      }
+    } else if (target.storeIds) {
+      delete target.storeIds;
+    }
     if (typeof body.password === "string" && body.password.trim()) {
       target.passwordHash = hashPassword(body.password.trim());
     }
-    return { user: { id: target.id, username: target.username, name: target.name, role: target.role, storeId: target.storeId } };
+    return {
+      user: {
+        id: target.id,
+        username: target.username,
+        name: target.name,
+        role: target.role,
+        storeId: target.storeId,
+        storeIds: target.storeIds ?? [],
+      },
+    };
   });
 
   if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });

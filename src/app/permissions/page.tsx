@@ -15,7 +15,11 @@ type PermissionsResponse = {
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
   management: "Management",
+  ops_manager: "Operation Manager",
   area_manager: "Area Manager",
+  store_manager: "Store Manager",
+  asst_store_manager: "Asst. Store Manager",
+  store_crew: "Store Crew",
   manager: "Manager",
   accountant: "Accountant",
   procurement: "Procurement",

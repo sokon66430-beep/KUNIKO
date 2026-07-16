@@ -15,10 +15,28 @@ const OWNER_ONLY = ["/all-stores", "/permissions", "/master-data"];
 // Area Manager and Manager sit under the Operations department, so by default
 // they share Operations' restrictions rather than seeing everything.
 const OPERATIONS_DENIED = ["/purchase-orders", "/invoices"];
+// Store Crew are shop-floor only — POS, inventory, stock count, write-off, price
+// labels, customers and reports. Procurement, accounting and admin stay hidden.
+const CREW_DENIED = [
+  "/purchase-orders",
+  "/purchase-requests",
+  "/receiving",
+  "/invoices",
+  "/products",
+  "/suppliers",
+  "/audit",
+  "/business-reports",
+  "/stores",
+  "/settings",
+];
 export const DEFAULT_ROLE_DENIED: Partial<Record<Role, string[]>> = {
   operations: OPERATIONS_DENIED,
   manager: OPERATIONS_DENIED,
   area_manager: OPERATIONS_DENIED,
+  ops_manager: OPERATIONS_DENIED,
+  store_manager: OPERATIONS_DENIED,
+  asst_store_manager: OPERATIONS_DENIED,
+  store_crew: CREW_DENIED,
   accountant: ["/purchase-requests", "/purchase-orders", "/receiving", "/write-offs"],
 };
 
@@ -46,7 +64,17 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
 ];
 
 // Roles the owner manages on the Permissions page (the owner always has full access).
-export const PERMISSION_ROLES: Role[] = ["area_manager", "manager", "accountant", "procurement", "operations"];
+export const PERMISSION_ROLES: Role[] = [
+  "store_crew",
+  "store_manager",
+  "asst_store_manager",
+  "area_manager",
+  "ops_manager",
+  "procurement",
+  "accountant",
+  "manager",
+  "operations",
+];
 
 function matches(pathname: string, base: string): boolean {
   return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
@@ -66,10 +94,36 @@ export function canAccessPage(role: Role, pathname: string, denied?: string[]): 
   return true; // all departments see every other function
 }
 
-// Who may manage (add / delete) employees. Owners plus store leadership —
-// managers and area managers — can; regular departments cannot delete staff.
+// Who may manage (add / delete) employees. Owners plus store/area/ops
+// leadership; shop-floor crew and departments cannot.
 export function canManageStaff(role: Role): boolean {
-  return role === "owner" || role === "manager" || role === "area_manager";
+  return (
+    role === "owner" ||
+    role === "ops_manager" ||
+    role === "area_manager" ||
+    role === "store_manager" ||
+    role === "asst_store_manager" ||
+    role === "manager"
+  );
+}
+
+// Cross-store, elevated roles — only an owner may create or assign these. Area
+// Manager reaches multiple owner-assigned stores; Operation Manager reaches all.
+export function isCrossStoreRole(role: Role): boolean {
+  return role === "owner" || role === "management" || role === "ops_manager" || role === "area_manager";
+}
+
+// Roles whose data spans EVERY store (used to build the store-switcher list and
+// validate a store switch). Area Manager is deliberately excluded — it reaches
+// only the specific stores the owner assigned (User.storeIds).
+export function reachesAllStores(role: Role): boolean {
+  return (
+    role === "owner" ||
+    role === "management" ||
+    role === "ops_manager" ||
+    role === "procurement" ||
+    role === "accountant"
+  );
 }
 
 // Profit/margin figures (Dashboard, Reports, POS Sales Report) are a level
@@ -93,9 +147,17 @@ export function canSeeAllStores(role: Role): boolean {
   return role === "owner" || role === "management";
 }
 
-// Who may switch the active store from the sidebar. The owner (all stores),
-// plus Procurement and Accounting, who work across stores (ordering,
-// invoices/reports). Shop-floor roles stay pinned to their own store.
+// Who may switch the active store from the sidebar. The owner and Operation
+// Manager (all stores), the Area Manager (their assigned stores), plus
+// Procurement and Accounting, who work across stores. Single-store retail roles
+// stay pinned to their own store.
 export function canSwitchStores(role: Role): boolean {
-  return role === "owner" || role === "procurement" || role === "accountant" || role === "management";
+  return (
+    role === "owner" ||
+    role === "management" ||
+    role === "ops_manager" ||
+    role === "area_manager" ||
+    role === "procurement" ||
+    role === "accountant"
+  );
 }

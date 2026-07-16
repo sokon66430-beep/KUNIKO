@@ -15,13 +15,16 @@ import { num, shortDate } from "@/lib/format";
 // them (the server enforces this too).
 function roleOptions(isOwner: boolean): SelectOption[] {
   return [
-    { value: "operations", label: "Operations", description: "Shop floor — POS, inventory, receiving" },
+    { value: "store_crew", label: "Store Crew", description: "Shop floor — POS, inventory, stock count" },
+    { value: "store_manager", label: "Store Manager", description: "Runs one store; manages its staff" },
+    { value: "asst_store_manager", label: "Assistant Store Manager", description: "Supports the store manager" },
     { value: "procurement", label: "Procurement", description: "Ordering & suppliers; sees cost / profit" },
     { value: "accountant", label: "Accountant", description: "Invoices and reports" },
-    { value: "manager", label: "Manager", description: "Runs a store; can remove staff" },
-    { value: "area_manager", label: "Area Manager", description: "Oversees stores; can remove staff" },
+    // Cross-store, elevated roles — only an owner may assign these.
     ...(isOwner
       ? [
+          { value: "area_manager", label: "Area Manager", description: "Oversees several owner-assigned stores" },
+          { value: "ops_manager", label: "Operation Manager", description: "Works across every store" },
           { value: "management", label: "Management (CEO / Board)", description: "Sees everything, every store — view only" },
           { value: "owner", label: "Owner", description: "Full access to everything" },
         ]
@@ -30,12 +33,23 @@ function roleOptions(isOwner: boolean): SelectOption[] {
 }
 
 type StoreRow = { id: string; name: string; createdAt: string; users: number };
-type UserRow = { id: string; username: string; name: string; role: string; storeId: string; storeName: string };
+type UserRow = {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+  storeId: string;
+  storeIds?: string[];
+  storeName: string;
+};
 
 const ROLE_TONE: Record<string, "brand" | "violet" | "amber" | "emerald" | "rose" | "gold"> = {
   owner: "violet",
   management: "violet",
+  ops_manager: "rose",
   area_manager: "rose",
+  store_manager: "gold",
+  asst_store_manager: "amber",
   manager: "gold",
   accountant: "emerald",
   procurement: "brand",
@@ -44,12 +58,57 @@ const ROLE_TONE: Record<string, "brand" | "violet" | "amber" | "emerald" | "rose
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
   management: "Management",
+  ops_manager: "Operation Manager",
   area_manager: "Area Manager",
+  store_manager: "Store Manager",
+  asst_store_manager: "Asst. Store Manager",
+  store_crew: "Store Crew",
   manager: "Manager",
   accountant: "Accountant",
   procurement: "Procurement",
   operations: "Operations",
 };
+
+// Checkbox list of stores an Area Manager may access (home store always on).
+function StoreChecklist({
+  stores,
+  selected,
+  homeId,
+  onToggle,
+}: {
+  stores: StoreRow[];
+  selected: string[];
+  homeId: string;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="col-span-2">
+      <label className="label">Stores this area manager can access</label>
+      <div className="max-h-40 space-y-0.5 overflow-y-auto rounded-xl border border-slate-200 p-2">
+        {stores.map((s) => {
+          const isHome = s.id === homeId;
+          const checked = isHome || selected.includes(s.id);
+          return (
+            <label key={s.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={isHome}
+                onChange={() => onToggle(s.id)}
+                className="h-4 w-4 accent-brand-600"
+              />
+              <span className="min-w-0 flex-1 truncate text-ink-800">{s.name}</span>
+              {isHome && <span className="text-[10px] font-semibold uppercase text-slate-400">home</span>}
+            </label>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400">
+        The home store is always included. Tick the other stores this area manager oversees.
+      </p>
+    </div>
+  );
+}
 
 export default function StoresPage() {
   const { data: stores, loading, error, reload } = useFetch<StoreRow[]>("/api/stores");
@@ -309,15 +368,24 @@ function EditUserModal({
     password: "",
     role: user.role,
     storeId: user.storeId,
+    storeIds: user.storeIds ?? [],
   });
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const toggleStore = (id: string) =>
+    setForm((f) => ({ ...f, storeIds: f.storeIds.includes(id) ? f.storeIds.filter((x) => x !== id) : [...f.storeIds, id] }));
 
   async function save() {
     setBusy(true);
     try {
       // Only send a password when the owner typed a new one.
-      const body: any = { name: form.name, username: form.username, role: form.role, storeId: form.storeId };
+      const body: any = {
+        name: form.name,
+        username: form.username,
+        role: form.role,
+        storeId: form.storeId,
+        storeIds: form.storeIds,
+      };
       if (form.password.trim()) body.password = form.password.trim();
       await api(`/api/users/${user.id}`, { method: "PATCH", body: JSON.stringify(body) });
       onDone();
@@ -361,7 +429,7 @@ function EditUserModal({
           <Select value={form.role} onChange={(v) => set("role", v)} options={roleOptions(isOwner)} />
         </div>
         <div className="col-span-2">
-          <label className="label">Store</label>
+          <label className="label">{form.role === "area_manager" ? "Home store" : "Store"}</label>
           <Select
             value={form.storeId}
             onChange={(v) => set("storeId", v)}
@@ -369,6 +437,9 @@ function EditUserModal({
             placeholder="Pick a store"
           />
         </div>
+        {form.role === "area_manager" && (
+          <StoreChecklist stores={stores} selected={form.storeIds} homeId={form.storeId} onToggle={toggleStore} />
+        )}
       </div>
     </Modal>
   );
@@ -435,11 +506,14 @@ function AddUserModal({
     name: "",
     username: "",
     password: "",
-    role: "operations",
+    role: "store_crew",
     storeId: stores[0]?.id || "",
+    storeIds: [] as string[],
   });
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const toggleStore = (id: string) =>
+    setForm((f) => ({ ...f, storeIds: f.storeIds.includes(id) ? f.storeIds.filter((x) => x !== id) : [...f.storeIds, id] }));
 
   async function save() {
     setBusy(true);
@@ -490,7 +564,7 @@ function AddUserModal({
           <Select value={form.role} onChange={(v) => set("role", v)} options={roleOptions(isOwner)} />
         </div>
         <div className="col-span-2">
-          <label className="label">Store</label>
+          <label className="label">{form.role === "area_manager" ? "Home store" : "Store"}</label>
           <Select
             value={form.storeId}
             onChange={(v) => set("storeId", v)}
@@ -498,6 +572,9 @@ function AddUserModal({
             placeholder="Pick a store"
           />
         </div>
+        {form.role === "area_manager" && (
+          <StoreChecklist stores={stores} selected={form.storeIds} homeId={form.storeId} onToggle={toggleStore} />
+        )}
       </div>
     </Modal>
   );

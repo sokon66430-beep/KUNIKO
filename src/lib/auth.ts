@@ -7,7 +7,15 @@ export type Role =
   // Management (CEO / Board): sees every screen and all financials across all
   // stores, but can't change anything — enforced as a hard write-block server-side.
   | "management"
+  // Operation Manager: works across EVERY store (can switch to any).
+  | "ops_manager"
+  // Area Manager: works across a SUBSET of stores the owner assigns (User.storeIds).
   | "area_manager"
+  // Single-store retail hierarchy.
+  | "store_manager"
+  | "asst_store_manager"
+  | "store_crew"
+  // Legacy roles (kept so existing accounts keep working).
   | "manager"
   | "accountant"
   | "procurement"

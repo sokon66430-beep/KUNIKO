@@ -16,6 +16,7 @@ export type User = {
   passwordHash: string;
   role: Role;
   storeId: string; // home store (owner may switch to any store)
+  storeIds?: string[]; // extra stores an Area Manager may access (owner-assigned)
   createdAt: string;
 };
 export type SystemData = {
