@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ScanLine, Search, Trash2, Sparkles, X, Camera } from "lucide-react";
+import { ScanLine, Search, Trash2, Sparkles, X, Camera, Minus, Plus } from "lucide-react";
 import type { Product } from "@/lib/types";
 import { usd } from "@/lib/format";
 import { useFetch } from "@/lib/client";
@@ -304,6 +304,11 @@ export function LineBuilder({
     setNotice({ tone: "ok", text: `Added ${added} low-stock item${added === 1 ? "" : "s"}` });
   }
 
+  const changeQty = (id: string, qty: number) =>
+    setLines((prev) => prev.map((x) => (x.product.id === id ? { ...x, qty: Math.max(1, Math.floor(qty) || 1) } : x)));
+  const removeLine = (id: string) => setLines((prev) => prev.filter((x) => x.product.id !== id));
+  const applyRec = (id: string, rec: number) => setLines((prev) => prev.map((x) => (x.product.id === id ? { ...x, qty: rec } : x)));
+
   const total = lines.reduce((s, l) => s + l.product.cost * l.qty, 0);
 
   return (
@@ -478,123 +483,190 @@ export function LineBuilder({
         )}
       </div>
 
-      {/* Lines */}
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
-              <th className="px-3 py-2 font-semibold">Product</th>
-              <th className="px-3 py-2 text-right font-semibold">Cost</th>
-              <th className="px-3 py-2 text-center font-semibold">Qty</th>
-              <th className="px-3 py-2 text-right font-semibold">Line</th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l) => (
-              <tr key={l.product.id} className="border-b border-slate-50 last:border-0">
-                <td className="px-3 py-2">
-                  <p className="font-semibold text-ink-800">{l.product.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {l.product.sku} · {l.product.supplier}
-                  </p>
+      {/* Lines — touch-first cards on phones / Sunmi L3, dense table on desktop */}
+      {lines.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 py-10 text-center text-sm text-slate-400">
+          <ScanLine className="mx-auto mb-2 text-slate-300" size={22} />
+          Scan or search to add items.
+        </div>
+      ) : (
+        <>
+          {/* Mobile / Sunmi L3: stacked cards with big +/− and a clear delete */}
+          <div className="space-y-2 sm:hidden">
+            {lines.map((l) => {
+              const rec = Math.max(0, recQtyRaw(l.product, velocity?.[l.product.id], coverDays));
+              return (
+                <div key={l.product.id} className="rounded-xl border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-800">{l.product.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {l.product.sku} · {l.product.supplier}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${l.product.name}`}
+                      onClick={() => removeLine(l.product.id)}
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-rose-50 text-rose-600 active:bg-rose-100"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                   <SalesMini v={velocity?.[l.product.id]} product={l.product} />
-                </td>
-                <td className="px-3 py-2 text-right text-slate-500">{usd(l.product.cost)}</td>
-                <td className="px-3 py-2 align-top">
-                  <input
-                    type="number"
-                    min={1}
-                    ref={(el) => {
-                      qtyRefs.current[l.product.id] = el;
-                    }}
-                    value={l.qty}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) =>
-                      setLines((prev) =>
-                        prev.map((x) =>
-                          x.product.id === l.product.id
-                            ? { ...x, qty: Math.max(1, Number(e.target.value) || 1) }
-                            : x,
-                        ),
-                      )
-                    }
-                    onKeyDown={(e) => {
-                      // Enter confirms the qty and returns to the scan box for the next item.
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        scanRef.current?.focus();
-                      }
-                    }}
-                    className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                  />
-                  {(() => {
-                    const rec = Math.max(0, recQtyRaw(l.product, velocity?.[l.product.id], coverDays));
-                    if (rec <= 0)
-                      return (
-                        <p
-                          className="mt-1 text-center text-[10px] font-semibold text-amber-600"
-                          title="Already have enough on hand for the target cover — ordering more risks spoilage"
-                        >
-                          Enough on hand
-                        </p>
-                      );
-                    return rec === l.qty ? (
-                      <p className="mt-1 text-center text-[10px] font-semibold text-emerald-600">✓ Rec {rec}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        aria-label="Decrease quantity"
+                        onClick={() => changeQty(l.product.id, l.qty - 1)}
+                        className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-600 active:bg-slate-200"
+                      >
+                        <Minus size={18} />
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        value={l.qty}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => changeQty(l.product.id, Number(e.target.value))}
+                        className="h-11 w-16 rounded-lg border border-slate-200 text-center text-base font-bold text-ink-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Increase quantity"
+                        onClick={() => changeQty(l.product.id, l.qty + 1)}
+                        className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-600 active:bg-slate-200"
+                      >
+                        <Plus size={18} />
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-[11px] text-slate-400">{usd(l.product.cost)} each</span>
+                      <span className="block text-base font-bold text-ink-900">{usd(l.product.cost * l.qty)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    {rec <= 0 ? (
+                      <span className="text-[11px] font-semibold text-amber-600">Enough on hand — no need to order</span>
+                    ) : rec === l.qty ? (
+                      <span className="text-[11px] font-semibold text-emerald-600">✓ Recommended quantity ({rec})</span>
                     ) : (
                       <button
                         type="button"
-                        onClick={() =>
-                          setLines((prev) =>
-                            prev.map((x) => (x.product.id === l.product.id ? { ...x, qty: rec } : x)),
-                          )
-                        }
-                        title="Apply the recommended (shelf-life-capped) quantity"
-                        className="mx-auto mt-1 block text-[10px] font-semibold text-brand-600 hover:underline"
+                        onClick={() => applyRec(l.product.id, rec)}
+                        className="text-[11px] font-semibold text-brand-600 underline"
                       >
-                        Rec {rec} ↺
+                        Use recommended qty ({rec})
                       </button>
-                    );
-                  })()}
-                </td>
-                <td className="px-3 py-2 text-right font-semibold text-ink-800">
-                  {usd(l.product.cost * l.qty)}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => setLines((prev) => prev.filter((x) => x.product.id !== l.product.id))}
-                    className="grid h-7 w-7 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {lines.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-sm text-slate-400">
-                  <ScanLine className="mx-auto mb-2 text-slate-300" size={22} />
-                  Scan or search to add items.
-                </td>
-              </tr>
-            )}
-          </tbody>
-          {lines.length > 0 && (
-            <tfoot>
-              <tr className="border-t border-slate-100 bg-slate-50">
-                <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500" colSpan={2}>
-                  {lines.length} line{lines.length === 1 ? "" : "s"} ·{" "}
-                  {lines.reduce((s, l) => s + l.qty, 0)} units
-                </td>
-                <td className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-slate-500">Total</td>
-                <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(total)}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {lines.length} line{lines.length === 1 ? "" : "s"} · {lines.reduce((s, l) => s + l.qty, 0)} units
+              </span>
+              <span className="font-bold text-ink-900">{usd(total)}</span>
+            </div>
+          </div>
+
+          {/* Desktop: dense table (scrolls horizontally as a safety net) */}
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 sm:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-2 font-semibold">Product</th>
+                  <th className="px-3 py-2 text-right font-semibold">Cost</th>
+                  <th className="px-3 py-2 text-center font-semibold">Qty</th>
+                  <th className="px-3 py-2 text-right font-semibold">Line</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l) => (
+                  <tr key={l.product.id} className="border-b border-slate-50 last:border-0">
+                    <td className="px-3 py-2">
+                      <p className="font-semibold text-ink-800">{l.product.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {l.product.sku} · {l.product.supplier}
+                      </p>
+                      <SalesMini v={velocity?.[l.product.id]} product={l.product} />
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-500">{usd(l.product.cost)}</td>
+                    <td className="px-3 py-2 align-top">
+                      <input
+                        type="number"
+                        min={1}
+                        ref={(el) => {
+                          qtyRefs.current[l.product.id] = el;
+                        }}
+                        value={l.qty}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => changeQty(l.product.id, Number(e.target.value))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            scanRef.current?.focus();
+                          }
+                        }}
+                        className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      />
+                      {(() => {
+                        const rec = Math.max(0, recQtyRaw(l.product, velocity?.[l.product.id], coverDays));
+                        if (rec <= 0)
+                          return (
+                            <p
+                              className="mt-1 text-center text-[10px] font-semibold text-amber-600"
+                              title="Already have enough on hand for the target cover — ordering more risks spoilage"
+                            >
+                              Enough on hand
+                            </p>
+                          );
+                        return rec === l.qty ? (
+                          <p className="mt-1 text-center text-[10px] font-semibold text-emerald-600">✓ Rec {rec}</p>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => applyRec(l.product.id, rec)}
+                            title="Apply the recommended (shelf-life-capped) quantity"
+                            className="mx-auto mt-1 block text-[10px] font-semibold text-brand-600 hover:underline"
+                          >
+                            Rec {rec} ↺
+                          </button>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(l.product.cost * l.qty)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        aria-label={`Remove ${l.product.name}`}
+                        onClick={() => removeLine(l.product.id)}
+                        className="grid h-9 w-9 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-100 bg-slate-50">
+                  <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500" colSpan={2}>
+                    {lines.length} line{lines.length === 1 ? "" : "s"} · {lines.reduce((s, l) => s + l.qty, 0)} units
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-slate-500">Total</td>
+                  <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(total)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
 
       <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => handleScan(code)} />
     </div>
