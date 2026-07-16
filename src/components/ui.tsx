@@ -73,17 +73,21 @@ export function StatCard({
     rose: "bg-rose-50 text-rose-600",
   };
   return (
-    <div className="card p-6 transition-colors duration-200 hover:ring-slate-300">
-      <div className="flex items-center justify-between">
-        <p className="text-[11.5px] font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p>
+    <div className="card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 sm:text-[11.5px] sm:tracking-[0.1em]">
+          {label}
+        </p>
         {icon && (
-          <div className={`grid h-8 w-8 place-items-center rounded-full ${accents[accent]}`}>{icon}</div>
+          <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${accents[accent]}`}>{icon}</div>
         )}
       </div>
-      <p className="mt-5 text-[32px] font-extrabold leading-none tracking-[-0.035em] tabular-nums text-ink-900">
+      {/* Fluid size: scales down on narrow phones so long amounts (e.g.
+          $50,579.43) never clip in a 2-up grid, and caps at 32px on desktop. */}
+      <p className="mt-3 whitespace-nowrap text-[clamp(1.05rem,4.2vw,2rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-ink-900 sm:mt-5">
         {value}
       </p>
-      {sub && <p className="mt-2.5 text-[13px] text-slate-400">{sub}</p>}
+      {sub && <p className="mt-2 text-[12px] text-slate-400 sm:mt-2.5 sm:text-[13px]">{sub}</p>}
     </div>
   );
 }
