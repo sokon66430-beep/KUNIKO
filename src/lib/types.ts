@@ -18,6 +18,10 @@ export type Product = {
   reorderLevel: number;
   barcode?: string;
   trackStock?: boolean;
+  // Show this product on the POS screen for the cashier to TAP (fresh food,
+  // made-to-order drinks…). Unset = fall back to the default POS categories —
+  // see lib/pos.ts. Everything else is sold by scanning its barcode.
+  showOnPos?: boolean;
   gondola?: string; // PRIMARY gondola (most recently set) — printed on the label
   shelf?: string; // primary shelf position within the gondola
   // A product can sit in several places; every registered spot is kept here so

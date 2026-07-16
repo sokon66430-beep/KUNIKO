@@ -26,6 +26,7 @@ import { SearchSelect } from "@/components/SearchSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
+import { isShownOnPos } from "@/lib/pos";
 
 type CartLine = { product: Product; qty: number; seq: number };
 
@@ -156,13 +157,13 @@ export default function PosPage() {
     );
   }, [products, query]);
 
-  // Sell-directly items: a product with NO barcode can't be scanned, so the
-  // cashier must tap it (fresh food, made-to-order drinks…). Everything with a
-  // barcode is scan-only and stays off the screen. Grouped by category.
+  // Sell-directly items: the ones flagged "Show on POS" in Master Data (falling
+  // back to the default counter categories until the flag is set). Everything
+  // else is sold by scanning and stays off the screen. Grouped by category.
   const directSaleGroups = useMemo(() => {
-    const noBarcode = (products || []).filter((p) => !p.barcode || !p.barcode.trim());
+    const onPos = (products || []).filter((p) => isShownOnPos(p));
     const byCat = new Map<string, Product[]>();
-    for (const p of noBarcode) {
+    for (const p of onPos) {
       const list = byCat.get(p.category) ?? [];
       list.push(p);
       byCat.set(p.category, list);
@@ -497,7 +498,7 @@ export default function PosPage() {
             /* Step 1 — one swipeable row of categories; tap one to see its items. */
             <div>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                Sell directly · no barcode{" "}
+                Sell directly · tap to add{" "}
                 <span className="font-semibold normal-case tracking-normal text-slate-400">({directSaleCount})</span>
               </p>
               <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">

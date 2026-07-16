@@ -6,6 +6,7 @@ import type { Product, Supplier } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { itemIdPrefix } from "@/lib/itemId";
+import { defaultShowOnPos } from "@/lib/pos";
 
 export const EMPTY_PRODUCT: Partial<Product> = {
   name: "",
@@ -323,6 +324,24 @@ export function ProductModal({
           <label className="label">Price ($)</label>
           <input className="input" type="number" step="0.01" value={form.price ?? 0} onChange={(e) => set("price", e.target.value)} />
         </div>
+        {/* Which products the cashier can TAP at the till. Everything else is
+            sold by scanning its barcode and never shows on the POS screen. */}
+        <label className="col-span-2 flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3">
+          <span>
+            <span className="block text-sm font-semibold text-ink-800">Show on POS</span>
+            <span className="block text-[11px] leading-relaxed text-slate-400">
+              Cashier taps this item at the till (fresh food, made-to-order drinks). Leave off for items sold by
+              scanning the barcode.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.showOnPos ?? defaultShowOnPos(form.category || "")}
+            onChange={(e) => set("showOnPos", e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-brand-600"
+          />
+        </label>
+
         <div className="col-span-2 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gross Profit · VAT 10% incl.</p>

@@ -32,6 +32,7 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "shelfLifeDays",
   "supplier",
   "supplierCode",
+  "showOnPos", // which items the cashier can tap at the till
 ];
 
 async function ensureMaster(): Promise<void> {

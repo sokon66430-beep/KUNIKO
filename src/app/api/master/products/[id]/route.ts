@@ -11,6 +11,8 @@ const STRING_FIELDS = new Set([
   "sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode",
   "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf",
 ]);
+// Booleans need their own bucket — they'd be dropped by the string/number rules.
+const BOOLEAN_FIELDS = new Set(["showOnPos"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
@@ -36,6 +38,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     for (const [key, value] of Object.entries(body)) {
       if (key === "id") continue;
       if (NUMERIC.has(key)) (product as any)[key] = Math.max(0, Number(value) || 0);
+      else if (BOOLEAN_FIELDS.has(key)) (product as any)[key] = Boolean(value);
       else if (STRING_FIELDS.has(key)) (product as any)[key] = value || undefined;
       else if (key === "locations" && Array.isArray(value)) (product as any).locations = value;
     }
