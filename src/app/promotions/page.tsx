@@ -198,33 +198,44 @@ export default function PromotionsPage() {
   // taken the day the label was made.
   const byProductId = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
 
-  const rows = useMemo(() => {
-    const list = markdowns || [];
+  // The search box searches the whole CATALOG, not the promotions — it's the
+  // way IN for the ~91 items with no barcode to scan. Typing shows product
+  // matches; picking one adds it to the batch like a scan would.
+  const productResults = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const matched = needle
-      ? list.filter((m) => {
-          const p = byProductId.get(m.productId);
-          return (
-            m.name.toLowerCase().includes(needle) ||
-            m.code.includes(needle) ||
-            m.sku.toLowerCase().includes(needle) ||
-            // The item's own shelf barcode too — scanning the product (not the
-            // promo sticker) is how staff check "is this one reduced?"
-            (m.productBarcode || "").includes(needle) ||
-            (m.category || "").toLowerCase().includes(needle) ||
-            (p?.supplier || "").toLowerCase().includes(needle) ||
-            (p?.supplierCode || "").toLowerCase().includes(needle) ||
-            (p?.nameKh || "").includes(needle)
-          );
-        })
-      : list;
+    if (needle.length < 2) return [];
+    return (products || [])
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(needle) ||
+          (p.nameKh || "").includes(needle) ||
+          p.sku.toLowerCase().includes(needle) ||
+          (p.barcode || "").includes(needle) ||
+          (p.supplier || "").toLowerCase().includes(needle) ||
+          (p.supplierCode || "").toLowerCase().includes(needle) ||
+          (p.category || "").toLowerCase().includes(needle),
+      )
+      .slice(0, 12);
+  }, [products, q]);
+
+  // Which products already have a LIVE label — shown on search results so
+  // "already reduced" is visible before you try to add it again.
+  const liveByProductId = useMemo(() => {
+    const map = new Map<string, Markdown>();
+    for (const m of markdowns || []) {
+      if (markdownStatus(m, today) === "Active" || markdownStatus(m, today) === "Scheduled") map.set(m.productId, m);
+    }
+    return map;
+  }, [markdowns, today]);
+
+  const rows = useMemo(() => {
     // Live labels first — those are the ones staff act on.
     const rank: Record<MarkdownStatus, number> = { Active: 0, Scheduled: 1, Expired: 2, Cancelled: 3 };
-    return [...matched].sort((a, b) => {
+    return [...(markdowns || [])].sort((a, b) => {
       const d = rank[markdownStatus(a, today)] - rank[markdownStatus(b, today)];
       return d !== 0 ? d : +new Date(b.createdAt) - +new Date(a.createdAt);
     });
-  }, [markdowns, byProductId, q, today]);
+  }, [markdowns, today]);
 
   // A single label picked from the list (clicking a row). Only honoured while
   // it's still in the list, so searching past it doesn't strand a stale sheet.
@@ -286,7 +297,18 @@ export default function PromotionsPage() {
       list.find((p) => p.name.toLowerCase() === lc) ??
       (named.length === 1 ? named[0] : undefined);
     if (!prod) {
-      setQ(c); // no match — let the search box filter / show its empty state
+      setQ(c); // no match — leave it in the box so the results panel says so
+      return;
+    }
+    addToBatch(prod);
+  }
+
+  // One entry point for both a scan and a tap on a search result, so an item
+  // added either way behaves identically.
+  function addToBatch(prod: Product) {
+    const live = liveByProductId.get(prod.id);
+    if (live) {
+      setToast(`${prod.name} is already ${live.percent}% off until ${shortDay(live.endDate)}.`);
       return;
     }
     if (!mayDiscount) {
@@ -301,7 +323,7 @@ export default function PromotionsPage() {
       setToast(`Added ${prod.name}`);
       return [...qu, prod];
     });
-    setQ(""); // clear so the next scan starts clean and the list shows everything
+    setQ(""); // clear so the next scan or search starts clean
   }
 
   function removeFromQueue(id: string) {
@@ -443,7 +465,7 @@ export default function PromotionsPage() {
             <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
             <input
               className="input h-12 pl-10 pr-12 text-base"
-              placeholder="Scan a barcode · or search product, item ID, supplier, category, label code…"
+              placeholder="Scan a barcode · or search any product by name, item ID, supplier, category…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => {
@@ -464,6 +486,48 @@ export default function PromotionsPage() {
               <Camera size={18} />
             </button>
           </div>
+
+          {/* Catalog matches for what's typed — tapping one adds it to the batch
+              exactly like scanning it. This is the path for the items that have
+              no barcode to scan (fresh food, made-to-order). */}
+          {q.trim().length >= 2 && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+              {productResults.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-slate-400">No product matches “{q.trim()}”.</p>
+              ) : (
+                productResults.map((p) => {
+                  const live = liveByProductId.get(p.id);
+                  const queued = queue.some((x) => x.id === p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addToBatch(p)}
+                      className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-slate-50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink-800">{p.name}</p>
+                        <p className="truncate text-xs text-slate-400">
+                          {p.sku}
+                          {p.category ? ` · ${p.category}` : ""}
+                          {p.supplier && p.supplier !== "—" ? ` · ${p.supplier}` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-bold text-ink-900">{usd(p.price)}</span>
+                      {live ? (
+                        <Badge tone="amber">-{live.percent}% running</Badge>
+                      ) : queued ? (
+                        <Badge tone="emerald">In batch</Badge>
+                      ) : (
+                        <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-brand-600">
+                          <Plus size={13} /> Add
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
 
           {/* Bulk settings — set the cut and the dates ONCE, then scan the run
               of items. Every item you scan next gets these. */}
@@ -564,12 +628,8 @@ export default function PromotionsPage() {
           <ErrorBox message={error} />
         ) : rows.length === 0 ? (
           <EmptyState
-            title={q ? "No matching promotion" : "No promotions yet"}
-            hint={
-              q
-                ? "Scan the item to add it to the batch, or search by name, item ID, supplier, category or label code."
-                : "Set the discount and dates above, then scan each item to reduce — they're batched and get a barcode each."
-            }
+            title="No promotions yet"
+            hint="Set the discount and dates above, then scan or search each item to reduce — they're batched and get a barcode each."
           />
         ) : (
           <div className="space-y-2">
