@@ -327,18 +327,18 @@ export default function PurchaseOrdersPage() {
               return (
                 <div
                   key={po.id}
-                  className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                  className="flex cursor-pointer flex-wrap items-center justify-between gap-2 border-b border-slate-50 px-4 py-3 transition last:border-0 hover:bg-slate-50/60 sm:gap-3 sm:px-5 sm:py-4"
                   onClick={() => setViewing(po)}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-ink-900">
+                    <p className="text-sm font-semibold text-ink-900 sm:text-base">
                       {po.poNo}
-                      <span className="ml-2 text-xs font-normal text-slate-400">
+                      <span className="ml-2 text-[11px] font-normal text-slate-400 sm:text-xs">
                         {po.prNo ? `from ${po.prNo} · ` : ""}
                         {shortDate(po.createdAt)}
                       </span>
                     </p>
-                    <p className="mt-0.5 truncate text-sm text-slate-500">
+                    <p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">
                       {po.supplier} · <span className="font-semibold text-ink-800">{usd(poTotal(po))}</span>
                     </p>
                   </div>
