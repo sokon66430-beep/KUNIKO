@@ -947,7 +947,7 @@ function ViewPOModal({
   return (
     <Modal
       open
-      size="xl"
+      size="2xl"
       onClose={onClose}
       title={`${po.poNo} · ${po.supplier}`}
       footer={

@@ -152,10 +152,11 @@ export function Modal({
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "md" | "lg" | "xl";
+  size?: "md" | "lg" | "xl" | "2xl";
 }) {
   if (!open) return null;
-  const maxW = size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
+  const maxW =
+    size === "2xl" ? "max-w-5xl" : size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-[4px]" onClick={onClose} />
@@ -171,7 +172,9 @@ export function Modal({
             <X size={17} />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+        <div className={`overflow-y-auto px-6 py-5 ${size === "xl" || size === "2xl" ? "max-h-[80vh]" : "max-h-[70vh]"}`}>
+          {children}
+        </div>
         {footer && (
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
             {footer}
