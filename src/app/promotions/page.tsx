@@ -45,7 +45,9 @@ const DESIGN_H = 250;
 const LABEL_SCALE = (47 * 96) / 25.4 / DESIGN_W;
 const LABEL_FONT = `'Plus Jakarta Sans Variable','Segoe UI',sans-serif`;
 
-function PromoLabel({ m }: { m: Markdown }) {
+// zoom only blows it up for reading on screen — print always renders at 1, the
+// true 4.7 × 2.5cm, so what you see is exactly what the printer puts out.
+function PromoLabel({ m, zoom = 1 }: { m: Markdown; zoom?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
   useEffect(() => {
     if (!svgRef.current) return;
@@ -70,8 +72,8 @@ function PromoLabel({ m }: { m: Markdown }) {
     <div
       className="promo-label"
       style={{
-        width: DESIGN_W * LABEL_SCALE,
-        height: DESIGN_H * LABEL_SCALE,
+        width: DESIGN_W * LABEL_SCALE * zoom,
+        height: DESIGN_H * LABEL_SCALE * zoom,
         overflow: "hidden",
         breakInside: "avoid",
       }}
@@ -80,7 +82,7 @@ function PromoLabel({ m }: { m: Markdown }) {
         style={{
           width: DESIGN_W,
           height: DESIGN_H,
-          transform: `scale(${LABEL_SCALE})`,
+          transform: `scale(${LABEL_SCALE * zoom})`,
           transformOrigin: "top left",
           fontFamily: LABEL_FONT,
           border: "2px solid #e11d48",
@@ -124,6 +126,9 @@ export default function PromotionsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [printing, setPrinting] = useState<Markdown | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // Which label is shown in the preview panel. Held as a CODE, not the object,
+  // so the panel follows the record across a reload instead of going stale.
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
   // A scanned item that has no label running — the offer to make one.
   const [scanned, setScanned] = useState<Product | null>(null);
   // Product to pre-fill the New-discount form with (set when you scan an item
@@ -156,6 +161,16 @@ export default function PromotionsPage() {
       return d !== 0 ? d : +new Date(b.createdAt) - +new Date(a.createdAt);
     });
   }, [markdowns, q, today]);
+
+  // The label on show: the picked one, else the only row on screen — so a scan
+  // that narrows to one item puts its sticker up with nothing else to tap.
+  // A pick is only honoured while it's still IN the list: searching past it must
+  // not leave the panel showing a label the list no longer has.
+  const preview = useMemo(() => {
+    const picked = previewCode ? rows.find((m) => m.code === previewCode) : null;
+    if (picked) return picked;
+    return rows.length === 1 ? rows[0] : null;
+  }, [previewCode, rows]);
 
   const stats = useMemo(() => {
     const list = markdowns || [];
@@ -347,7 +362,12 @@ export default function PromotionsPage() {
               return (
                 <div
                   key={m.id}
-                  className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-3 sm:p-4"
+                  onClick={() => setPreviewCode(m.code)}
+                  className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-xl border p-3 transition sm:p-4 ${
+                    preview?.code === m.code
+                      ? "border-brand-300 bg-brand-50/40"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -408,6 +428,46 @@ export default function PromotionsPage() {
           </div>
         )}
       </Card>
+
+      {/* The sticker itself. Seeing it beats printing to find out what it says —
+          and after a scan narrows the list to one, it's already up. */}
+      {preview && (
+        <Card className="mt-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-ink-900">Label</h3>
+              <p className="text-xs text-slate-400">
+                {preview.name} · prints at 4.7 × 2.5 cm — shown at double size
+              </p>
+            </div>
+            {(markdownStatus(preview, today) === "Active" || markdownStatus(preview, today) === "Scheduled") && (
+              <button className="btn-primary !py-2 text-xs" onClick={() => printLabel(preview)}>
+                <Printer size={14} /> Print this label
+              </button>
+            )}
+          </div>
+
+          <div className="mt-4 flex justify-center rounded-xl bg-slate-50 p-6">
+            <div className="shadow-soft">
+              <PromoLabel m={preview} zoom={2} />
+            </div>
+          </div>
+
+          {markdownStatus(preview, today) === "Expired" ? (
+            <p className="mt-3 text-center text-xs text-slate-400">
+              This label has expired — the barcode no longer scans, so there's nothing to print.
+            </p>
+          ) : markdownStatus(preview, today) === "Cancelled" ? (
+            <p className="mt-3 text-center text-xs text-slate-400">
+              This label was stopped early — the barcode no longer scans.
+            </p>
+          ) : (
+            <p className="mt-3 text-center text-xs text-slate-400">
+              Stick it on the reduced items only — the rest keep selling at {usd(preview.originalPrice)}.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Phone / tablet path — the Sunmi's own scanner needs no UI at all. */}
       <CameraScanner
