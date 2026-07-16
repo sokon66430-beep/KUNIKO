@@ -22,10 +22,14 @@ export function CameraScanner({
   open,
   onClose,
   onScan,
+  // Defaults to the till's wording, since that's where most scanning happens;
+  // screens that look a code up rather than ring it up pass their own.
+  hint = "Point the camera at a barcode — items are added automatically. Keep scanning, or tap Done.",
 }: {
   open: boolean;
   onClose: () => void;
   onScan: (code: string) => void;
+  hint?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
@@ -152,9 +156,7 @@ export function CameraScanner({
 
       {/* Bottom */}
       <div className="px-4 py-4 text-center">
-        <p className="mb-3 text-xs text-white/60">
-          Point the camera at a barcode — items are added automatically. Keep scanning, or tap Done.
-        </p>
+        <p className="mb-3 text-xs text-white/60">{hint}</p>
         <button onClick={onClose} className="rounded-xl bg-white px-6 py-2.5 text-sm font-bold text-ink-900">
           Done
         </button>

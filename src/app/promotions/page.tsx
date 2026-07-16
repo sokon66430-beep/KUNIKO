@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Tag, Plus, Printer, Search, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
+import { Tag, Plus, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Markdown } from "@/lib/types";
 import { PageHeader, Card, StatCard, Spinner, ErrorBox, EmptyState, Badge, Modal } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
+import { CameraScanner } from "@/components/CameraScanner";
 import { DatePicker } from "@/components/DatePicker";
 import { confirmDialog } from "@/components/confirm";
 import { usd } from "@/lib/format";
@@ -122,6 +123,12 @@ export default function PromotionsPage() {
   const [q, setQ] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [printing, setPrinting] = useState<Markdown | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  // A scanned item that has no label running — the offer to make one.
+  const [scanned, setScanned] = useState<Product | null>(null);
+  // Product to pre-fill the New-discount form with (set when you scan an item
+  // that isn't on promotion, so the register step is one tap).
+  const [preset, setPreset] = useState<string>("");
 
   // Today is resolved in the store's timezone, not the tablet's — a Sunmi with a
   // wrong clock shouldn't change which labels look live.
@@ -136,6 +143,9 @@ export default function PromotionsPage() {
             m.name.toLowerCase().includes(needle) ||
             m.code.includes(needle) ||
             m.sku.toLowerCase().includes(needle) ||
+            // The item's own shelf barcode too — scanning the product (not the
+            // promo sticker) is how staff check "is this one reduced?"
+            (m.productBarcode || "").includes(needle) ||
             (m.category || "").toLowerCase().includes(needle),
         )
       : list;
@@ -157,6 +167,58 @@ export default function PromotionsPage() {
       expired: list.filter((m) => markdownStatus(m, today) === "Expired").length,
     };
   }, [markdowns, today]);
+
+  // One scan path for all three inputs: the Sunmi's built-in scanner, a phone
+  // camera, and typing. Scanning the promo sticker finds that label; scanning
+  // the ITEM finds any label on it — and if there's none, offers to make one,
+  // which is the "register the product" step done in a single tap.
+  function handleScan(code: string) {
+    const c = code.trim();
+    if (!c) return;
+    setQ(c);
+    setCameraOpen(false);
+    const lc = c.toLowerCase();
+    const prod = (products || []).find((p) => p.barcode === c || p.sku.toLowerCase() === lc);
+    const live = (markdowns || []).find(
+      (m) => (m.productBarcode === c || m.sku.toLowerCase() === lc || m.code === c) && markdownStatus(m, today) === "Active",
+    );
+    if (prod && !live) {
+      setScanned(prod);
+    } else {
+      setScanned(null);
+      if (live) setToast(`${live.name} is ${live.percent}% off until ${shortDay(live.endDate)}.`);
+    }
+  }
+
+  // The Sunmi L3 (and any USB wedge scanner) types the barcode in a fast burst
+  // then sends Enter. Watching the whole page means staff can just scan — no
+  // tapping into the search box first. The 120ms gap is what separates a
+  // scanner's burst from human typing, so normal searching still works.
+  const scanStateRef = useRef({ buf: "", last: 0 });
+  const blockRef = useRef(false);
+  blockRef.current = open || cameraOpen || !!printing;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (blockRef.current) return;
+      const now = Date.now();
+      const s = scanStateRef.current;
+      if (now - s.last > 120) s.buf = "";
+      s.last = now;
+      if (e.key === "Enter") {
+        const code = s.buf.trim();
+        s.buf = "";
+        if (code.length < 3) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        handleScan(code);
+        return;
+      }
+      if (e.key.length === 1) s.buf += e.key;
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, markdowns, today]);
 
   async function stop(m: Markdown) {
     const ok = await confirmDialog({
@@ -207,14 +269,61 @@ export default function PromotionsPage() {
       </div>
 
       <Card>
-        <div className="mb-4 relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            className="input pl-10"
-            placeholder="Search product, label code or category…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+        <div className="mb-4">
+          <div className="relative">
+            <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
+            <input
+              className="input h-12 pl-10 pr-12 text-base"
+              placeholder="Scan a barcode · or search product, label code, category…"
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setScanned(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                handleScan(q); // typed-in codes behave exactly like scanned ones
+              }}
+              inputMode="search"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              title="Scan with the camera"
+              aria-label="Scan a barcode with the camera"
+              className="absolute right-1.5 top-1/2 grid h-9 w-10 -translate-y-1/2 place-items-center rounded-lg bg-brand-600 text-white hover:bg-brand-700"
+            >
+              <Camera size={18} />
+            </button>
+          </div>
+
+          {/* Scanned an item with nothing running on it — offer the discount
+              right here rather than making them find it again in a dropdown. */}
+          {scanned && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-brand-50 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-ink-900">{scanned.name}</p>
+                <p className="text-xs text-slate-500">
+                  {usd(scanned.price)} · no discount running — scan registered, set the price cut
+                </p>
+              </div>
+              {mayDiscount ? (
+                <button
+                  className="btn-primary !py-2 text-xs"
+                  onClick={() => {
+                    setPreset(scanned.id);
+                    setOpen(true);
+                  }}
+                >
+                  <Plus size={14} /> Discount this
+                </button>
+              ) : (
+                <span className="text-xs font-semibold text-slate-500">Ask a manager to discount it</span>
+              )}
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -300,13 +409,27 @@ export default function PromotionsPage() {
         )}
       </Card>
 
+      {/* Phone / tablet path — the Sunmi's own scanner needs no UI at all. */}
+      <CameraScanner
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onScan={(code) => handleScan(code)}
+        hint="Point the camera at the item's barcode, or a discount sticker."
+      />
+
       {open && (
         <NewMarkdownModal
           products={products || []}
           today={today}
-          onClose={() => setOpen(false)}
+          initialProductId={preset}
+          onClose={() => {
+            setOpen(false);
+            setPreset("");
+          }}
           onCreated={(m) => {
             setOpen(false);
+            setPreset("");
+            setScanned(null);
             reload();
             setToast(`${m.code} created — ${m.percent}% off ${m.name}. Print the label and stick it on.`);
           }}
@@ -359,15 +482,17 @@ export default function PromotionsPage() {
 function NewMarkdownModal({
   products,
   today,
+  initialProductId = "",
   onClose,
   onCreated,
 }: {
   products: Product[];
   today: string;
+  initialProductId?: string;
   onClose: () => void;
   onCreated: (m: Markdown) => void;
 }) {
-  const [productId, setProductId] = useState("");
+  const [productId, setProductId] = useState(initialProductId);
   const [percent, setPercent] = useState(30);
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
