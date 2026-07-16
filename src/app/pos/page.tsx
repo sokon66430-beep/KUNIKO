@@ -72,6 +72,12 @@ export default function PosPage() {
     duplicateDates: string[];
   } | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  // Live mirrors for the global barcode-scanner listener (which is attached once
+  // and must always see the latest products / dialog state).
+  const productsRef = useRef<Product[]>([]);
+  productsRef.current = products ?? [];
+  const blockScanRef = useRef(false);
+  blockScanRef.current = khqrOpen || !!receipt || reportOpen;
 
   async function importSales(file: File) {
     setImporting(true);
@@ -192,6 +198,44 @@ export default function PosPage() {
     setCustomerId("");
     setPayment("Cash");
   }
+
+  // Real-POS barcode scanning: the Sunmi L3's built-in scanner (and any USB
+  // "keyboard-wedge" scanner) types the barcode very fast and then sends Enter.
+  // We watch keystrokes for the whole page — so the cashier can just scan, with
+  // NO need to tap the search box first — buffer the fast burst, and ring the
+  // item up on Enter. Slow (human) typing never accumulates into the buffer, so
+  // manual search and checkout typing keep working normally.
+  useEffect(() => {
+    let buf = "";
+    let last = 0;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (blockScanRef.current) return; // a dialog (KHQR / receipt / report) is open
+      const now = Date.now();
+      if (now - last > 120) buf = ""; // gap too long → human, not a scan; restart
+      last = now;
+      if (e.key === "Enter") {
+        const code = buf.trim();
+        buf = "";
+        if (code.length < 3) return; // too short to be a real barcode/scan
+        const prod = productsRef.current.find(
+          (p) => p.barcode === code || p.sku.toLowerCase() === code.toLowerCase(),
+        );
+        if (!prod) return; // unknown code → let normal Enter handling run
+        // It's a scan of a known product: ring it up and swallow the Enter so a
+        // focused field (e.g. search) doesn't also act on it.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        addToCart(prod);
+        setQuery("");
+        setToast(`Added ${prod.name}`);
+        return;
+      }
+      if (e.key.length === 1) buf += e.key; // accumulate printable chars
+    };
+    window.addEventListener("keydown", onKey, true); // capture: run before field handlers
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   async function commitSale(paymentRef?: string) {
     const sale = await api<Sale>("/api/sales", {
