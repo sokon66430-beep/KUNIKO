@@ -2,31 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Plus,
-  Truck,
-  Search,
-  Pencil,
-  Trash2,
-  Package,
-  Phone,
-  ShoppingCart,
-  Users,
-  CalendarClock,
-} from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { Truck, Search, Package, Phone, ShoppingCart, Users, CalendarClock, Boxes } from "lucide-react";
+import { useFetch, useRole } from "@/lib/client";
 import type { Product, Supplier } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, EmptyState } from "@/components/ui";
-import { confirmDialog } from "@/components/confirm";
-import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
 import { num } from "@/lib/format";
 
+// Read-only supplier directory. Suppliers are the single source of truth in
+// Master Data (owner-only) and mirrored to every store — so there's no add /
+// edit / delete here; this page just lists them for ordering and reference.
 export default function SuppliersPage() {
-  const { data: suppliers, loading, error, reload } = useFetch<Supplier[]>("/api/suppliers");
+  const { data: suppliers, loading, error } = useFetch<Supplier[]>("/api/suppliers");
   const { data: products } = useFetch<Product[]>("/api/products");
+  const role = useRole();
+  const isOwner = role === "owner";
   const [query, setQuery] = useState("");
-  const [editing, setEditing] = useState<Partial<Supplier> | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const productCountByCode = useMemo(() => {
     const m = new Map<string, number>();
@@ -47,53 +37,26 @@ export default function SuppliersPage() {
   const withContact = list.filter((s) => s.contactPerson || s.phone).length;
   const linkedProducts = [...productCountByCode.values()].reduce((s, n) => s + n, 0);
 
-  async function save(s: Partial<Supplier>) {
-    setBusy(true);
-    try {
-      if (s.code && list.some((x) => x.code === s.code) && editing?.code) {
-        await api(`/api/suppliers/${encodeURIComponent(s.code)}`, { method: "PATCH", body: JSON.stringify(s) });
-      } else {
-        await api("/api/suppliers", { method: "POST", body: JSON.stringify(s) });
-      }
-      setEditing(null);
-      reload();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove(s: Supplier) {
-    if (
-      !(await confirmDialog({
-        title: "Delete supplier",
-        message: `Delete supplier "${s.name}"?`,
-        confirmText: "Delete",
-      }))
-    )
-      return;
-    try {
-      await api(`/api/suppliers/${encodeURIComponent(s.code)}`, { method: "DELETE" });
-      reload();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  }
-
   return (
     <div>
       <PageHeader
         title="Suppliers"
-        subtitle="Every supplier and what you can order from them"
+        subtitle="Directory of every supplier — managed in Master Data"
         actions={
-          <button className="btn-primary" onClick={() => setEditing({ ...EMPTY_SUPPLIER })}>
-            <Plus size={18} /> Add Supplier
-          </button>
+          isOwner ? (
+            <Link href="/master-data" className="btn-ghost">
+              <Boxes size={18} /> Manage in Master Data
+            </Link>
+          ) : undefined
         }
       />
 
       {error && <ErrorBox message={error} />}
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+        Suppliers are controlled centrally in <b className="text-ink-700">Master Data</b> and apply to every store. This
+        page is a read-only directory.
+      </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Suppliers" value={num(list.length)} icon={<Truck size={18} />} accent="brand" />
@@ -157,29 +120,13 @@ export default function SuppliersPage() {
                     ) : (
                       <Badge tone="slate">0 products</Badge>
                     )}
-                    <div className="flex items-center gap-1">
-                      <Link
-                        href={`/purchase-orders?supplier=${encodeURIComponent(s.code)}`}
-                        title="New PO for this supplier"
-                        className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50"
-                      >
-                        <ShoppingCart size={16} />
-                      </Link>
-                      <button
-                        title="Edit"
-                        onClick={() => setEditing(s)}
-                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        title="Delete"
-                        onClick={() => remove(s)}
-                        className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    <Link
+                      href={`/purchase-orders?supplier=${encodeURIComponent(s.code)}`}
+                      title="New PO for this supplier"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50"
+                    >
+                      <ShoppingCart size={16} />
+                    </Link>
                   </div>
                 </div>
               );
@@ -187,16 +134,6 @@ export default function SuppliersPage() {
           </div>
         )}
       </Card>
-
-      {editing && (
-        <SupplierModal
-          initial={editing}
-          isNew={!list.some((s) => s.code === editing.code)}
-          busy={busy}
-          onClose={() => setEditing(null)}
-          onSave={save}
-        />
-      )}
     </div>
   );
 }

@@ -13,12 +13,15 @@ import {
   ChevronRight,
   Upload,
   FileSpreadsheet,
+  Truck,
+  Phone,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Product, Supplier } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { ProductModal, EMPTY_PRODUCT as EMPTY } from "@/components/ProductModal";
+import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
 import { formatLocations } from "@/lib/location";
 import { usd, num } from "@/lib/format";
 
@@ -31,10 +34,70 @@ type SyncResult = {
 
 export default function MasterDataPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/master/products");
-  const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
+  const { data: suppliers, reload: reloadSuppliers } = useFetch<Supplier[]>("/api/master/suppliers");
+  const [tab, setTab] = useState<"products" | "suppliers">("products");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
+  const [editingSup, setEditingSup] = useState<Partial<Supplier> | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // How many master products are linked to each supplier — shown per row, and
+  // used to explain a blocked delete.
+  const productCountByCode = useMemo(() => {
+    const m = new Map<string, number>();
+    (products || []).forEach((p) => {
+      if (p.supplierCode) m.set(p.supplierCode, (m.get(p.supplierCode) || 0) + 1);
+    });
+    return m;
+  }, [products]);
+
+  const supList = suppliers || [];
+  const filteredSuppliers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return supList;
+    return supList.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q) || (s.contactPerson || "").toLowerCase().includes(q),
+    );
+  }, [supList, query]);
+
+  async function saveSupplier(s: Partial<Supplier>) {
+    setBusy(true);
+    try {
+      if (s.code && supList.some((x) => x.code === s.code) && editingSup?.code) {
+        await api(`/api/master/suppliers/${encodeURIComponent(s.code)}`, { method: "PATCH", body: JSON.stringify(s) });
+      } else {
+        await api("/api/master/suppliers", { method: "POST", body: JSON.stringify(s) });
+      }
+      setEditingSup(null);
+      reloadSuppliers();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSupplier(s: Supplier) {
+    const linked = productCountByCode.get(s.code) || 0;
+    if (linked > 0) {
+      alert(`Can't delete "${s.name}" — ${linked} product${linked === 1 ? "" : "s"} still linked. Reassign or remove them first.`);
+      return;
+    }
+    if (
+      !(await confirmDialog({
+        title: "Delete supplier",
+        message: `Delete supplier "${s.name}" from the master? It's removed from every store.`,
+        confirmText: "Delete",
+      }))
+    )
+      return;
+    try {
+      await api(`/api/master/suppliers/${encodeURIComponent(s.code)}`, { method: "DELETE" });
+      reloadSuppliers();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [importing, setImporting] = useState(false);
@@ -135,31 +198,61 @@ export default function MasterDataPage() {
         subtitle="One central product catalog for every store. Edit here, then Sync — every store follows the master (including selling price); each keeps its own reorder level, stock & shelf location."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => fileRef.current?.click()}>
-              <Upload size={16} /> {importing ? "Importing…" : "Import"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) importExcel(f);
-              }}
-            />
-            <a className="btn-ghost !py-2 text-sm" href="/api/master/products/export" title="Download master as Excel">
-              <FileSpreadsheet size={16} /> Export
-            </a>
-            <button className="btn-ghost !py-2 text-sm" disabled={syncing} onClick={sync} title="Push shared info to every store">
-              <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing…" : "Sync to stores"}
-            </button>
-            <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
-              <Plus size={18} /> Add Product
-            </button>
+            {tab === "products" ? (
+              <>
+                <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => fileRef.current?.click()}>
+                  <Upload size={16} /> {importing ? "Importing…" : "Import"}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) importExcel(f);
+                  }}
+                />
+                <a className="btn-ghost !py-2 text-sm" href="/api/master/products/export" title="Download master as Excel">
+                  <FileSpreadsheet size={16} /> Export
+                </a>
+                <button className="btn-ghost !py-2 text-sm" disabled={syncing} onClick={sync} title="Push shared info to every store">
+                  <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing…" : "Sync to stores"}
+                </button>
+                <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
+                  <Plus size={18} /> Add Product
+                </button>
+              </>
+            ) : (
+              <button className="btn-primary" onClick={() => setEditingSup({ ...EMPTY_SUPPLIER })}>
+                <Plus size={18} /> Add Supplier
+              </button>
+            )}
           </div>
         }
       />
+
+      {/* Master Data has two catalogs — Products and Suppliers — both the single
+          source of truth, pushed to every store. */}
+      <div className="mb-5 inline-flex rounded-xl bg-slate-100 p-1">
+        {([
+          { key: "products", label: "Products", icon: <Boxes size={15} /> },
+          { key: "suppliers", label: "Suppliers", icon: <Truck size={15} /> },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => {
+              setTab(t.key);
+              setQuery("");
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
+              tab === t.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
 
       {error && <ErrorBox message={error} />}
 
@@ -191,6 +284,8 @@ export default function MasterDataPage() {
         </div>
       )}
 
+      {tab === "products" && (
+        <>
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard label="Master Products" value={num(products?.length || 0)} icon={<Boxes size={18} />} accent="brand" />
         <StatCard label="Categories" value={num(categories.length - 1)} icon={<Package size={18} />} accent="violet" />
@@ -266,6 +361,115 @@ export default function MasterDataPage() {
         editor are only starting values for a brand-new product; each store then sets and keeps its own, and shelf
         location is always per-store (set on the Price labels page).
       </p>
+        </>
+      )}
+
+      {tab === "suppliers" && (
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard label="Suppliers" value={num(supList.length)} icon={<Truck size={18} />} accent="brand" />
+            <StatCard
+              label="Products Linked"
+              value={num([...productCountByCode.values()].reduce((a, b) => a + b, 0))}
+              icon={<Package size={18} />}
+              accent="emerald"
+            />
+            <StatCard
+              label="With Contact"
+              value={num(supList.filter((s) => s.contactPerson || s.phone).length)}
+              icon={<Boxes size={18} />}
+              accent="violet"
+            />
+            <StatCard
+              label="Avg Lead Time"
+              value={`${Math.round(supList.reduce((a, s) => a + (s.leadTime || 0), 0) / (supList.length || 1))}d`}
+              icon={<Package size={18} />}
+              accent="amber"
+            />
+          </div>
+
+          <Card className="p-0">
+            <div className="border-b border-slate-100 p-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  className="input pl-10"
+                  placeholder="Search supplier by name, code or contact…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+            </div>
+            {loading ? (
+              <Spinner label="Loading suppliers…" />
+            ) : (
+              <div>
+                {filteredSuppliers.map((s) => {
+                  const count = productCountByCode.get(s.code) || 0;
+                  return (
+                    <div
+                      key={s.code}
+                      className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink-900">
+                          {s.name}
+                          <span className="ml-2 text-xs font-normal text-slate-400">{s.code}</span>
+                        </p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 truncate text-sm text-slate-500">
+                          <span>{s.contactPerson || "—"}</span>
+                          {s.phone && (
+                            <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                              <Phone size={11} /> {s.phone}
+                            </span>
+                          )}
+                          {s.leadTime ? <span className="text-slate-400">{s.leadTime}d lead</span> : null}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge tone={count > 0 ? "brand" : "slate"}>{count} products</Badge>
+                        <div className="flex items-center gap-1">
+                          <button
+                            title="Edit"
+                            onClick={() => setEditingSup(s)}
+                            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            title={count > 0 ? "Linked to products — can't delete" : "Delete"}
+                            onClick={() => removeSupplier(s)}
+                            className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredSuppliers.length === 0 && (
+                  <p className="px-5 py-12 text-center text-slate-400">No suppliers found.</p>
+                )}
+              </div>
+            )}
+          </Card>
+          <p className="mt-3 text-xs text-slate-400">
+            Suppliers are controlled here and mirrored to every store automatically. A supplier can&apos;t be deleted
+            while products are still linked to it.
+          </p>
+        </>
+      )}
+
+      {editingSup && (
+        <SupplierModal
+          initial={editingSup}
+          isNew={!supList.some((s) => s.code === editingSup.code)}
+          busy={busy}
+          onClose={() => setEditingSup(null)}
+          onSave={saveSupplier}
+        />
+      )}
 
       {editing && (
         <ProductModal

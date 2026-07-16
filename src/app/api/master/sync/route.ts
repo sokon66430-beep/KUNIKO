@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { readMaster, applyMasterFields } from "@/lib/master";
+import { readMaster, applyMasterFields, propagateSuppliersToStores } from "@/lib/master";
 import { readSystem } from "@/lib/system";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -81,6 +81,9 @@ export async function POST() {
     }, store.id);
     results.push({ store: store.name, ...r });
   }
+
+  // Suppliers follow the master too — mirror them into every store.
+  await propagateSuppliersToStores();
 
   return NextResponse.json({ masterCount: master.length, stores: results });
 }

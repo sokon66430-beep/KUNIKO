@@ -30,7 +30,6 @@ import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState
 import { confirmDialog } from "@/components/confirm";
 import { SearchSelect } from "@/components/SearchSelect";
 import { ProductModal, EMPTY_PRODUCT } from "@/components/ProductModal";
-import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
 import { usd, num, shortDate, gpPercent } from "@/lib/format";
 
 type ImportResult = {
@@ -47,7 +46,7 @@ const PAGE_SIZE = 100;
 
 export default function ProductsPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products");
-  const { data: suppliers, reload: reloadSuppliers } = useFetch<Supplier[]>("/api/suppliers");
+  const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
   const { data: pos } = useFetch<PurchaseOrder[]>("/api/purchase-orders");
   const { data: grns } = useFetch<GoodsReceipt[]>("/api/goods-receipts");
   const [query, setQuery] = useState("");
@@ -61,7 +60,6 @@ export default function ProductsPage() {
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
-  const [addingSupplier, setAddingSupplier] = useState(false);
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -78,19 +76,6 @@ export default function ProductsPage() {
       setEditing(null);
       setViewing(null);
       reload();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveSupplier(s: Partial<Supplier>) {
-    setBusy(true);
-    try {
-      await api("/api/suppliers", { method: "POST", body: JSON.stringify(s) });
-      setAddingSupplier(false);
-      reloadSuppliers();
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -252,9 +237,6 @@ export default function ProductsPage() {
             </a>
             <button className="btn-ghost" disabled={importing} onClick={() => fileRef.current?.click()}>
               <FileSpreadsheet size={18} /> {importing ? "Importing…" : "Import Excel"}
-            </button>
-            <button className="btn-ghost" onClick={() => setAddingSupplier(true)}>
-              <Truck size={18} /> Add Supplier
             </button>
             <button className="btn-primary" onClick={() => setEditing({ ...EMPTY_PRODUCT })}>
               <Plus size={18} /> Add Product
@@ -499,16 +481,6 @@ export default function ProductsPage() {
           busy={busy}
           onClose={() => setEditing(null)}
           onSave={saveProduct}
-        />
-      )}
-
-      {addingSupplier && (
-        <SupplierModal
-          initial={{ ...EMPTY_SUPPLIER }}
-          isNew
-          busy={busy}
-          onClose={() => setAddingSupplier(false)}
-          onSave={saveSupplier}
         />
       )}
 
