@@ -6,6 +6,33 @@ export function suggestedQty(p: Product): number {
   return Math.max(target - p.stock, 0);
 }
 
+// Make an Open / Partial PO reflect the CURRENT product master — a product edit
+// (name, barcode, unit, cost) flows straight through to the order. Received and
+// Cancelled POs keep their snapshot for historical / accounting accuracy. Qty
+// ordered/received is always preserved. Returns a refreshed copy for READ use;
+// the stored PO isn't mutated.
+export function reflectProductChanges(po: PurchaseOrder, products: Product[]): PurchaseOrder {
+  if (po.status !== "Open" && po.status !== "Partial") return po;
+  const byId = new Map(products.map((p) => [p.id, p]));
+  let changed = false;
+  const items = po.items.map((it) => {
+    const p = byId.get(it.productId);
+    if (!p) return it; // product removed from this store → keep the snapshot
+    const next: POItem = {
+      ...it,
+      name: p.name,
+      barcode: p.barcode || undefined,
+      unit: p.unit || it.unit,
+      cost: p.cost,
+    };
+    if (next.name !== it.name || next.barcode !== it.barcode || next.unit !== it.unit || next.cost !== it.cost) {
+      changed = true;
+    }
+    return next;
+  });
+  return changed ? { ...po, items } : po;
+}
+
 /** Derive PO status from how much of each line has been received. */
 export function poStatus(po: PurchaseOrder): POStatus {
   if (po.status === "Cancelled") return "Cancelled";

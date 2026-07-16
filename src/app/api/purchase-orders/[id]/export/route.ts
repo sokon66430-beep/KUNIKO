@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { buildPOWorkbook } from "@/lib/excelExport";
+import { reflectProductChanges } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const db = await readDB();
-  const po = db.purchaseOrders.find((p) => p.id === params.id);
-  if (!po) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  const stored = db.purchaseOrders.find((p) => p.id === params.id);
+  if (!stored) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  // Open / Partial POs reflect current product data (name, barcode, unit, cost).
+  const po = reflectProductChanges(stored, db.products);
 
   // Tax follows the PO's supplier (10% by default, 0 for a tax-free supplier).
   const supplier = db.suppliers.find((s) => s.name === po.supplier);

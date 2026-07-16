@@ -3,14 +3,16 @@ import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { getSession } from "@/lib/session";
-import { poStatus } from "@/lib/procurement";
+import { poStatus, reflectProductChanges } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const db = await readDB();
-  const po = db.purchaseOrders.find((p) => p.id === params.id);
-  if (!po) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  const stored = db.purchaseOrders.find((p) => p.id === params.id);
+  if (!stored) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  // Open / Partial POs reflect current product data (name, barcode, unit, cost).
+  const po = reflectProductChanges(stored, db.products);
   // The PO's tax follows its supplier: each supplier carries its own tax % (10 by
   // default, 0 for a tax-free supplier). Fall back to the business VAT only when
   // the PO's supplier isn't in the list.

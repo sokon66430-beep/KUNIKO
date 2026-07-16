@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
-import { nextPoNumber, findMergeablePO, appendItemsToPO } from "@/lib/procurement";
+import { nextPoNumber, findMergeablePO, appendItemsToPO, reflectProductChanges } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
 import type { PurchaseOrder, POItem } from "@/lib/types";
 
@@ -9,9 +9,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const db = await readDB();
-  const list = [...db.purchaseOrders].sort(
-    (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
-  );
+  // Open / Partial POs reflect the current product master (name, barcode, unit,
+  // cost); received/cancelled keep their snapshot.
+  const list = [...db.purchaseOrders]
+    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    .map((po) => reflectProductChanges(po, db.products));
   return NextResponse.json(list);
 }
 
