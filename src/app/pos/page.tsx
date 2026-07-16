@@ -402,7 +402,9 @@ export default function PosPage() {
             clutters the screen. Products with NO barcode can't be scanned (fresh
             food, made-to-order drinks…), so they're laid out here by category for
             the cashier to tap. */}
-        <div>
+        {/* min-w-0 so the swipeable category row scrolls INSIDE this column
+            instead of stretching the grid and overflowing the page. */}
+        <div className="min-w-0">
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -492,21 +494,21 @@ export default function PosPage() {
               </div>
             </div>
           ) : (
-            /* Step 1 — categories only; tap one to see its items. */
+            /* Step 1 — one swipeable row of categories; tap one to see its items. */
             <div>
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
                 Sell directly · no barcode{" "}
                 <span className="font-semibold normal-case tracking-normal text-slate-400">({directSaleCount})</span>
               </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
                 {directSaleGroups.map((g) => (
                   <button
                     key={g.category}
                     onClick={() => setOpenCat(g.category)}
-                    className="card flex flex-col items-start p-4 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+                    className="card shrink-0 px-3.5 py-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
                   >
-                    <span className="text-sm font-bold text-ink-900">{g.category}</span>
-                    <span className="mt-1 text-xs text-slate-400">
+                    <span className="block whitespace-nowrap text-sm font-bold text-ink-900">{g.category}</span>
+                    <span className="block text-[11px] text-slate-400">
                       {g.items.length} item{g.items.length === 1 ? "" : "s"}
                     </span>
                   </button>
