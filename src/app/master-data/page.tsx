@@ -60,6 +60,21 @@ export default function MasterDataPage() {
     );
   }, [supList, query]);
 
+  const [syncingSup, setSyncingSup] = useState(false);
+  const [supSyncResult, setSupSyncResult] = useState<{ suppliers: number; stores: number } | null>(null);
+  async function syncSuppliers() {
+    setSyncingSup(true);
+    setSupSyncResult(null);
+    try {
+      const r = await api<{ suppliers: number; stores: number }>("/api/master/suppliers/sync", { method: "POST" });
+      setSupSyncResult(r);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSyncingSup(false);
+    }
+  }
+
   async function saveSupplier(s: Partial<Supplier>) {
     setBusy(true);
     try {
@@ -224,9 +239,20 @@ export default function MasterDataPage() {
                 </button>
               </>
             ) : (
-              <button className="btn-primary" onClick={() => setEditingSup({ ...EMPTY_SUPPLIER })}>
-                <Plus size={18} /> Add Supplier
-              </button>
+              <>
+                <button
+                  className="btn-ghost !py-2 text-sm"
+                  disabled={syncingSup}
+                  onClick={syncSuppliers}
+                  title="Push the supplier list to every store"
+                >
+                  <RefreshCw size={16} className={syncingSup ? "animate-spin" : ""} />{" "}
+                  {syncingSup ? "Syncing…" : "Sync to stores"}
+                </button>
+                <button className="btn-primary" onClick={() => setEditingSup({ ...EMPTY_SUPPLIER })}>
+                  <Plus size={18} /> Add Supplier
+                </button>
+              </>
             )}
           </div>
         }
@@ -366,6 +392,12 @@ export default function MasterDataPage() {
 
       {tab === "suppliers" && (
         <>
+          {supSyncResult && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+              <CheckCircle2 size={16} /> Synced {num(supSyncResult.suppliers)} suppliers to {supSyncResult.stores}{" "}
+              store{supSyncResult.stores === 1 ? "" : "s"}.
+            </div>
+          )}
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard label="Suppliers" value={num(supList.length)} icon={<Truck size={18} />} accent="brand" />
             <StatCard
