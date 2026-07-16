@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Tag, Plus, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
+import { Tag, Plus, Minus, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Markdown } from "@/lib/types";
@@ -48,17 +48,28 @@ function shortDay(iso: string): string {
 // read off a sticker slapped on a curved bun bag, so bar width carries it.
 const DESIGN_W = 470;
 const DESIGN_H = 250;
-const LABEL_SCALE = (47 * 96) / 25.4 / DESIGN_W;
+// Same A4 sheet as the price labels: 4 across at 47mm, hairline gap, so both
+// print on the identical label stock.
+const PER_ROW = 4;
+const LABEL_W_MM = 47;
+const SHEET_GAP_MM = 0.5;
+const SHEET_MARGIN_MM = 10.25;
+// A ceiling so a stray keystroke in the qty box can't try to render thousands
+// of barcodes and lock the tablet up.
+const MAX_LABELS = 200;
+const clampQty = (n: number) => Math.max(1, Math.min(MAX_LABELS, Math.floor(n) || 1));
 const LABEL_FONT = `'Plus Jakarta Sans Variable','Segoe UI',sans-serif`;
 const KHMER_FONT = `'Battambang','Khmer UI','Noto Sans Khmer','Leelawadee UI',sans-serif`;
 const LABEL_RED = "#e11d48"; // markdown band — the shelf label's green means full price
 const LABEL_BLUE = "#4a72c4"; // same footer strip as the shelf label
 const rielNum = (n: number) => n.toLocaleString("en-US");
 
-// zoom only blows it up for reading on screen — print always renders at 1, the
-// true 4.7 × 2.5cm, so what you see is exactly what the printer puts out.
-function PromoLabel({ m, zoom = 1 }: { m: Markdown; zoom?: number }) {
+// Rendered at its true millimetre size, like the price label — the preview IS
+// the printout, not a picture of one.
+function PromoLabel({ m, widthMm = LABEL_W_MM }: { m: Markdown; widthMm?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const scale = (widthMm * 96) / 25.4 / DESIGN_W;
+  const heightMm = +((widthMm * DESIGN_H) / DESIGN_W).toFixed(2);
   useEffect(() => {
     if (!svgRef.current) return;
     try {
@@ -82,18 +93,14 @@ function PromoLabel({ m, zoom = 1 }: { m: Markdown; zoom?: number }) {
   return (
     <div
       className="promo-label overflow-hidden bg-white"
-      style={{
-        width: DESIGN_W * LABEL_SCALE * zoom,
-        height: DESIGN_H * LABEL_SCALE * zoom,
-        breakInside: "avoid",
-      }}
+      style={{ width: `${widthMm}mm`, height: `${heightMm}mm`, breakInside: "avoid" }}
     >
       <div
         className="flex flex-col"
         style={{
           width: DESIGN_W,
           height: DESIGN_H,
-          transform: `scale(${LABEL_SCALE * zoom})`,
+          transform: `scale(${scale})`,
           transformOrigin: "top left",
           fontFamily: LABEL_FONT,
         }}
@@ -162,7 +169,9 @@ export default function PromotionsPage() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [printing, setPrinting] = useState<Markdown | null>(null);
+  // How many stickers to run off — one per reduced item. A row's worth by
+  // default, since that's the usual handful pulled off a shelf.
+  const [qty, setQty] = useState(PER_ROW);
   const [cameraOpen, setCameraOpen] = useState(false);
   // Which label is shown in the preview panel. Held as a CODE, not the object,
   // so the panel follows the record across a reload instead of going stale.
@@ -221,6 +230,12 @@ export default function PromotionsPage() {
     return rows.length === 1 ? rows[0] : null;
   }, [previewCode, rows]);
 
+  // A dead label still previews so you can see what it said, but there's nothing
+  // to print — that barcode won't scan.
+  const printable = preview
+    ? markdownStatus(preview, today) === "Active" || markdownStatus(preview, today) === "Scheduled"
+    : false;
+
   const stats = useMemo(() => {
     const list = markdowns || [];
     const active = list.filter((m) => markdownStatus(m, today) === "Active");
@@ -270,7 +285,7 @@ export default function PromotionsPage() {
   // scanner's burst from human typing, so normal searching still works.
   const scanStateRef = useRef({ buf: "", last: 0 });
   const blockRef = useRef(false);
-  blockRef.current = open || cameraOpen || !!printing;
+  blockRef.current = open || cameraOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (blockRef.current) return;
@@ -311,14 +326,38 @@ export default function PromotionsPage() {
     }
   }
 
-  // Print one sticker per screen — the browser's own print dialog handles the
-  // label printer, same as the price labels sheet.
-  function printLabel(m: Markdown) {
-    setPrinting(m);
-    setTimeout(() => {
-      window.print();
-      setPrinting(null);
-    }, 60);
+  // Print the sheet through its own window, the way the price labels do: the
+  // grid is restated in the print CSS so the paper lays out exactly like the
+  // preview instead of being reflowed.
+  function printSheet() {
+    const sheet = document.querySelector(".promo-sheet");
+    if (!sheet) return;
+    const win = window.open("", "PRINT", "width=900,height=650");
+    if (!win) {
+      window.print(); // popups blocked — fall back to printing the page
+      return;
+    }
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((n) => n.outerHTML)
+      .join("\n");
+    win.document.open();
+    win.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>Discount Labels</title>${styles}` +
+        `<style>@page{size:A4 portrait;margin:${SHEET_MARGIN_MM}mm}html,body{margin:0;padding:0;background:#fff}` +
+        `.promo-sheet{display:grid!important;grid-template-columns:repeat(${PER_ROW}, ${LABEL_W_MM}mm)!important;` +
+        `gap:${SHEET_GAP_MM}mm!important;width:max-content}` +
+        `.promo-label{outline:none!important;box-shadow:none!important}</style>` +
+        `</head><body>${sheet.outerHTML}</body></html>`,
+    );
+    win.document.close();
+    win.onafterprint = () => win.close();
+    const go = () => {
+      win.focus();
+      win.print();
+    };
+    // let fonts + stylesheets land before the dialog opens
+    if (win.document.readyState === "complete") setTimeout(go, 400);
+    else win.onload = () => setTimeout(go, 400);
   }
 
   return (
@@ -463,8 +502,11 @@ export default function PromotionsPage() {
                   <div className="flex w-full items-center gap-2 sm:w-auto">
                     {/* No reprinting a dead label — that sticker can't scan. */}
                     {(status === "Active" || status === "Scheduled") && (
-                      <button className="btn-ghost !py-2 flex-1 text-xs sm:flex-none" onClick={() => printLabel(m)}>
-                        <Printer size={14} /> Label
+                      <button
+                        className="btn-ghost !py-2 flex-1 text-xs sm:flex-none"
+                        onClick={() => setPreviewCode(m.code)}
+                      >
+                        <Printer size={14} /> Labels
                       </button>
                     )}
                     {mayDiscount && (status === "Active" || status === "Scheduled") && (
@@ -484,41 +526,76 @@ export default function PromotionsPage() {
         )}
       </Card>
 
-      {/* The sticker itself. Seeing it beats printing to find out what it says —
-          and after a scan narrows the list to one, it's already up. */}
+      {/* The printable sheet. One reduced item needs one sticker, so this is a
+          run of them laid out 4 across on A4 — the same stock and grid as the
+          price labels — and it's real size, so the preview IS the printout. */}
       {preview && (
         <Card className="mt-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h3 className="text-sm font-bold text-ink-900">Label</h3>
+              <h3 className="text-sm font-bold text-ink-900">Labels to print</h3>
               <p className="text-xs text-slate-400">
-                {preview.name} · prints at 4.7 × 2.5 cm — shown at double size
+                {preview.name} · {PER_ROW} across on A4 at 4.7 × 2.5 cm — exactly what prints
               </p>
             </div>
-            {(markdownStatus(preview, today) === "Active" || markdownStatus(preview, today) === "Scheduled") && (
-              <button className="btn-primary !py-2 text-xs" onClick={() => printLabel(preview)}>
-                <Printer size={14} /> Print this label
-              </button>
-            )}
+            {printable ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setQty((n) => Math.max(1, n - 1))}
+                    aria-label="Fewer labels"
+                    className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <input
+                    className="input h-11 w-16 text-center text-sm font-bold"
+                    type="number"
+                    min={1}
+                    max={MAX_LABELS}
+                    value={qty}
+                    onChange={(e) => setQty(clampQty(Number(e.target.value)))}
+                    aria-label="How many labels"
+                  />
+                  <button
+                    onClick={() => setQty((n) => Math.min(MAX_LABELS, n + 1))}
+                    aria-label="More labels"
+                    className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                <button className="btn-primary !py-2 text-xs" onClick={printSheet}>
+                  <Printer size={14} /> Print {qty}
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          <div className="mt-4 flex justify-center rounded-xl bg-slate-50 p-6">
-            <div className="shadow-soft">
-              <PromoLabel m={preview} zoom={2} />
+          <div className="mt-4 overflow-x-auto rounded-xl bg-slate-50 p-4">
+            <div
+              className="promo-sheet grid"
+              style={{
+                gridTemplateColumns: `repeat(${PER_ROW}, ${LABEL_W_MM}mm)`,
+                gap: `${SHEET_GAP_MM}mm`,
+                width: "max-content",
+              }}
+            >
+              {Array.from({ length: printable ? qty : 1 }, (_, i) => (
+                <PromoLabel key={`${preview.code}-${i}`} m={preview} />
+              ))}
             </div>
           </div>
 
           {markdownStatus(preview, today) === "Expired" ? (
-            <p className="mt-3 text-center text-xs text-slate-400">
+            <p className="mt-3 text-xs text-slate-400">
               This label has expired — the barcode no longer scans, so there's nothing to print.
             </p>
           ) : markdownStatus(preview, today) === "Cancelled" ? (
-            <p className="mt-3 text-center text-xs text-slate-400">
-              This label was stopped early — the barcode no longer scans.
-            </p>
+            <p className="mt-3 text-xs text-slate-400">This label was stopped early — the barcode no longer scans.</p>
           ) : (
-            <p className="mt-3 text-center text-xs text-slate-400">
-              Stick it on the reduced items only — the rest keep selling at {usd(preview.originalPrice)}.
+            <p className="mt-3 text-xs text-slate-400">
+              One per reduced item — the rest of the shelf keeps selling at {usd(preview.originalPrice)}.
             </p>
           )}
         </Card>
@@ -550,37 +627,6 @@ export default function PromotionsPage() {
           }}
         />
       )}
-
-      {/* Print surface — hidden on screen, the only thing on paper. */}
-      {printing && (
-        <div className="promo-print-sheet">
-          <PromoLabel m={printing} />
-        </div>
-      )}
-      <style jsx global>{`
-        .promo-print-sheet {
-          position: fixed;
-          left: -10000px;
-          top: 0;
-        }
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .promo-print-sheet {
-            position: absolute;
-            left: 0;
-            top: 0;
-            visibility: visible;
-          }
-          .promo-print-sheet * {
-            visibility: visible;
-          }
-          @page {
-            margin: 4mm;
-          }
-        }
-      `}</style>
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl bg-ink-900 px-4 py-3 text-sm text-white shadow-soft">

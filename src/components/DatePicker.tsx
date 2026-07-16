@@ -164,16 +164,16 @@ export function DatePicker({
         ref={btnRef}
         type="button"
         onClick={() => {
-          setOpen((o) => {
-            const next = !o;
-            // Seed a position from the trigger before it paints, so the calendar
-            // never flashes at the wrong spot on its first frame.
-            if (next && btnRef.current) {
-              const b = btnRef.current.getBoundingClientRect();
-              setPos({ top: b.bottom + GAP, left: b.left });
-            }
-            return next;
-          });
+          const next = !open;
+          // Seed a position from the trigger before it paints, so the calendar
+          // never flashes at the wrong spot on its first frame. Both setters are
+          // called from the handler, never from inside an updater — React runs
+          // updaters during render, and setting other state there is illegal.
+          if (next && btnRef.current) {
+            const b = btnRef.current.getBoundingClientRect();
+            setPos({ top: b.bottom + GAP, left: b.left });
+          }
+          setOpen(next);
         }}
         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-ink-800 outline-none transition hover:border-slate-300 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
       >
