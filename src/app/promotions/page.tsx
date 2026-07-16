@@ -177,20 +177,31 @@ export default function PromotionsPage() {
   // wrong clock shouldn't change which labels look live.
   const today = storeToday();
 
+  // Supplier isn't copied onto the label — it's read from the product it points
+  // at, so "which Autoshine items are reduced?" still answers correctly after a
+  // supplier change syncs down from Master Data, instead of matching a snapshot
+  // taken the day the label was made.
+  const byProductId = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
+
   const rows = useMemo(() => {
     const list = markdowns || [];
     const needle = q.trim().toLowerCase();
     const matched = needle
-      ? list.filter(
-          (m) =>
+      ? list.filter((m) => {
+          const p = byProductId.get(m.productId);
+          return (
             m.name.toLowerCase().includes(needle) ||
             m.code.includes(needle) ||
             m.sku.toLowerCase().includes(needle) ||
             // The item's own shelf barcode too — scanning the product (not the
             // promo sticker) is how staff check "is this one reduced?"
             (m.productBarcode || "").includes(needle) ||
-            (m.category || "").toLowerCase().includes(needle),
-        )
+            (m.category || "").toLowerCase().includes(needle) ||
+            (p?.supplier || "").toLowerCase().includes(needle) ||
+            (p?.supplierCode || "").toLowerCase().includes(needle) ||
+            (p?.nameKh || "").includes(needle)
+          );
+        })
       : list;
     // Live labels first — those are the ones staff act on.
     const rank: Record<MarkdownStatus, number> = { Active: 0, Scheduled: 1, Expired: 2, Cancelled: 3 };
@@ -198,7 +209,7 @@ export default function PromotionsPage() {
       const d = rank[markdownStatus(a, today)] - rank[markdownStatus(b, today)];
       return d !== 0 ? d : +new Date(b.createdAt) - +new Date(a.createdAt);
     });
-  }, [markdowns, q, today]);
+  }, [markdowns, byProductId, q, today]);
 
   // The label on show: the picked one, else the only row on screen — so a scan
   // that narrows to one item puts its sticker up with nothing else to tap.
@@ -330,7 +341,7 @@ export default function PromotionsPage() {
             <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
             <input
               className="input h-12 pl-10 pr-12 text-base"
-              placeholder="Scan a barcode · or search product, label code, category…"
+              placeholder="Scan a barcode · or search product, item ID, supplier, category, label code…"
               value={q}
               onChange={(e) => {
                 setQ(e.target.value);
@@ -391,7 +402,7 @@ export default function PromotionsPage() {
             title={q ? "No matching promotion" : "No promotions yet"}
             hint={
               q
-                ? "Scan the item to discount it, or search by product name or label code."
+                ? "Scan the item to discount it, or search by name, item ID, supplier, category or label code."
                 : "Scan a product above — pick 30, 50 or 70% off and the dates, and the system mints a barcode for it."
             }
           />
@@ -421,6 +432,9 @@ export default function PromotionsPage() {
                     <p className="mt-0.5 truncate text-xs text-slate-400">
                       <span className="font-mono font-semibold text-slate-500">{m.code}</span> · {m.sku}
                       {m.category ? ` · ${m.category}` : ""}
+                      {/* Shown because it's searchable — a supplier hit that
+                          matched on nothing visible reads as a bug. */}
+                      {byProductId.get(m.productId)?.supplier ? ` · ${byProductId.get(m.productId)!.supplier}` : ""}
                     </p>
                   </div>
 
