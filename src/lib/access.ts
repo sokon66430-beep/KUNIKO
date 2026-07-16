@@ -49,7 +49,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/stock-count", label: "Stock Count" },
   { href: "/write-offs", label: "Write-Off" },
   { href: "/price-labels", label: "Price Labels" },
-  { href: "/promotions", label: "Promotions" },
+  { href: "/promotions", label: "Mark Down" },
   { href: "/purchase-requests", label: "Purchase Requests" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },

@@ -423,7 +423,7 @@ export default function PromotionsPage() {
   return (
     <div>
       <PageHeader
-        title="Promotions"
+        title="Mark Down"
         subtitle="Set a discount and dates, then scan the items — the barcodes stop working on the end date"
       />
 
@@ -548,12 +548,12 @@ export default function PromotionsPage() {
         </div>
 
         {loading ? (
-          <Spinner label="Loading promotions…" />
+          <Spinner label="Loading mark downs…" />
         ) : error ? (
           <ErrorBox message={error} />
         ) : rows.length === 0 ? (
           <EmptyState
-            title="No promotions yet"
+            title="Nothing marked down yet"
             hint="Set the discount and dates above, then scan or search each item to reduce — each is discounted on the spot and gets its own barcode."
           />
         ) : (
