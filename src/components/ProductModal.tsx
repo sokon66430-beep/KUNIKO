@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, Truck, Tag, Sparkles } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Check, Truck, Tag, Sparkles, Upload, Image as ImageIcon } from "lucide-react";
 import type { Product, Supplier } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
@@ -42,6 +42,39 @@ export function ProductModal({
 }) {
   const [form, setForm] = useState<Partial<Product>>(initial);
   const set = (k: keyof Product, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const photoRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Downscale before upload — a POS tile never needs more than ~512px, and the
+  // master carries thousands of products.
+  async function shrink(file: File, max = 512, quality = 0.75): Promise<string> {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", quality);
+  }
+
+  async function pickPhoto(file: File) {
+    setUploading(true);
+    try {
+      const image = await shrink(file);
+      const res = await fetch("/api/product-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.error || "Upload failed");
+      set("image", d.name);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   // Live preview of the auto-generated Item ID: the fixed prefix from the
   // codes, with the running number shown as dots (filled in on save).
@@ -324,6 +357,53 @@ export function ProductModal({
           <label className="label">Price ($)</label>
           <input className="input" type="number" step="0.01" value={form.price ?? 0} onChange={(e) => set("price", e.target.value)} />
         </div>
+        {/* Product photo — shown on the POS tile so the cashier spots fresh
+            items fast. Nothing to do with the supplier-invoice photos. */}
+        <div className="col-span-2">
+          <label className="label">Photo — shown on the POS</label>
+          <div className="flex items-center gap-3">
+            <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+              {form.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/product-image/${form.image}`} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <ImageIcon size={20} className="text-slate-300" />
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-ghost !py-2 text-sm"
+                disabled={uploading}
+                onClick={() => photoRef.current?.click()}
+              >
+                <Upload size={15} /> {uploading ? "Uploading…" : form.image ? "Change photo" : "Add photo"}
+              </button>
+              {form.image && (
+                <button
+                  type="button"
+                  className="btn-ghost !py-2 text-sm text-rose-600"
+                  onClick={() => set("image", undefined)}
+                >
+                  Remove
+                </button>
+              )}
+              <input
+                ref={photoRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) pickPhoto(f);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Which products the cashier can TAP at the till. Everything else is
             sold by scanning its barcode and never shows on the POS screen. */}
         <label className="col-span-2 flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3">

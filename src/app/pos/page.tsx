@@ -719,6 +719,12 @@ function ProductCard({ p, onAdd }: { p: Product; onAdd: (p: Product) => void }) 
       onClick={() => onAdd(p)}
       className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
     >
+      {p.image && (
+        <div className="mb-2 h-24 w-full overflow-hidden rounded-lg bg-slate-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
+        </div>
+      )}
       <div className="mb-2 flex items-start justify-between">
         <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{p.sku}</span>
         {p.stock <= p.reorderLevel && !out && <span className="text-[10px] font-bold text-amber-500">low</span>}

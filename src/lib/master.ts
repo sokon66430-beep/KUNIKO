@@ -33,6 +33,7 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "supplier",
   "supplierCode",
   "showOnPos", // which items the cashier can tap at the till
+  "image", // product photo shown on the POS tile
 ];
 
 async function ensureMaster(): Promise<void> {

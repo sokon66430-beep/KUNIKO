@@ -22,6 +22,10 @@ export type Product = {
   // made-to-order drinks…). Unset = fall back to the default POS categories —
   // see lib/pos.ts. Everything else is sold by scanning its barcode.
   showOnPos?: boolean;
+  // Product photo shown on the POS tile — the stored file name, served by
+  // /api/product-image/<name>. Set in Master Data (nothing to do with the
+  // supplier-invoice photos).
+  image?: string;
   gondola?: string; // PRIMARY gondola (most recently set) — printed on the label
   shelf?: string; // primary shelf position within the gondola
   // A product can sit in several places; every registered spot is kept here so
