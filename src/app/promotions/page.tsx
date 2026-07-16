@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Tag, Plus, Minus, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
+import { Tag, Plus, Minus, Trash2, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Markdown } from "@/lib/types";
@@ -110,18 +110,20 @@ function PromoLabel({ m, widthMm = LABEL_W_MM }: { m: Markdown; widthMm?: number
           style={{ backgroundColor: LABEL_RED }}
         >
           <div className="min-w-0 flex-1">
-            <p className="text-[20px] font-black leading-[24px] tracking-[0.02em]">{m.percent}% OFF</p>
+            {/* The cut is the whole point of the sticker — it has to carry
+                across the aisle, so it's the biggest thing on this side. */}
+            <p className="text-[38px] font-black leading-[40px] tracking-[-0.01em]">{m.percent}% OFF</p>
             {kh && (
               <p
-                className="overflow-hidden text-[19px] font-bold leading-[24px]"
+                className="overflow-hidden text-[17px] font-bold leading-[21px]"
                 style={{ fontFamily: KHMER_FONT, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
               >
                 {kh}
               </p>
             )}
             <p
-              className={`overflow-hidden font-bold ${kh ? "text-[15px] leading-[19px]" : "mt-0.5 text-[20px] leading-[25px]"}`}
-              style={{ display: "-webkit-box", WebkitLineClamp: kh ? 2 : 3, WebkitBoxOrient: "vertical" }}
+              className={`overflow-hidden font-bold ${kh ? "text-[14px] leading-[17px]" : "mt-0.5 text-[17px] leading-[21px]"}`}
+              style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
             >
               {m.name}
             </p>
@@ -165,7 +167,9 @@ export default function PromotionsPage() {
   const role = useRole();
   const mayDiscount = role ? canMarkDown(role) : false;
 
-  // The inline creator's fields — the whole discount is set on this page.
+  // ONE discount and date range for the whole run — set once, then scan the
+  // shelf of items that all get it. This is the bulk model: the manager decides
+  // "everything I scan now is 50% off until Sunday", not item by item.
   const [percent, setPercent] = useState(MARKDOWN_PERCENTS[0]);
   const [startDate, setStartDate] = useState(storeToday());
   const [endDate, setEndDate] = useState(storeToday());
@@ -173,15 +177,16 @@ export default function PromotionsPage() {
   const [createErr, setCreateErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  // How many stickers to run off — one per reduced item. A row's worth by
-  // default, since that's the usual handful pulled off a shelf.
-  const [qty, setQty] = useState(PER_ROW);
+  // Copies of each sticker to print. One per reduced item is the norm, so 1.
+  const [qty, setQty] = useState(1);
   const [cameraOpen, setCameraOpen] = useState(false);
-  // Which label is shown in the preview panel. Held as a CODE, not the object,
-  // so the panel follows the record across a reload instead of going stale.
+  // Which existing label is shown in the sheet (from clicking a row). Held as a
+  // CODE so it survives a reload instead of going stale.
   const [previewCode, setPreviewCode] = useState<string | null>(null);
-  // The scanned item with no label running — the one being set up right now.
-  const [scanned, setScanned] = useState<Product | null>(null);
+  // Items scanned under the current settings, waiting to be discounted together.
+  const [queue, setQueue] = useState<Product[]>([]);
+  // The labels just created from a batch — what the sheet prints.
+  const [batch, setBatch] = useState<Markdown[]>([]);
 
   // Today is resolved in the store's timezone, not the tablet's — a Sunmi with a
   // wrong clock shouldn't change which labels look live.
@@ -221,21 +226,26 @@ export default function PromotionsPage() {
     });
   }, [markdowns, byProductId, q, today]);
 
-  // The label on show: the picked one, else the only row on screen — so a scan
-  // that narrows to one item puts its sticker up with nothing else to tap.
-  // A pick is only honoured while it's still IN the list: searching past it must
-  // not leave the panel showing a label the list no longer has.
+  // A single label picked from the list (clicking a row). Only honoured while
+  // it's still in the list, so searching past it doesn't strand a stale sheet.
   const preview = useMemo(() => {
     const picked = previewCode ? rows.find((m) => m.code === previewCode) : null;
     if (picked) return picked;
     return rows.length === 1 ? rows[0] : null;
   }, [previewCode, rows]);
 
-  // A dead label still previews so you can see what it said, but there's nothing
-  // to print — that barcode won't scan.
-  const printable = preview
-    ? markdownStatus(preview, today) === "Active" || markdownStatus(preview, today) === "Scheduled"
-    : false;
+  // What the sheet prints: the freshly-created batch if there is one, otherwise
+  // the single picked label. The batch wins so a run of items shows all at once.
+  const sheetLabels = batch.length > 0 ? batch : preview ? [preview] : [];
+  const sheetItems = sheetLabels.length;
+
+  // A dead label still shows so you can see what it said, but there's nothing to
+  // print — the barcode won't scan. Batches are always freshly live.
+  const printable =
+    batch.length > 0 ||
+    (preview
+      ? markdownStatus(preview, today) === "Active" || markdownStatus(preview, today) === "Scheduled"
+      : false);
 
   const stats = useMemo(() => {
     const list = markdowns || [];
@@ -248,36 +258,54 @@ export default function PromotionsPage() {
     };
   }, [markdowns, today]);
 
-  // One scan path for all three inputs: the Sunmi's built-in scanner, a phone
-  // camera, and typing. Scanning the promo sticker finds that label; scanning
-  // the ITEM finds any label on it — and if there's none, offers to make one,
-  // which is the "register the product" step done in a single tap.
+  // One scan path for the Sunmi's scanner, the camera and typing. Scanning an
+  // item adds it to the batch under the current discount + dates. A promo
+  // sticker (or an item already reduced) isn't added — it just filters the list
+  // so you can see it. Anything else falls through to a plain search.
   function handleScan(code: string) {
     const c = code.trim();
     if (!c) return;
-    setQ(c);
     setCameraOpen(false);
     const lc = c.toLowerCase();
     const list = products || [];
+    const live = (markdowns || []).find(
+      (m) => (m.productBarcode === c || m.sku.toLowerCase() === lc || m.code === c) && markdownStatus(m, today) === "Active",
+    );
+    if (live) {
+      setQ(c); // show the existing one rather than making a duplicate
+      setToast(`${live.name} is already ${live.percent}% off until ${shortDay(live.endDate)}.`);
+      return;
+    }
     // Barcode or item ID first. Failing that, a typed name counts too — fresh
-    // food and made-to-order items carry no barcode at all, and scanning is now
-    // the only way in, so they'd otherwise be impossible to discount.
-    // An exact name wins outright: "Taro Bun" must find Taro Bun even though
-    // "Taro Bun v2" also contains it. Otherwise only an unambiguous partial.
+    // food and made-to-order items carry no barcode at all. An exact name wins
+    // outright: "Taro Bun" must find Taro Bun even though "Taro Bun v2" also
+    // contains it; otherwise only an unambiguous partial.
     const named = list.filter((p) => p.name.toLowerCase().includes(lc));
     const prod =
       list.find((p) => p.barcode === c || p.sku.toLowerCase() === lc) ??
       list.find((p) => p.name.toLowerCase() === lc) ??
       (named.length === 1 ? named[0] : undefined);
-    const live = (markdowns || []).find(
-      (m) => (m.productBarcode === c || m.sku.toLowerCase() === lc || m.code === c) && markdownStatus(m, today) === "Active",
-    );
-    if (prod && !live) {
-      setScanned(prod);
-    } else {
-      setScanned(null);
-      if (live) setToast(`${live.name} is ${live.percent}% off until ${shortDay(live.endDate)}.`);
+    if (!prod) {
+      setQ(c); // no match — let the search box filter / show its empty state
+      return;
     }
+    if (!mayDiscount) {
+      setToast("Ask a manager to discount it.");
+      return;
+    }
+    setQueue((qu) => {
+      if (qu.some((p) => p.id === prod.id)) {
+        setToast(`${prod.name} is already in the batch.`);
+        return qu;
+      }
+      setToast(`Added ${prod.name}`);
+      return [...qu, prod];
+    });
+    setQ(""); // clear so the next scan starts clean and the list shows everything
+  }
+
+  function removeFromQueue(id: string) {
+    setQueue((qu) => qu.filter((p) => p.id !== id));
   }
 
   // The Sunmi L3 (and any USB wedge scanner) types the barcode in a fast burst
@@ -312,31 +340,36 @@ export default function PromotionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, markdowns, today]);
 
-  // What the customer would pay — shown live as the cut is chosen, before
-  // anything is committed.
-  const newPrice = scanned ? markdownPrice(scanned.price, percent) : 0;
-
-  async function createMarkdown() {
-    if (!scanned || creating) return;
+  // Discount every queued item at the shared percent + dates. One request each —
+  // the server serialises writes, and a shelf is a handful of items, not
+  // thousands. Whatever succeeds goes straight into the print sheet; anything
+  // rejected (e.g. it already had a label) is named rather than silently lost.
+  async function createBatch() {
+    if (queue.length === 0 || creating) return;
     setCreating(true);
     setCreateErr(null);
-    try {
-      const m = await api<Markdown>("/api/markdowns", {
-        method: "POST",
-        body: JSON.stringify({ productId: scanned.id, percent, startDate, endDate }),
-      });
-      setScanned(null);
-      setQ("");
-      // Put the new label straight up in the sheet below, ready to print — the
-      // reason they came to this page.
-      setPreviewCode(m.code);
-      reload();
-      setToast(`${m.code} created — ${m.percent}% off ${m.name}. Print the labels and stick them on.`);
-    } catch (e: any) {
-      setCreateErr(e.message);
-    } finally {
-      setCreating(false);
+    const made: Markdown[] = [];
+    const failed: string[] = [];
+    for (const p of queue) {
+      try {
+        const m = await api<Markdown>("/api/markdowns", {
+          method: "POST",
+          body: JSON.stringify({ productId: p.id, percent, startDate, endDate }),
+        });
+        made.push(m);
+      } catch (e: any) {
+        failed.push(`${p.name} (${e.message})`);
+      }
     }
+    setCreating(false);
+    if (made.length > 0) {
+      setBatch(made);
+      setPreviewCode(null);
+      setQueue([]);
+      reload();
+      setToast(`${made.length} label${made.length === 1 ? "" : "s"} created at ${percent}% off — print and stick them on.`);
+    }
+    setCreateErr(failed.length ? `Couldn't discount ${failed.length}: ${failed.join("; ")}` : null);
   }
 
   async function stop(m: Markdown) {
@@ -394,7 +427,7 @@ export default function PromotionsPage() {
     <div>
       <PageHeader
         title="Promotions"
-        subtitle="Scan a product to discount it — the barcode stops working on the end date"
+        subtitle="Set a discount and dates, then scan the items — the barcodes stop working on the end date"
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
@@ -412,10 +445,7 @@ export default function PromotionsPage() {
               className="input h-12 pl-10 pr-12 text-base"
               placeholder="Scan a barcode · or search product, item ID, supplier, category, label code…"
               value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setScanned(null);
-              }}
+              onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return;
                 e.preventDefault();
@@ -435,107 +465,97 @@ export default function PromotionsPage() {
             </button>
           </div>
 
-          {/* Scanned an item with nothing running on it — the whole job is done
-              here: pick the cut, the dates and how many stickers, then create.
-              No dialog in the way; the item is in your hand at the shelf. */}
-          {scanned && (
-            <div className="mt-3 rounded-xl bg-brand-50 p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-ink-900">{scanned.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {scanned.sku}
-                    {scanned.category ? ` · ${scanned.category}` : ""} · no discount running
-                  </p>
+          {/* Bulk settings — set the cut and the dates ONCE, then scan the run
+              of items. Every item you scan next gets these. */}
+          {mayDiscount && (
+            <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-xl bg-brand-50 p-4">
+              <div>
+                <label className="label">Discount</label>
+                <div className="flex gap-1.5">
+                  {MARKDOWN_PERCENTS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPercent(p)}
+                      className={`h-11 min-w-[4rem] rounded-lg px-3 text-base font-black transition active:scale-[0.98] ${
+                        percent === p ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {p}%
+                    </button>
+                  ))}
                 </div>
-                <p className="text-right">
-                  <span className="text-lg font-extrabold text-amber-700">{usd(newPrice)}</span>
-                  <span className="ml-2 text-xs text-slate-400 line-through">{usd(scanned.price)}</span>
-                </p>
               </div>
 
-              {mayDiscount ? (
-                <>
-                  <div className="mt-3 grid gap-3 lg:grid-cols-[auto_1fr_auto]">
-                    <div>
-                      <label className="label">Discount</label>
-                      <div className="flex gap-1.5">
-                        {MARKDOWN_PERCENTS.map((p) => (
-                          <button
-                            key={p}
-                            onClick={() => setPercent(p)}
-                            className={`h-11 min-w-[3.5rem] rounded-lg px-3 text-sm font-bold transition active:scale-[0.98] ${
-                              percent === p ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"
-                            }`}
-                          >
-                            {p}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+              <div>
+                <label className="label">Selling days</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <DatePicker
+                    value={startDate}
+                    min={today}
+                    onChange={(v) => {
+                      setStartDate(v);
+                      if (endDate < v) setEndDate(v); // keep the range sane
+                    }}
+                  />
+                  <span className="text-xs font-semibold text-slate-400">→</span>
+                  <DatePicker value={endDate} min={startDate > today ? startDate : today} onChange={setEndDate} />
+                </div>
+              </div>
 
-                    <div>
-                      <label className="label">Selling days</label>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <DatePicker
-                          value={startDate}
-                          min={today}
-                          onChange={(v) => {
-                            setStartDate(v);
-                            if (endDate < v) setEndDate(v); // keep the range sane
-                          }}
-                        />
-                        <span className="text-xs font-semibold text-slate-400">→</span>
-                        <DatePicker value={endDate} min={startDate > today ? startDate : today} onChange={setEndDate} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="label">Labels</label>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setQty((n) => Math.max(1, n - 1))}
-                          aria-label="Fewer labels"
-                          className="grid h-11 w-11 place-items-center rounded-lg bg-white text-slate-600 hover:bg-slate-100"
-                        >
-                          <Minus size={16} />
-                        </button>
-                        <input
-                          className="input h-11 w-16 text-center text-sm font-bold"
-                          type="number"
-                          min={1}
-                          max={MAX_LABELS}
-                          value={qty}
-                          onChange={(e) => setQty(clampQty(Number(e.target.value)))}
-                          aria-label="How many labels"
-                        />
-                        <button
-                          onClick={() => setQty((n) => Math.min(MAX_LABELS, n + 1))}
-                          aria-label="More labels"
-                          className="grid h-11 w-11 place-items-center rounded-lg bg-white text-slate-600 hover:bg-slate-100"
-                        >
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-brand-100 pt-3">
-                    <p className="text-xs text-slate-500">
-                      Customer saves {usd(scanned.price - newPrice)} · a new barcode is minted, the item's own one keeps
-                      selling at {usd(scanned.price)}
-                    </p>
-                    <button className="btn-primary !py-2 text-xs" onClick={createMarkdown} disabled={creating}>
-                      <Plus size={14} /> {creating ? "Creating…" : `Create ${qty} label${qty === 1 ? "" : "s"}`}
-                    </button>
-                  </div>
-                  {createErr && <p className="mt-2 text-xs font-semibold text-rose-600">{createErr}</p>}
-                </>
-              ) : (
-                <p className="mt-2 text-xs font-semibold text-slate-500">Ask a manager to discount it</p>
-              )}
+              <p className="text-xs text-slate-500">
+                Scan every item to reduce — each gets {percent}% off from {shortDay(startDate)} to {shortDay(endDate)}.
+              </p>
             </div>
           )}
+
+          {/* The batch waiting to be discounted. */}
+          {queue.length > 0 && (
+            <div className="mt-3 rounded-xl border border-brand-200 p-3 sm:p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-bold text-ink-900">
+                  {queue.length} item{queue.length === 1 ? "" : "s"} to discount at {percent}%
+                </p>
+                <button onClick={() => setQueue([])} className="text-xs font-semibold text-slate-400 hover:text-rose-500">
+                  Clear
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {queue.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink-800">{p.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {p.sku}
+                        {p.category ? ` · ${p.category}` : ""}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-right text-sm">
+                      <span className="font-bold text-amber-700">{usd(markdownPrice(p.price, percent))}</span>
+                      <span className="ml-1.5 text-xs text-slate-400 line-through">{usd(p.price)}</span>
+                    </p>
+                    <button
+                      onClick={() => removeFromQueue(p.id)}
+                      aria-label={`Remove ${p.name} from the batch`}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                <p className="text-xs text-slate-500">Each keeps its own barcode at full price — only these stickers are reduced.</p>
+                <button className="btn-primary !py-2 text-xs" onClick={createBatch} disabled={creating}>
+                  <Plus size={14} />{" "}
+                  {creating ? "Creating…" : `Discount ${queue.length} item${queue.length === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Kept outside the queue block so a batch failure is still shown after
+              the queue clears. */}
+          {createErr && <p className="mt-2 text-xs font-semibold text-rose-600">{createErr}</p>}
         </div>
 
         {loading ? (
@@ -547,8 +567,8 @@ export default function PromotionsPage() {
             title={q ? "No matching promotion" : "No promotions yet"}
             hint={
               q
-                ? "Scan the item to discount it, or search by name, item ID, supplier, category or label code."
-                : "Scan a product above — pick 30, 50 or 70% off and the dates, and the system mints a barcode for it."
+                ? "Scan the item to add it to the batch, or search by name, item ID, supplier, category or label code."
+                : "Set the discount and dates above, then scan each item to reduce — they're batched and get a barcode each."
             }
           />
         ) : (
@@ -559,9 +579,12 @@ export default function PromotionsPage() {
               return (
                 <div
                   key={m.id}
-                  onClick={() => setPreviewCode(m.code)}
+                  onClick={() => {
+                    setBatch([]);
+                    setPreviewCode(m.code);
+                  }}
                   className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-xl border p-3 transition sm:p-4 ${
-                    preview?.code === m.code
+                    batch.length === 0 && preview?.code === m.code
                       ? "border-brand-300 bg-brand-50/40"
                       : "border-slate-200 hover:border-slate-300"
                   }`}
@@ -610,7 +633,10 @@ export default function PromotionsPage() {
                     {(status === "Active" || status === "Scheduled") && (
                       <button
                         className="btn-ghost !py-2 flex-1 text-xs sm:flex-none"
-                        onClick={() => setPreviewCode(m.code)}
+                        onClick={() => {
+                          setBatch([]);
+                          setPreviewCode(m.code);
+                        }}
                       >
                         <Printer size={14} /> Labels
                       </button>
@@ -632,24 +658,26 @@ export default function PromotionsPage() {
         )}
       </Card>
 
-      {/* The printable sheet. One reduced item needs one sticker, so this is a
-          run of them laid out 4 across on A4 — the same stock and grid as the
-          price labels — and it's real size, so the preview IS the printout. */}
-      {preview && (
+      {/* The printable sheet — every label in the run, each printed `qty` times,
+          laid out 4 across on A4 on the same stock and grid as the price labels.
+          Real size, so the preview IS the printout. */}
+      {sheetItems > 0 && (
         <Card className="mt-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h3 className="text-sm font-bold text-ink-900">Labels to print</h3>
               <p className="text-xs text-slate-400">
-                {preview.name} · {PER_ROW} across on A4 at 4.7 × 2.5 cm — exactly what prints
+                {sheetItems === 1 ? sheetLabels[0].name : `${sheetItems} items`}
+                {qty > 1 ? ` · ${qty} each` : ""} · {PER_ROW} across on A4 at 4.7 × 2.5 cm — exactly what prints
               </p>
             </div>
             {printable ? (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1">
+                  <span className="mr-1 text-xs font-semibold text-slate-500">Each</span>
                   <button
                     onClick={() => setQty((n) => Math.max(1, n - 1))}
-                    aria-label="Fewer labels"
+                    aria-label="Fewer copies of each label"
                     className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
                   >
                     <Minus size={16} />
@@ -661,18 +689,18 @@ export default function PromotionsPage() {
                     max={MAX_LABELS}
                     value={qty}
                     onChange={(e) => setQty(clampQty(Number(e.target.value)))}
-                    aria-label="How many labels"
+                    aria-label="Copies of each label"
                   />
                   <button
                     onClick={() => setQty((n) => Math.min(MAX_LABELS, n + 1))}
-                    aria-label="More labels"
+                    aria-label="More copies of each label"
                     className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
                   >
                     <Plus size={16} />
                   </button>
                 </div>
                 <button className="btn-primary !py-2 text-xs" onClick={printSheet}>
-                  <Printer size={14} /> Print {qty}
+                  <Printer size={14} /> Print {sheetItems * qty}
                 </button>
               </div>
             ) : null}
@@ -687,21 +715,27 @@ export default function PromotionsPage() {
                 width: "max-content",
               }}
             >
-              {Array.from({ length: printable ? qty : 1 }, (_, i) => (
-                <PromoLabel key={`${preview.code}-${i}`} m={preview} />
-              ))}
+              {sheetLabels.flatMap((m) =>
+                Array.from({ length: printable ? qty : 1 }, (_, i) => (
+                  <PromoLabel key={`${m.code}-${i}`} m={m} />
+                )),
+              )}
             </div>
           </div>
 
-          {markdownStatus(preview, today) === "Expired" ? (
+          {batch.length > 0 ? (
+            <p className="mt-3 text-xs text-slate-400">
+              {sheetItems} label{sheetItems === 1 ? "" : "s"} created — stick one on each reduced item.
+            </p>
+          ) : preview && markdownStatus(preview, today) === "Expired" ? (
             <p className="mt-3 text-xs text-slate-400">
               This label has expired — the barcode no longer scans, so there's nothing to print.
             </p>
-          ) : markdownStatus(preview, today) === "Cancelled" ? (
+          ) : preview && markdownStatus(preview, today) === "Cancelled" ? (
             <p className="mt-3 text-xs text-slate-400">This label was stopped early — the barcode no longer scans.</p>
           ) : (
             <p className="mt-3 text-xs text-slate-400">
-              One per reduced item — the rest of the shelf keeps selling at {usd(preview.originalPrice)}.
+              One per reduced item — the rest of the shelf keeps selling at full price.
             </p>
           )}
         </Card>
