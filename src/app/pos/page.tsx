@@ -16,6 +16,7 @@ import {
   FileSpreadsheet,
   BarChart3,
   ScanLine,
+  ChevronLeft,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
@@ -59,6 +60,7 @@ export default function PosPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [openCat, setOpenCat] = useState<string | null>(null); // drilled-into category at the till
   const [importing, setImporting] = useState(false);
   // Import is all-or-nothing: nothing lands until every row is fully readable
   // and none of its dates are already on record. This holds whatever the
@@ -170,6 +172,8 @@ export default function PosPage() {
       .sort((a, b) => a.category.localeCompare(b.category));
   }, [products]);
   const directSaleCount = directSaleGroups.reduce((s, g) => s + g.items.length, 0);
+  // Two-step till: pick a category, then the item inside it.
+  const openGroup = openCat ? directSaleGroups.find((g) => g.category === openCat) ?? null : null;
 
   // Newest-added line on top so the cashier always sees what they just scanned.
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
@@ -470,25 +474,44 @@ export default function PosPage() {
               <p className="text-sm font-semibold text-slate-600">Scan to sell</p>
               <p className="mt-1 text-xs text-slate-400">Every product has a barcode — scan it to add to the sale.</p>
             </div>
+          ) : openGroup ? (
+            /* Step 2 — the items inside the chosen category. */
+            <div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button onClick={() => setOpenCat(null)} className="btn-ghost !py-2 text-sm">
+                  <ChevronLeft size={16} /> Categories
+                </button>
+                <p className="text-sm font-bold text-ink-900">
+                  {openGroup.category} <span className="font-normal text-slate-400">· {openGroup.items.length}</span>
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {openGroup.items.map((p) => (
+                  <ProductCard key={p.id} p={p} onAdd={addToCart} />
+                ))}
+              </div>
+            </div>
           ) : (
-            /* Sell-directly items, grouped by category. */
-            <div className="space-y-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
+            /* Step 1 — categories only; tap one to see its items. */
+            <div>
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
                 Sell directly · no barcode{" "}
                 <span className="font-semibold normal-case tracking-normal text-slate-400">({directSaleCount})</span>
               </p>
-              {directSaleGroups.map((g) => (
-                <div key={g.category}>
-                  <p className="mb-2 text-xs font-bold text-ink-800">
-                    {g.category} <span className="font-normal text-slate-400">· {g.items.length}</span>
-                  </p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                    {g.items.map((p) => (
-                      <ProductCard key={p.id} p={p} onAdd={addToCart} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {directSaleGroups.map((g) => (
+                  <button
+                    key={g.category}
+                    onClick={() => setOpenCat(g.category)}
+                    className="card flex flex-col items-start p-4 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+                  >
+                    <span className="text-sm font-bold text-ink-900">{g.category}</span>
+                    <span className="mt-1 text-xs text-slate-400">
+                      {g.items.length} item{g.items.length === 1 ? "" : "s"}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
