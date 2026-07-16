@@ -48,7 +48,6 @@ export default function PosPage() {
   const { data: customers, reload: reloadCustomers } = useFetch<Customer[]>("/api/customers");
 
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const cartSeq = useRef(0);
   const [customerId, setCustomerId] = useState<string>("");
@@ -144,22 +143,16 @@ export default function PosPage() {
     }
   }
 
-  const categories = useMemo(() => {
-    const set = new Set((products || []).map((p) => p.category));
-    return ["All", ...Array.from(set).sort()];
-  }, [products]);
+  // The till only shows matches while the cashier is actually searching.
+  const searching = query.trim().length > 0;
 
   const filtered = useMemo(() => {
-    let list = products || [];
-    if (category !== "All") list = list.filter((p) => p.category === category);
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      list = list.filter(
-        (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcode?.includes(q)
-      );
-    }
-    return list;
-  }, [products, category, query]);
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return (products || []).filter(
+      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcode?.includes(q),
+    );
+  }, [products, query]);
 
   // Newest-added line on top so the cashier always sees what they just scanned.
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
@@ -384,9 +377,22 @@ export default function PosPage() {
       <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => ringUpByCode(code)} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Product picker */}
-        <div>
-          <div className="mb-3 flex items-center gap-2">
+        {/* Scan-first till: nothing on screen but the scan bar until the cashier
+            searches. Scanning adds straight to the cart, so the category cloud
+            and the full product grid are only noise here. */}
+        <div className={searching ? "" : "flex min-h-[55vh] flex-col items-center justify-center"}>
+          {!searching && (
+            <div className="mb-5 text-center">
+              <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-600">
+                <ScanLine size={26} />
+              </div>
+              <p className="text-base font-bold text-ink-900">Scan to sell</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Scan a barcode — the item is added automatically. Or type a name / Item ID to find it.
+              </p>
+            </div>
+          )}
+          <div className={`flex items-center gap-2 ${searching ? "" : "w-full max-w-xl"}`}>
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -425,56 +431,50 @@ export default function PosPage() {
             </button>
           </div>
 
-          <div className="mb-4 flex flex-wrap gap-2">
-            {categories.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategory(c)}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  category === c ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {c}
-              </button>
+          {/* Matches appear ONLY while searching — a scan rings the item straight
+              into the cart, so the till stays clean and fast. */}
+          {searching &&
+            (loading ? (
+              <Spinner label="Loading products…" />
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {filtered.slice(0, 24).map((p) => {
+                  const out = p.stock <= 0;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        addToCart(p);
+                        setQuery("");
+                      }}
+                      className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+                    >
+                      <div className="mb-2 flex items-start justify-between">
+                        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                          {p.sku}
+                        </span>
+                        {p.stock <= p.reorderLevel && !out && (
+                          <span className="text-[10px] font-bold text-amber-500">low</span>
+                        )}
+                        {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
+                      </div>
+                      <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
+                      <div className="mt-2 flex items-end justify-between">
+                        <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
+                        <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-400"}`}>
+                          {p.stock} {p.unit}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <p className="col-span-full py-12 text-center text-sm text-slate-400">
+                    No products match “{query.trim()}”.
+                  </p>
+                )}
+              </div>
             ))}
-          </div>
-
-          {loading ? (
-            <Spinner label="Loading products…" />
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {filtered.map((p) => {
-                const out = p.stock <= 0;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
-                  >
-                    <div className="mb-2 flex items-start justify-between">
-                      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                        {p.sku}
-                      </span>
-                      {p.stock <= p.reorderLevel && !out && (
-                        <span className="text-[10px] font-bold text-amber-500">low</span>
-                      )}
-                      {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
-                    </div>
-                    <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
-                    <div className="mt-2 flex items-end justify-between">
-                      <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
-                      <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-400"}`}>
-                        {p.stock} {p.unit}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-              {filtered.length === 0 && (
-                <p className="col-span-full py-12 text-center text-sm text-slate-400">No products match your search.</p>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Cart */}
