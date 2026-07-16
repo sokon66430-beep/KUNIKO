@@ -553,12 +553,12 @@ export default function PosPage() {
               </div>
 
               <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
-                <Row label="Subtotal" value={usd(subtotal)} />
                 {discountNum > 0 && <Row label="Discount" value={`- ${usd(discountNum)}`} tone="rose" />}
-                <Row label={`VAT (${Math.round(VAT_RATE * 100)}%) incl.`} value={usd(tax)} />
-                <div className="my-1 border-t border-dashed border-slate-200" />
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-ink-900">Total</span>
+                  <div>
+                    <span className="font-bold text-ink-900">Total</span>
+                    <span className="block text-[11px] text-slate-400">Includes VAT {Math.round(VAT_RATE * 100)}%</span>
+                  </div>
                   <span className="text-right">
                     <span className="block text-lg font-bold text-brand-600">{usd(total)}</span>
                     <span className="block text-[11px] text-slate-400">{riel(total)}</span>
