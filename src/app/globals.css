@@ -81,6 +81,35 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Accessible keyboard focus. Visible ONLY for keyboard / assistive-tech users
+   (`:focus-visible` never triggers on mouse click or touch), so it meets WCAG
+   without adding any visual noise to normal pointer/touch use. One consistent
+   brand ring across every interactive control. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #2549e8;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Respect the OS "reduce motion" setting — near-instant transitions, no
+   distracting animation, per the design spec. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Horizontal chip/filter strips (POS category bar, tab rows) hide their
    scrollbar but stay swipeable — one row tall on every device so content below
    is never pushed off-screen. */
