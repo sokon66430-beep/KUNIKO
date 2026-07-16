@@ -15,6 +15,7 @@ import {
   Pencil,
   Clock,
   ShieldCheck,
+  Search,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
@@ -35,6 +36,9 @@ export default function ReceivingPage() {
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "grn">("date-desc");
+  // Search the open POs by PO number, supplier or source PR — for stores with
+  // many open orders to receive.
+  const [poSearch, setPoSearch] = useState("");
   // Filter the receipt history to a date range (inclusive) so the team can track
   // and adjust stock for a period. Empty = all dates.
   const [from, setFrom] = useState("");
@@ -96,6 +100,15 @@ export default function ReceivingPage() {
   }
 
   const openPOs = (pos || []).filter((p) => p.status === "Open" || p.status === "Partial");
+  const poQuery = poSearch.trim().toLowerCase();
+  const shownPOs = poQuery
+    ? openPOs.filter(
+        (p) =>
+          p.poNo.toLowerCase().includes(poQuery) ||
+          p.supplier.toLowerCase().includes(poQuery) ||
+          (p.prNo || "").toLowerCase().includes(poQuery),
+      )
+    : openPOs;
   const receiptsToday = (grns || []).length;
   const pendingApprovals = (grns || []).filter((g) => g.status === "PendingApproval").length;
 
@@ -125,9 +138,35 @@ export default function ReceivingPage() {
         />
       </div>
 
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-        <Truck size={16} /> Open Purchase Orders
-      </h2>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+          <Truck size={16} /> Open Purchase Orders
+          {openPOs.length > 0 && <span className="font-semibold normal-case text-slate-400">({num(shownPOs.length)})</span>}
+        </h2>
+        {openPOs.length > 0 && (
+          <div className="relative w-full sm:w-80">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              className="input pl-9 !py-2 text-sm"
+              placeholder="Search PO number or supplier…"
+              value={poSearch}
+              onChange={(e) => setPoSearch(e.target.value)}
+              inputMode="search"
+              autoComplete="off"
+            />
+            {poSearch && (
+              <button
+                type="button"
+                onClick={() => setPoSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <Card>
@@ -137,20 +176,24 @@ export default function ReceivingPage() {
         <Card>
           <EmptyState title="Nothing to receive" hint="All purchase orders are fully received." />
         </Card>
+      ) : shownPOs.length === 0 ? (
+        <Card>
+          <EmptyState title="No matching PO" hint={`No open purchase order matches “${poSearch}”.`} />
+        </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {openPOs.map((po) => {
+          {shownPOs.map((po) => {
             const ordered = po.items.reduce((s, i) => s + i.qtyOrdered, 0);
             const received = po.items.reduce((s, i) => s + Math.min(i.qtyReceived, i.qtyOrdered), 0);
             const pct = ordered ? Math.round((received / ordered) * 100) : 0;
             const invoicePageCount = invoiceByPo[po.id]?.length || 0;
             const hasInvoice = invoicePageCount > 0;
             return (
-              <div key={po.id} className="card p-5">
-                <div className="flex items-start justify-between">
-                  <div>
+              <div key={po.id} className="card p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="font-bold text-ink-900">{po.poNo}</p>
-                    <p className="text-xs text-slate-400">{po.supplier}</p>
+                    <p className="truncate text-xs text-slate-400" title={po.supplier}>{po.supplier}</p>
                   </div>
                   <Badge tone={po.status === "Partial" ? "amber" : "brand"}>{po.status}</Badge>
                 </div>

@@ -330,7 +330,7 @@ export default function PurchaseOrdersPage() {
                   className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
                   onClick={() => setViewing(po)}
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-ink-900">
                       {po.poNo}
                       <span className="ml-2 text-xs font-normal text-slate-400">
@@ -342,7 +342,11 @@ export default function PurchaseOrdersPage() {
                       {po.supplier} · <span className="font-semibold text-ink-800">{usd(poTotal(po))}</span>
                     </p>
                   </div>
-                  <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                  {/* Actions — wrap to a full-width row on phones so nothing is cut off */}
+                  <div
+                    className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end sm:gap-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {/* Sent to supplier — tick it once the PO has gone out */}
                     <label
                       className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500"
@@ -359,7 +363,7 @@ export default function PurchaseOrdersPage() {
                       </span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:w-24">
                         <div
                           className={`h-full rounded-full ${
                             pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300"
@@ -378,7 +382,8 @@ export default function PurchaseOrdersPage() {
                       )}
                       <button
                         onClick={() => setViewing(po)}
-                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500"
+                        aria-label="View purchase order"
+                        className="hidden h-8 w-8 place-items-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500 sm:grid"
                       >
                         <ChevronRight size={16} />
                       </button>
