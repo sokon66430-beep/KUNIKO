@@ -27,12 +27,14 @@ function backfill(db: DB): DB {
   if (!db.goodsReceipts) db.goodsReceipts = [];
   if (!db.stockCounts) db.stockCounts = [];
   if (!db.writeOffs) db.writeOffs = [];
+  if (!db.markdowns) db.markdowns = [];
   if (!db.auditLog) db.auditLog = [];
   if (db.meta.nextPR == null) db.meta.nextPR = 100002;
   if (db.meta.nextPO == null) db.meta.nextPO = 100021;
   if (db.meta.nextGRN == null) db.meta.nextGRN = 100001;
   if (db.meta.nextStockCount == null) db.meta.nextStockCount = 100001;
   if (db.meta.nextWriteOff == null) db.meta.nextWriteOff = 100001;
+  if (db.meta.nextMarkdown == null) db.meta.nextMarkdown = 1;
   if (db.meta.nextAudit == null) db.meta.nextAudit = 1;
   // Every product carries a ranking on its price label; default everything to "A".
   for (const p of db.products || []) {

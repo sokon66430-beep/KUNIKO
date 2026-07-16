@@ -71,8 +71,38 @@ export type SaleItem = {
   sku: string;
   name: string;
   qty: number;
-  price: number; // unit sell price at time of sale
+  price: number; // unit sell price at time of sale (the markdown price when discounted)
   cost: number; // unit cost at time of sale
+  // Set when the line was rung up from a markdown label rather than the shelf
+  // barcode. `price` above is already the discounted one — these record what it
+  // was discounted FROM, so reports can separate promo sales from full price.
+  markdownCode?: string;
+  markdownPercent?: number;
+  fullPrice?: number;
+};
+
+// A temporary price cut on ONE product, sold under its own generated barcode.
+// The label is stuck on the physical items being cleared (near-expiry stock,
+// slow movers), so the rest of the shelf keeps selling at full price. It stops
+// scanning at the till the day after `endDate` — nothing to switch off by hand.
+export type Markdown = {
+  id: string;
+  code: string; // the generated promo barcode printed on the label
+  productId: string;
+  sku: string;
+  name: string;
+  nameKh?: string;
+  category?: string;
+  productBarcode?: string; // the item's normal shelf barcode, for reference
+  originalPrice: number; // price at the time the markdown was registered
+  percent: number; // 30 / 50 / 70 …
+  price: number; // what the customer pays under this label
+  startDate: string; // yyyy-mm-dd, first selling day (store timezone)
+  endDate: string; // yyyy-mm-dd, LAST selling day — expires the day after
+  createdAt: string;
+  createdBy?: string;
+  cancelledAt?: string; // pulled early; kept (not deleted) so past sales resolve
+  cancelledBy?: string;
 };
 
 export type PaymentMethod = "Cash" | "KHQR" | "Card" | "ABA" | "Wing";
@@ -292,7 +322,17 @@ export type WriteOff = {
   cancelledAt?: string;
 };
 
-export type AuditEntityType = "PR" | "PO" | "GRN" | "Product" | "Supplier" | "Stock" | "Count" | "WriteOff" | "Sale";
+export type AuditEntityType =
+  | "PR"
+  | "PO"
+  | "GRN"
+  | "Product"
+  | "Supplier"
+  | "Stock"
+  | "Count"
+  | "WriteOff"
+  | "Sale"
+  | "Markdown";
 
 export type AuditEvent = {
   id: string;
@@ -308,6 +348,7 @@ export type DB = {
   products: Product[];
   customers: Customer[];
   sales: Sale[];
+  markdowns: Markdown[];
   suppliers: Supplier[];
   purchaseRequests: PurchaseRequest[];
   purchaseOrders: PurchaseOrder[];
@@ -322,6 +363,7 @@ export type DB = {
     nextGRN: number;
     nextStockCount: number;
     nextWriteOff: number;
+    nextMarkdown: number;
     nextAudit: number;
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().

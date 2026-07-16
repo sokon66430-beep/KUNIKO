@@ -215,6 +215,7 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
     goodsReceipts: [],
     stockCounts: [],
     writeOffs: [],
+    markdowns: [],
     auditLog,
     meta: {
       nextInvoice: 100001,
@@ -222,6 +223,7 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
       nextPO: 100021,
       nextGRN: 100001,
       nextStockCount: 100001,
+      nextMarkdown: 1,
       nextWriteOff: 100001,
       nextAudit: withDemo ? 4 : 1,
       business,

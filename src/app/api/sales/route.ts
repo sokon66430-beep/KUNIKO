@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { canSeeProfit } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
 import { currentActor } from "@/lib/actor";
+import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
 
 export const dynamic = "force-dynamic";
 
@@ -31,17 +32,40 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const rawItems: { productId: string; qty: number }[] = body?.items || [];
+  const rawItems: { productId: string; qty: number; markdownCode?: string }[] = body?.items || [];
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
   }
 
   const result = await mutateDB((db) => {
     const items: SaleItem[] = [];
+    const today = storeToday();
     for (const raw of rawItems) {
       const product = db.products.find((p) => p.id === raw.productId);
       if (!product) return { error: `Unknown product ${raw.productId}` };
       const qty = Math.max(1, Math.floor(Number(raw.qty) || 1));
+
+      // A discounted line names its markdown label; the PRICE is taken from the
+      // stored label, never from the client, and only if the label is still
+      // live and belongs to this product. Anything else falls back to full
+      // price rather than trusting what was sent.
+      let price = product.price;
+      let markdownCode: string | undefined;
+      let markdownPercent: number | undefined;
+      let fullPrice: number | undefined;
+      if (raw.markdownCode) {
+        const m = findByCode(db.markdowns, raw.markdownCode);
+        if (!m) return { error: `Unknown discount label ${raw.markdownCode}` };
+        if (m.productId !== product.id) return { error: `Discount label ${m.code} is not for ${product.name}.` };
+        if (!isSellable(m, today)) {
+          return { error: `Discount label ${m.code} for ${product.name} is no longer valid — sell at full price.` };
+        }
+        price = m.price;
+        markdownCode = m.code;
+        markdownPercent = m.percent;
+        fullPrice = m.originalPrice;
+      }
+
       // Overselling is allowed: a sale always goes through even at zero/low
       // stock, and on-hand is allowed to go negative (-1, -2, …) so the count
       // reflects what's owed. Restocking/stock-count brings it back to true.
@@ -50,8 +74,11 @@ export async function POST(req: Request) {
         sku: product.sku,
         name: product.name,
         qty,
-        price: product.price,
+        price,
         cost: product.cost,
+        markdownCode,
+        markdownPercent,
+        fullPrice,
       });
     }
 

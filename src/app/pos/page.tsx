@@ -19,7 +19,8 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
-import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
+import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
+import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num, EXCHANGE_RATE } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -28,7 +29,17 @@ import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { isShownOnPos } from "@/lib/pos";
 
-type CartLine = { product: Product; qty: number; seq: number };
+// A discounted line and a full-price line for the SAME product can sit in one
+// sale (the customer grabbed one reduced loaf and one fresh), so the markdown
+// is part of the line — and part of its cart key.
+type CartLine = { product: Product; qty: number; seq: number; markdown?: Markdown };
+
+function lineKey(product: Product, markdown?: Markdown): string {
+  return markdown ? `${product.id}::${markdown.code}` : product.id;
+}
+function linePrice(l: CartLine): number {
+  return l.markdown ? l.markdown.price : l.product.price;
+}
 
 type GeneratedKhqr = {
   qr: string;
@@ -48,6 +59,7 @@ const VAT_RATE = 0.1;
 export default function PosPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products");
   const { data: customers, reload: reloadCustomers } = useFetch<Customer[]>("/api/customers");
+  const { data: markdowns } = useFetch<Markdown[]>("/api/markdowns");
 
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
@@ -82,6 +94,8 @@ export default function PosPage() {
   // and must always see the latest products / dialog state).
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products ?? [];
+  const markdownsRef = useRef<Markdown[]>([]);
+  markdownsRef.current = markdowns ?? [];
   const blockScanRef = useRef(false);
   blockScanRef.current = khqrOpen || cashOpen || !!receipt || reportOpen || cameraOpen;
 
@@ -181,7 +195,7 @@ export default function PosPage() {
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
   // Selling prices are VAT-INCLUSIVE: the sticker price already contains VAT, so
   // the customer pays it as-is — VAT is the portion inside, never added on top.
-  const gross = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
+  const gross = lines.reduce((s, l) => s + linePrice(l) * l.qty, 0);
   const discountNum = Math.min(Number(discount) || 0, gross);
   const total = gross - discountNum; // what the customer pays (VAT included)
   const subtotal = total / (1 + VAT_RATE); // net of the included VAT
@@ -189,12 +203,13 @@ export default function PosPage() {
 
   // Overselling is allowed: items can be rung up past the on-hand count, which
   // simply lets stock go negative (-1, -2, …). No quantity cap here.
-  function addToCart(product: Product) {
+  function addToCart(product: Product, markdown?: Markdown) {
+    const key = lineKey(product, markdown);
     setCart((prev) => {
-      const existing = prev[product.id];
+      const existing = prev[key];
       const qty = (existing?.qty || 0) + 1;
       cartSeq.current += 1; // bump so the just-scanned line floats to the top
-      return { ...prev, [product.id]: { product, qty, seq: cartSeq.current } };
+      return { ...prev, [key]: { product, qty, seq: cartSeq.current, markdown } };
     });
   }
 
@@ -224,6 +239,38 @@ export default function PosPage() {
   function ringUpByCode(code: string): boolean {
     const q = code.trim();
     if (!q) return false;
+
+    // A discount label first: its code lives in its own 92… range, so it can
+    // never be confused with a shelf barcode. An out-of-date label is REFUSED
+    // here rather than quietly ringing up at full price — the cashier needs to
+    // know the sticker is dead before the customer is charged.
+    if (isMarkdownCode(q)) {
+      const m = markdownsRef.current.find((x) => x.code === q);
+      if (!m) {
+        setToast(`Discount label ${q} isn't in the system.`);
+        return true;
+      }
+      const prod = productsRef.current.find((p) => p.id === m.productId);
+      if (!prod) {
+        setToast(`${m.name} is no longer stocked here.`);
+        return true;
+      }
+      if (!isSellable(m)) {
+        const status = markdownStatus(m);
+        setToast(
+          status === "Expired"
+            ? `${m.percent}% label expired on ${m.endDate} — sell ${m.name} at full price.`
+            : status === "Scheduled"
+              ? `${m.percent}% label on ${m.name} doesn't start until ${m.startDate}.`
+              : `${m.percent}% label on ${m.name} was stopped — sell at full price.`,
+        );
+        return true;
+      }
+      addToCart(prod, m);
+      setToast(`Added ${prod.name} — ${m.percent}% off`);
+      return true;
+    }
+
     const prod = productsRef.current.find(
       (p) => p.barcode === q || p.sku.toLowerCase() === q.toLowerCase(),
     );
@@ -272,7 +319,9 @@ export default function PosPage() {
     const sale = await api<Sale>("/api/sales", {
       method: "POST",
       body: JSON.stringify({
-        items: lines.map((l) => ({ productId: l.product.id, qty: l.qty })),
+        // The markdown CODE goes up, not its price — the server re-reads the
+        // label and re-checks it's still live before discounting anything.
+        items: lines.map((l) => ({ productId: l.product.id, qty: l.qty, markdownCode: l.markdown?.code })),
         customerId: customerId || null,
         discount: discountNum,
         paymentMethod: payment,
@@ -425,15 +474,17 @@ export default function PosPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
                   // Barcode-scanner path (Sunmi L3): the scanner types the code
-                  // then presses Enter. An exact barcode/SKU match rings it up
-                  // instantly; otherwise a single filtered result is added too.
+                  // then presses Enter. Shared with the hardware/camera scanners
+                  // so a typed-in discount label behaves exactly like a scanned
+                  // one; failing that, a single filtered result is added too.
                   if (e.key !== "Enter") return;
                   const q = query.trim();
                   if (!q) return;
-                  const exact = (products || []).find(
-                    (p) => p.barcode === q || p.sku.toLowerCase() === q.toLowerCase(),
-                  );
-                  const target = exact || (filtered.length === 1 ? filtered[0] : null);
+                  if (ringUpByCode(q)) {
+                    setQuery("");
+                    return;
+                  }
+                  const target = filtered.length === 1 ? filtered[0] : null;
                   if (!target) return;
                   // Overselling is allowed — ring it up even at zero stock.
                   addToCart(target);
@@ -551,14 +602,24 @@ export default function PosPage() {
               ) : (
                 <div className="space-y-3">
                   {lines.map((l) => (
-                    <div key={l.product.id} className="flex items-center gap-2">
+                    <div key={lineKey(l.product, l.markdown)} className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-ink-800">{l.product.name}</p>
-                        <p className="text-xs text-slate-400">{usd(l.product.price)} each</p>
+                        {l.markdown ? (
+                          <p className="flex items-center gap-1.5 text-xs">
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                              -{l.markdown.percent}%
+                            </span>
+                            <span className="font-semibold text-amber-700">{usd(l.markdown.price)}</span>
+                            <span className="text-slate-400 line-through">{usd(l.markdown.originalPrice)}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-400">{usd(l.product.price)} each</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setQty(l.product.id, l.qty - 1)}
+                          onClick={() => setQty(lineKey(l.product, l.markdown), l.qty - 1)}
                           aria-label="Decrease quantity"
                           className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
@@ -566,7 +627,7 @@ export default function PosPage() {
                         </button>
                         <span className="w-7 text-center text-sm font-bold tabular-nums">{l.qty}</span>
                         <button
-                          onClick={() => setQty(l.product.id, l.qty + 1)}
+                          onClick={() => setQty(lineKey(l.product, l.markdown), l.qty + 1)}
                           aria-label="Increase quantity"
                           className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
@@ -574,10 +635,10 @@ export default function PosPage() {
                         </button>
                       </div>
                       <span className="w-16 shrink-0 text-right text-sm font-bold text-ink-900">
-                        {usd(l.product.price * l.qty)}
+                        {usd(linePrice(l) * l.qty)}
                       </span>
                       <button
-                        onClick={() => setQty(l.product.id, 0)}
+                        onClick={() => setQty(lineKey(l.product, l.markdown), 0)}
                         aria-label="Remove item"
                         className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:bg-rose-100"
                       >
@@ -798,11 +859,14 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
           </div>
           <div className="space-y-1 border-t border-dashed border-slate-200 pt-2 text-sm">
             {sale.items.map((it) => (
-              <div key={it.productId} className="flex justify-between gap-2">
-                <span className="truncate text-slate-600">
+              <div key={`${it.productId}-${it.markdownCode || "full"}`} className="flex justify-between gap-2">
+                <span className="min-w-0 truncate text-slate-600">
                   {it.qty}× {it.name}
+                  {it.markdownPercent != null && (
+                    <span className="ml-1 font-bold text-amber-600">-{it.markdownPercent}%</span>
+                  )}
                 </span>
-                <span className="font-semibold text-ink-800">{usd(it.price * it.qty)}</span>
+                <span className="shrink-0 font-semibold text-ink-800">{usd(it.price * it.qty)}</span>
               </div>
             ))}
           </div>

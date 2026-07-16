@@ -33,6 +33,7 @@ import {
   Check,
   Store,
   Tag,
+  TicketPercent,
   ReceiptText,
   ShieldCheck,
 } from "lucide-react";
@@ -52,6 +53,7 @@ const OPERATIONS = {
     { href: "/stock-count", label: "Stock Count", icon: ClipboardCheck },
     { href: "/write-offs", label: "Write-Off", icon: PackageX },
     { href: "/price-labels", label: "Price Labels", icon: Tag },
+    { href: "/promotions", label: "Promotions", icon: TicketPercent },
     { href: "/purchase-requests", label: "Purchase Requests", icon: FileText },
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/reports-center", label: "Reports", icon: BarChart3 },

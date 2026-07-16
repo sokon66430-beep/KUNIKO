@@ -49,6 +49,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/stock-count", label: "Stock Count" },
   { href: "/write-offs", label: "Write-Off" },
   { href: "/price-labels", label: "Price Labels" },
+  { href: "/promotions", label: "Promotions" },
   { href: "/purchase-requests", label: "Purchase Requests" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },
@@ -132,6 +133,21 @@ export function reachesAllStores(role: Role): boolean {
 // and cost side by side lets anyone back out the profit anyway.
 export function canSeeProfit(role: Role): boolean {
   return role === "owner" || role === "procurement" || role === "management";
+}
+
+// Who may put a product on markdown. Cutting a price 30–70% is a margin
+// decision, so it stays with store leadership and above — crew print and stick
+// the labels, but don't decide the discount.
+export function canMarkDown(role: Role): boolean {
+  return (
+    role === "owner" ||
+    role === "store_manager" ||
+    role === "asst_store_manager" ||
+    role === "area_manager" ||
+    role === "ops_manager" ||
+    role === "manager" ||
+    role === "operations"
+  );
 }
 
 // View-only roles: may read every screen but can never change data. Enforced as
