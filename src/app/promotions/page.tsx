@@ -231,7 +231,17 @@ export default function PromotionsPage() {
     setQ(c);
     setCameraOpen(false);
     const lc = c.toLowerCase();
-    const prod = (products || []).find((p) => p.barcode === c || p.sku.toLowerCase() === lc);
+    const list = products || [];
+    // Barcode or item ID first. Failing that, a typed name counts too — fresh
+    // food and made-to-order items carry no barcode at all, and scanning is now
+    // the only way in, so they'd otherwise be impossible to discount.
+    // An exact name wins outright: "Taro Bun" must find Taro Bun even though
+    // "Taro Bun v2" also contains it. Otherwise only an unambiguous partial.
+    const named = list.filter((p) => p.name.toLowerCase().includes(lc));
+    const prod =
+      list.find((p) => p.barcode === c || p.sku.toLowerCase() === lc) ??
+      list.find((p) => p.name.toLowerCase() === lc) ??
+      (named.length === 1 ? named[0] : undefined);
     const live = (markdowns || []).find(
       (m) => (m.productBarcode === c || m.sku.toLowerCase() === lc || m.code === c) && markdownStatus(m, today) === "Active",
     );
@@ -304,14 +314,7 @@ export default function PromotionsPage() {
     <div>
       <PageHeader
         title="Promotions"
-        subtitle="Discount a product, print its label — the barcode stops working on the end date"
-        actions={
-          mayDiscount ? (
-            <button className="btn-primary !py-2 text-sm" onClick={() => setOpen(true)}>
-              <Plus size={16} /> New discount
-            </button>
-          ) : undefined
-        }
+        subtitle="Scan a product to discount it — the barcode stops working on the end date"
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
@@ -388,8 +391,8 @@ export default function PromotionsPage() {
             title={q ? "No matching promotion" : "No promotions yet"}
             hint={
               q
-                ? "Try the product name or the label code."
-                : "Register a product for 30, 50 or 70% off and the system mints a barcode for it."
+                ? "Scan the item to discount it, or search by product name or label code."
+                : "Scan a product above — pick 30, 50 or 70% off and the dates, and the system mints a barcode for it."
             }
           />
         ) : (
