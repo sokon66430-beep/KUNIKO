@@ -10,7 +10,7 @@ import { SearchSelect } from "@/components/SearchSelect";
 import { CameraScanner } from "@/components/CameraScanner";
 import { DatePicker } from "@/components/DatePicker";
 import { confirmDialog } from "@/components/confirm";
-import { usd } from "@/lib/format";
+import { usd, rielShelfPrice } from "@/lib/format";
 import {
   MARKDOWN_PERCENTS,
   markdownPrice,
@@ -37,13 +37,23 @@ function shortDay(iso: string): string {
   return `${Number(m[3])} ${MONTHS_SHORT[Number(m[2]) - 1]}`;
 }
 
-// The printed sticker. It goes ON the reduced item, so it has to carry the new
-// barcode, what the customer pays, and the date it dies — 4.7 × 2.5cm, matching
-// the price-label stock already in the printer.
+// The printed sticker — the shelf price label's layout on the same 470 × 250
+// design grid and the same 4.7 × 2.5cm stock, so it sits on the shelf looking
+// like it belongs: name band on top, barcode band under it, blue footer.
+//
+// It differs where a markdown must: the band is RED (a reduced item has to read
+// as reduced at a glance), the price shown is the cut one with the old one
+// struck beside it, and the shelf-life line becomes the end date. The barcode is
+// deliberately larger than the shelf label's — this is the code the till has to
+// read off a sticker slapped on a curved bun bag, so bar width carries it.
 const DESIGN_W = 470;
 const DESIGN_H = 250;
 const LABEL_SCALE = (47 * 96) / 25.4 / DESIGN_W;
 const LABEL_FONT = `'Plus Jakarta Sans Variable','Segoe UI',sans-serif`;
+const KHMER_FONT = `'Battambang','Khmer UI','Noto Sans Khmer','Leelawadee UI',sans-serif`;
+const LABEL_RED = "#e11d48"; // markdown band — the shelf label's green means full price
+const LABEL_BLUE = "#4a72c4"; // same footer strip as the shelf label
+const rielNum = (n: number) => n.toLocaleString("en-US");
 
 // zoom only blows it up for reading on screen — print always renders at 1, the
 // true 4.7 × 2.5cm, so what you see is exactly what the printer puts out.
@@ -54,11 +64,11 @@ function PromoLabel({ m, zoom = 1 }: { m: Markdown; zoom?: number }) {
     try {
       JsBarcode(svgRef.current, m.code, {
         format: "CODE128",
-        width: 2,
-        height: 34,
+        width: 3, // wider bars than the shelf label's 2 — what makes it scan
+        height: 62,
         displayValue: true,
         font: LABEL_FONT,
-        fontSize: 13,
+        fontSize: 15,
         textAlign: "left",
         textMargin: 1,
         margin: 0,
@@ -68,48 +78,76 @@ function PromoLabel({ m, zoom = 1 }: { m: Markdown; zoom?: number }) {
     }
   }, [m.code]);
 
+  const kh = (m.nameKh || "").trim();
   return (
     <div
-      className="promo-label"
+      className="promo-label overflow-hidden bg-white"
       style={{
         width: DESIGN_W * LABEL_SCALE * zoom,
         height: DESIGN_H * LABEL_SCALE * zoom,
-        overflow: "hidden",
         breakInside: "avoid",
       }}
     >
       <div
+        className="flex flex-col"
         style={{
           width: DESIGN_W,
           height: DESIGN_H,
           transform: `scale(${LABEL_SCALE * zoom})`,
           transformOrigin: "top left",
           fontFamily: LABEL_FONT,
-          border: "2px solid #e11d48",
-          borderRadius: 10,
-          display: "flex",
-          flexDirection: "column",
-          background: "#fff",
         }}
       >
-        <div style={{ background: "#e11d48", color: "#fff", padding: "6px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: 0.5 }}>{m.percent}% OFF</span>
-          <span style={{ fontSize: 16, fontWeight: 700 }}>ENDS {shortDay(m.endDate).toUpperCase()}</span>
-        </div>
-        <div style={{ padding: "6px 12px 0", flex: 1 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", lineHeight: 1.15, height: 46, overflow: "hidden" }}>
-            {m.name}
+        {/* Red band — the shelf label's green band, in markdown colours */}
+        <div
+          className="flex h-[132px] items-start justify-between gap-3 overflow-hidden px-4 pt-2.5 text-white"
+          style={{ backgroundColor: LABEL_RED }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[20px] font-black leading-[24px] tracking-[0.02em]">{m.percent}% OFF</p>
+            {kh && (
+              <p
+                className="overflow-hidden text-[19px] font-bold leading-[24px]"
+                style={{ fontFamily: KHMER_FONT, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+              >
+                {kh}
+              </p>
+            )}
+            <p
+              className={`overflow-hidden font-bold ${kh ? "text-[15px] leading-[19px]" : "mt-0.5 text-[20px] leading-[25px]"}`}
+              style={{ display: "-webkit-box", WebkitLineClamp: kh ? 2 : 3, WebkitBoxOrient: "vertical" }}
+            >
+              {m.name}
+            </p>
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 2 }}>
-            <span style={{ fontSize: 40, fontWeight: 800, color: "#e11d48" }}>${m.price.toFixed(2)}</span>
-            <span style={{ fontSize: 22, color: "#94a3b8", textDecoration: "line-through" }}>
-              ${m.originalPrice.toFixed(2)}
-            </span>
+          <div className="flex shrink-0 flex-col items-end text-right">
+            <p className="text-[46px] font-black leading-[48px] tracking-[-0.02em]">
+              {rielNum(rielShelfPrice(m.price))}
+              <span className="align-top text-[20px] font-bold" style={{ fontFamily: KHMER_FONT }}>
+                ៛
+              </span>
+            </p>
+            <p className="text-[24px] font-extrabold leading-[28px] tracking-[-0.01em]">{usd(m.price)}</p>
+            <p className="text-[15px] font-bold leading-[19px] text-white/80 line-through">{usd(m.originalPrice)}</p>
           </div>
         </div>
-        <div style={{ padding: "0 12px 8px" }}>
-          <svg ref={svgRef} />
+
+        {/* White band — end date over the barcode · item code + ranking */}
+        <div className="flex h-[104px] items-stretch justify-between gap-2 bg-white px-4 pb-1 pt-1">
+          <div className="min-w-0">
+            <p className="text-[15px] font-black leading-[18px] tracking-tight" style={{ color: LABEL_RED }}>
+              ENDS {shortDay(m.endDate).toUpperCase()}
+            </p>
+            <svg ref={svgRef} className="h-[80px] max-w-[330px]" />
+          </div>
+          <div className="flex shrink-0 flex-col items-end justify-between py-0.5 text-right text-black">
+            <p className="text-[17px] font-bold leading-[21px] tracking-tight">{m.sku}</p>
+            <p className="text-[20px] font-black leading-[22px]">{m.percent}%</p>
+          </div>
         </div>
+
+        {/* Blue footer strip — same as the shelf label */}
+        <div className="h-[14px] w-full shrink-0" style={{ backgroundColor: LABEL_BLUE }} />
       </div>
     </div>
   );

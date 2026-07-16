@@ -17,18 +17,11 @@ import { CameraScanner } from "@/components/CameraScanner";
 import type { Product } from "@/lib/types";
 import { PageHeader, Card, ErrorBox, EmptyState } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
-import { usd } from "@/lib/format";
+import { usd, rielShelfPrice, EXCHANGE_RATE } from "@/lib/format";
 
-// ---------------------------------------------------------------------------
-// Pricing rules (fixed by the business):
-//   Riel price = USD × 4,100, then ALWAYS rounded UP to the next 100 riel.
-//   e.g. $1.49 → 6,109៛ → 6,200៛   ·   $1.00 → 4,100៛ (already a clean 100)
-// ---------------------------------------------------------------------------
-const RIEL_RATE = 4100;
-function rielPrice(usdPrice: number): number {
-  const raw = usdPrice * RIEL_RATE;
-  return Math.ceil(Math.round(raw) / 100) * 100; // round to riel first, then ceil to 100
-}
+// Riel price = USD × 4,100 rounded UP to the next 100 riel — the rule now lives
+// in lib/format (rielShelfPrice) so the promotion sticker rounds identically.
+const rielPrice = rielShelfPrice;
 const riel = (n: number) => n.toLocaleString("en-US");
 
 type BatchLine = { product: Product; qty: number; gondola: string; shelf: string };
@@ -542,7 +535,7 @@ export default function PriceLabelsPage() {
             </div>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Riel price = USD × {riel(RIEL_RATE)}, always rounded up to the next 100៛. In <b>Khmer + English</b> the
+            Riel price = USD × {riel(EXCHANGE_RATE)}, always rounded up to the next 100៛. In <b>Khmer + English</b> the
             label prints the Khmer name you provide (import the <b>Name KH</b> column in Excel, or Edit Product) with
             English under it; <b>English only</b> prints just the English name.
           </p>
