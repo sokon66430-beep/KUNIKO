@@ -596,6 +596,56 @@ function NewMarkdownModal({
   const [endDate, setEndDate] = useState(today);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+
+  // Pick the product by scanning it — the item is in your hand when you decide
+  // to mark it down, so reaching for its barcode beats hunting for the name in
+  // a list of thousands.
+  const productsRef = useRef(products);
+  productsRef.current = products;
+  function resolveScan(code: string) {
+    const c = code.trim();
+    if (!c) return;
+    const lc = c.toLowerCase();
+    const hit = productsRef.current.find((p) => p.barcode === c || p.sku.toLowerCase() === lc);
+    setCameraOpen(false);
+    if (!hit) {
+      setScanNote(`No product matches ${c}.`);
+      return;
+    }
+    setProductId(hit.id);
+    setScanNote(null);
+    setErr(null);
+  }
+
+  // The Sunmi's wedge scanner while this dialog is up. The page's own listener
+  // stands down whenever the dialog is open, so only one of them ever fires.
+  const scanRef = useRef({ buf: "", last: 0 });
+  const camRef = useRef(false);
+  camRef.current = cameraOpen;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (camRef.current) return;
+      const now = Date.now();
+      const s = scanRef.current;
+      if (now - s.last > 120) s.buf = ""; // slow, human typing never builds up
+      s.last = now;
+      if (e.key === "Enter") {
+        const code = s.buf.trim();
+        s.buf = "";
+        if (code.length < 3) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        resolveScan(code);
+        return;
+      }
+      if (e.key.length === 1) s.buf += e.key;
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const options = useMemo(
     () =>
@@ -632,31 +682,60 @@ function NewMarkdownModal({
   }
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="New discount"
-      size="lg"
-      footer={
-        <>
-          <button className="btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button className="btn-primary" onClick={submit} disabled={busy || !product}>
-            {busy ? "Creating…" : "Create label"}
-          </button>
-        </>
+    <>
+      {/* Deliberately OUTSIDE the Modal: the dialog's fade-up animation leaves a
+          transform on the panel, which would make it the containing block for
+          this fullscreen (position: fixed) scanner and trap it in the box. */}
+      <CameraScanner
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onScan={(code) => resolveScan(code)}
+        hint="Point the camera at the item's barcode to pick it."
+      />
+      <Modal
+        open
+        onClose={onClose}
+        title="New discount"
+        size="lg"
+        footer={
+          <>
+            <button className="btn-ghost" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button className="btn-primary" onClick={submit} disabled={busy || !product}>
+              {busy ? "Creating…" : "Create label"}
+            </button>
+          </>
       }
     >
       <div className="space-y-4">
         <div>
-          <label className="label">Product</label>
-          <SearchSelect
-            value={productId}
-            options={options}
-            onChange={setProductId}
-            placeholder="Search by name, item ID or barcode…"
-          />
+          <label className="label flex items-center gap-1.5">
+            <ScanLine size={13} /> Product — scan it, or search
+          </label>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SearchSelect
+                value={productId}
+                options={options}
+                onChange={(v) => {
+                  setProductId(v);
+                  setScanNote(null);
+                }}
+                placeholder="Scan the barcode · or search by name, item ID…"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              title="Scan with the camera"
+              aria-label="Scan the product barcode with the camera"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-600 text-white hover:bg-brand-700"
+            >
+              <Camera size={18} />
+            </button>
+          </div>
+          {scanNote && <p className="mt-1.5 text-xs font-semibold text-amber-600">{scanNote}</p>}
         </div>
 
         <div>
@@ -717,6 +796,7 @@ function NewMarkdownModal({
 
         {err && <ErrorBox message={err} />}
       </div>
-    </Modal>
+      </Modal>
+    </>
   );
 }
