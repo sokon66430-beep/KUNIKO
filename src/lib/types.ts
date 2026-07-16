@@ -91,6 +91,11 @@ export type Sale = {
   profit: number;
   paymentMethod: PaymentMethod;
   paymentRef?: string; // e.g. KHQR md5 of the confirmed Bakong transaction
+  // Cash sales only: what the customer handed over and what went back to them.
+  // Both in USD — riel tendered is converted at the till's rate before it lands
+  // here, so the books stay in one currency.
+  tendered?: number;
+  change?: number;
   createdAt: string;
   imported?: boolean; // true when brought in from a sales-history import (no stock change)
   // For imported day-sales: the source invoice numbers (from the report's Invoice

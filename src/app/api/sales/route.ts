@@ -86,6 +86,17 @@ export async function POST(req: Request) {
       }
     }
 
+    // Cash tender: what the customer handed over and the change owed back.
+    // Recorded for the drawer count / receipt only — it never alters the total,
+    // and it's meaningless for KHQR/card, so those keep it undefined.
+    const method = body.paymentMethod || "Cash";
+    let tendered: number | undefined;
+    let change: number | undefined;
+    if (method === "Cash" && body.tendered != null) {
+      tendered = round2(Math.max(0, Number(body.tendered) || 0));
+      change = round2(Math.max(0, tendered - total));
+    }
+
     const invoiceNo = `INV-${db.meta.nextInvoice}`;
     const sale: Sale = {
       id: `s${db.meta.nextInvoice}`,
@@ -99,8 +110,10 @@ export async function POST(req: Request) {
       total,
       cost,
       profit,
-      paymentMethod: body.paymentMethod || "Cash",
+      paymentMethod: method,
       paymentRef: body.paymentRef || undefined,
+      tendered,
+      change,
       createdAt: new Date().toISOString(),
     };
     db.meta.nextInvoice += 1;

@@ -21,7 +21,7 @@ import {
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
-import { usd, riel, num } from "@/lib/format";
+import { usd, riel, num, EXCHANGE_RATE } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
@@ -57,6 +57,7 @@ export default function PosPage() {
   const [payment, setPayment] = useState<PaymentMethod>("Cash");
   const [submitting, setSubmitting] = useState(false);
   const [khqrOpen, setKhqrOpen] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -82,7 +83,7 @@ export default function PosPage() {
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products ?? [];
   const blockScanRef = useRef(false);
-  blockScanRef.current = khqrOpen || !!receipt || reportOpen || cameraOpen;
+  blockScanRef.current = khqrOpen || cashOpen || !!receipt || reportOpen || cameraOpen;
 
   async function importSales(file: File) {
     setImporting(true);
@@ -267,7 +268,7 @@ export default function PosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function commitSale(paymentRef?: string) {
+  async function commitSale(opts?: { paymentRef?: string; tendered?: number }) {
     const sale = await api<Sale>("/api/sales", {
       method: "POST",
       body: JSON.stringify({
@@ -275,11 +276,13 @@ export default function PosPage() {
         customerId: customerId || null,
         discount: discountNum,
         paymentMethod: payment,
-        paymentRef,
+        paymentRef: opts?.paymentRef,
+        tendered: opts?.tendered,
       }),
     });
     setReceipt(sale);
     setKhqrOpen(false);
+    setCashOpen(false);
     clearCart();
     reload();
     reloadCustomers();
@@ -291,6 +294,12 @@ export default function PosPage() {
     // Digital payment: show the KHQR, wait for the customer to pay, then commit.
     if (payment === "KHQR") {
       setKhqrOpen(true);
+      return;
+    }
+    // Cash: count what the customer handed over first, so the till can show the
+    // change owed instead of the cashier doing the maths in their head.
+    if (payment === "Cash") {
+      setCashOpen(true);
       return;
     }
     setSubmitting(true);
@@ -685,10 +694,29 @@ export default function PosPage() {
           onCancel={() => setKhqrOpen(false)}
           onConfirmed={async (md5) => {
             try {
-              await commitSale(md5);
+              await commitSale({ paymentRef: md5 });
             } catch (e: any) {
               setToast(e.message);
               setKhqrOpen(false);
+            }
+          }}
+        />
+      )}
+
+      {/* Cash tender — count the money in, show the change out */}
+      {cashOpen && (
+        <CashModal
+          total={total}
+          busy={submitting}
+          onCancel={() => setCashOpen(false)}
+          onConfirm={async (tendered) => {
+            setSubmitting(true);
+            try {
+              await commitSale({ tendered });
+            } catch (e: any) {
+              setToast(e.message);
+            } finally {
+              setSubmitting(false);
             }
           }}
         />
@@ -787,6 +815,16 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
               <span>{usd(sale.total)}</span>
             </div>
             <p className="text-right text-[11px] text-slate-400">{riel(sale.total)}</p>
+            {sale.tendered != null && (
+              <div className="mt-1 space-y-1 border-t border-dashed border-slate-200 pt-2">
+                <Row label="Cash received" value={usd(sale.tendered)} />
+                <div className="flex justify-between font-bold text-emerald-700">
+                  <span>Change</span>
+                  <span>{usd(sale.change || 0)}</span>
+                </div>
+                <p className="text-right text-[11px] text-slate-400">{riel(sale.change || 0)}</p>
+              </div>
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-xs text-slate-500">
             <span>Paid by {sale.paymentMethod}</span>
@@ -796,6 +834,187 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
 
         <button onClick={onClose} className="btn-primary mt-4 w-full">
           New Sale
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Notes a cashier can reach for without typing. Only the ones at or above the
+// bill are offered — anything smaller can't settle it on its own.
+const USD_NOTES = [1, 5, 10, 20, 50, 100];
+const RIEL_NOTES = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
+
+function CashModal({
+  total,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  total: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (tendered: number) => void;
+}) {
+  // Customers here pay in both currencies, often in the same handful of notes,
+  // so the till counts each and settles the bill against the combined value.
+  const [usdIn, setUsdIn] = useState("");
+  const [rielIn, setRielIn] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const usdNum = Math.max(0, Number(usdIn) || 0);
+  const rielNum = Math.max(0, Number(rielIn) || 0);
+  const tendered = Math.round((usdNum + rielNum / EXCHANGE_RATE) * 100) / 100;
+  const short = Math.round((total - tendered) * 100) / 100;
+  const change = Math.round((tendered - total) * 100) / 100;
+  const enough = tendered >= total - 0.005; // a cent of float tolerance
+  const touched = usdIn !== "" || rielIn !== "";
+
+  function confirm() {
+    if (!enough || busy) return;
+    onConfirm(tendered);
+  }
+
+  const usdChips = USD_NOTES.filter((n) => n >= total).slice(0, 4);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={busy ? undefined : onCancel} />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-6 shadow-soft">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-ink-900">Cash payment</h3>
+            <p className="text-sm text-slate-500">Count what the customer gives you</p>
+          </div>
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            aria-label="Cancel cash payment"
+            className="-mr-2 -mt-1 grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-ink-900"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mb-4 rounded-xl bg-slate-50 px-4 py-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-semibold text-slate-500">Amount due</span>
+            <span className="text-right">
+              <span className="block text-xl font-extrabold text-ink-900">{usd(total)}</span>
+              <span className="block text-[11px] text-slate-400">{riel(total)}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="label" htmlFor="cash-usd">
+              Received — US$
+            </label>
+            <input
+              id="cash-usd"
+              ref={inputRef}
+              className="input text-lg font-bold"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="0.01"
+              placeholder="0.00"
+              value={usdIn}
+              onChange={(e) => setUsdIn(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirm()}
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button
+                onClick={() => {
+                  setUsdIn(total.toFixed(2));
+                  setRielIn("");
+                }}
+                className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+              >
+                Exact
+              </button>
+              {usdChips.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setUsdIn(String(n))}
+                  className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                >
+                  ${n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label" htmlFor="cash-riel">
+              Received — Riel
+            </label>
+            <input
+              id="cash-riel"
+              className="input text-lg font-bold"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step="100"
+              placeholder="0"
+              value={rielIn}
+              onChange={(e) => setRielIn(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirm()}
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {RIEL_NOTES.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setRielIn(String((Number(rielIn) || 0) + n))}
+                  className="rounded-lg bg-slate-100 px-2.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                >
+                  +{num(n)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Change / shortfall — the whole reason this screen exists */}
+        <div
+          className={`mt-4 rounded-xl px-4 py-3 ${
+            !touched ? "bg-slate-50" : enough ? "bg-emerald-50" : "bg-amber-50"
+          }`}
+        >
+          {!touched ? (
+            <p className="text-center text-sm text-slate-400">Enter the cash received</p>
+          ) : enough ? (
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-bold text-emerald-700">Change</span>
+              <span className="text-right">
+                <span className="block text-2xl font-extrabold text-emerald-700">{usd(change)}</span>
+                <span className="block text-[11px] font-semibold text-emerald-600">{riel(change)}</span>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-bold text-amber-700">Still short</span>
+              <span className="text-right">
+                <span className="block text-xl font-extrabold text-amber-700">{usd(short)}</span>
+                <span className="block text-[11px] font-semibold text-amber-600">{riel(short)}</span>
+              </span>
+            </div>
+          )}
+          {touched && (usdNum > 0 || rielNum > 0) && (
+            <p className="mt-1.5 border-t border-white/70 pt-1.5 text-[11px] text-slate-500">
+              Tendered {usd(tendered)}
+              {rielNum > 0 && usdNum > 0 && ` · $${usdNum.toFixed(2)} + ${riel(rielNum / EXCHANGE_RATE)}`}
+            </p>
+          )}
+        </div>
+
+        <button onClick={confirm} disabled={!enough || busy} className="btn-primary mt-4 w-full py-3 text-base">
+          {busy ? "Processing…" : enough ? `Confirm · change ${usd(change)}` : "Confirm"}
         </button>
       </div>
     </div>
