@@ -108,6 +108,7 @@ export default function PurchaseOrdersPage() {
   // Sort + "Today" filter for the PO list (new POs land every day).
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "po" | "sent">("date-desc");
   const [todayOnly, setTodayOnly] = useState(false);
+  const [search, setSearch] = useState(""); // find a PO by number / supplier / source PR
   const hasAnyPOs = (pos || []).length > 0;
   const isToday = (iso: string) => {
     const c = new Date(iso);
@@ -117,6 +118,15 @@ export default function PurchaseOrdersPage() {
   const list = useMemo(() => {
     let l = [...(pos || [])];
     if (todayOnly) l = l.filter((p) => isToday(p.createdAt));
+    const q = search.trim().toLowerCase();
+    if (q) {
+      l = l.filter(
+        (p) =>
+          p.poNo.toLowerCase().includes(q) ||
+          p.supplier.toLowerCase().includes(q) ||
+          (p.prNo || "").toLowerCase().includes(q),
+      );
+    }
     switch (sortBy) {
       case "date-asc":
         return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
@@ -127,7 +137,7 @@ export default function PurchaseOrdersPage() {
       default:
         return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     }
-  }, [pos, sortBy, todayOnly]);
+  }, [pos, sortBy, todayOnly, search]);
   const open = list.filter((p) => p.status === "Open" || p.status === "Partial").length;
   const received = list.filter((p) => p.status === "Received").length;
   const openValue = list
@@ -295,19 +305,42 @@ export default function PurchaseOrdersPage() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-          Sort by
-          <SearchSelect
-            className="w-44"
-            value={sortBy}
-            onChange={(v) => setSortBy(v as any)}
-            options={[
-              { value: "date-desc", label: "Date · newest first" },
-              { value: "date-asc", label: "Date · oldest first" },
-              { value: "po", label: "PO number" },
-              { value: "sent", label: "Not sent first" },
-            ]}
-          />
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2 text-xs font-medium text-slate-500">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              className="input pl-9 !py-2 text-sm"
+              placeholder="Search PO number or supplier…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              inputMode="search"
+              autoComplete="off"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            Sort by
+            <SearchSelect
+              className="w-44"
+              value={sortBy}
+              onChange={(v) => setSortBy(v as any)}
+              options={[
+                { value: "date-desc", label: "Date · newest first" },
+                { value: "date-asc", label: "Date · oldest first" },
+                { value: "po", label: "PO number" },
+                { value: "sent", label: "Not sent first" },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
@@ -315,7 +348,9 @@ export default function PurchaseOrdersPage() {
         {loading ? (
           <Spinner label="Loading orders…" />
         ) : list.length === 0 ? (
-          todayOnly && hasAnyPOs ? (
+          search.trim() && hasAnyPOs ? (
+            <EmptyState title="No matching PO" hint={`No purchase order matches “${search}”.`} />
+          ) : todayOnly && hasAnyPOs ? (
             <EmptyState title="No orders today" hint="Switch to “All” to see earlier purchase orders." />
           ) : (
             <EmptyState title="No purchase orders yet" hint="Approve a request or create an order directly." />
