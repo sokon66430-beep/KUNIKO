@@ -162,14 +162,12 @@ export default function PosPage() {
   const subtotal = total / (1 + VAT_RATE); // net of the included VAT
   const tax = total - subtotal; // VAT already contained in the price
 
+  // Overselling is allowed: items can be rung up past the on-hand count, which
+  // simply lets stock go negative (-1, -2, …). No quantity cap here.
   function addToCart(product: Product) {
     setCart((prev) => {
       const existing = prev[product.id];
       const qty = (existing?.qty || 0) + 1;
-      if (qty > product.stock) {
-        setToast(`Only ${product.stock} ${product.unit} of ${product.name} in stock`);
-        return prev;
-      }
       cartSeq.current += 1; // bump so the just-scanned line floats to the top
       return { ...prev, [product.id]: { product, qty, seq: cartSeq.current } };
     });
@@ -183,10 +181,6 @@ export default function PosPage() {
         const next = { ...prev };
         delete next[id];
         return next;
-      }
-      if (qty > line.product.stock) {
-        setToast(`Only ${line.product.stock} ${line.product.unit} in stock`);
-        return prev;
       }
       return { ...prev, [id]: { ...line, qty } };
     });
@@ -348,10 +342,7 @@ export default function PosPage() {
                   );
                   const target = exact || (filtered.length === 1 ? filtered[0] : null);
                   if (!target) return;
-                  if (target.stock <= 0) {
-                    setToast(`${target.name} is out of stock`);
-                    return;
-                  }
+                  // Overselling is allowed — ring it up even at zero stock.
                   addToCart(target);
                   setQuery("");
                 }}
@@ -384,9 +375,8 @@ export default function PosPage() {
                 return (
                   <button
                     key={p.id}
-                    disabled={out}
                     onClick={() => addToCart(p)}
-                    className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft disabled:cursor-not-allowed disabled:opacity-50"
+                    className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
                   >
                     <div className="mb-2 flex items-start justify-between">
                       <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
@@ -400,7 +390,9 @@ export default function PosPage() {
                     <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
                     <div className="mt-2 flex items-end justify-between">
                       <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
-                      <span className="text-[11px] text-slate-400">{p.stock} {p.unit}</span>
+                      <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-400"}`}>
+                        {p.stock} {p.unit}
+                      </span>
                     </div>
                   </button>
                 );

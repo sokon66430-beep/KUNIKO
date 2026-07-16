@@ -42,9 +42,9 @@ export async function POST(req: Request) {
       const product = db.products.find((p) => p.id === raw.productId);
       if (!product) return { error: `Unknown product ${raw.productId}` };
       const qty = Math.max(1, Math.floor(Number(raw.qty) || 1));
-      if (product.stock < qty) {
-        return { error: `Not enough stock for ${product.name} (have ${product.stock}, need ${qty})` };
-      }
+      // Overselling is allowed: a sale always goes through even at zero/low
+      // stock, and on-hand is allowed to go negative (-1, -2, …) so the count
+      // reflects what's owed. Restocking/stock-count brings it back to true.
       items.push({
         productId: product.id,
         sku: product.sku,
