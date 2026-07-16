@@ -154,6 +154,23 @@ export default function PosPage() {
     );
   }, [products, query]);
 
+  // Sell-directly items: a product with NO barcode can't be scanned, so the
+  // cashier must tap it (fresh food, made-to-order drinks…). Everything with a
+  // barcode is scan-only and stays off the screen. Grouped by category.
+  const directSaleGroups = useMemo(() => {
+    const noBarcode = (products || []).filter((p) => !p.barcode || !p.barcode.trim());
+    const byCat = new Map<string, Product[]>();
+    for (const p of noBarcode) {
+      const list = byCat.get(p.category) ?? [];
+      list.push(p);
+      byCat.set(p.category, list);
+    }
+    return [...byCat.entries()]
+      .map(([category, items]) => ({ category, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
+      .sort((a, b) => a.category.localeCompare(b.category));
+  }, [products]);
+  const directSaleCount = directSaleGroups.reduce((s, g) => s + g.items.length, 0);
+
   // Newest-added line on top so the cashier always sees what they just scanned.
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
   // Selling prices are VAT-INCLUSIVE: the sticker price already contains VAT, so
@@ -377,22 +394,12 @@ export default function PosPage() {
       <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => ringUpByCode(code)} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Scan-first till: nothing on screen but the scan bar until the cashier
-            searches. Scanning adds straight to the cart, so the category cloud
-            and the full product grid are only noise here. */}
-        <div className={searching ? "" : "flex min-h-[55vh] flex-col items-center justify-center"}>
-          {!searching && (
-            <div className="mb-5 text-center">
-              <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-600">
-                <ScanLine size={26} />
-              </div>
-              <p className="text-base font-bold text-ink-900">Scan to sell</p>
-              <p className="mt-1 text-sm text-slate-400">
-                Scan a barcode — the item is added automatically. Or type a name / Item ID to find it.
-              </p>
-            </div>
-          )}
-          <div className={`flex items-center gap-2 ${searching ? "" : "w-full max-w-xl"}`}>
+        {/* Scan-first till. Anything WITH a barcode is scan-only, so it never
+            clutters the screen. Products with NO barcode can't be scanned (fresh
+            food, made-to-order drinks…), so they're laid out here by category for
+            the cashier to tap. */}
+        <div>
+          <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -431,50 +438,59 @@ export default function PosPage() {
             </button>
           </div>
 
-          {/* Matches appear ONLY while searching — a scan rings the item straight
-              into the cart, so the till stays clean and fast. */}
-          {searching &&
-            (loading ? (
+          {searching ? (
+            /* Search results — for a damaged/missing barcode the cashier can
+               still find the item by name or Item ID. */
+            loading ? (
               <Spinner label="Loading products…" />
             ) : (
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {filtered.slice(0, 24).map((p) => {
-                  const out = p.stock <= 0;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        addToCart(p);
-                        setQuery("");
-                      }}
-                      className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
-                    >
-                      <div className="mb-2 flex items-start justify-between">
-                        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                          {p.sku}
-                        </span>
-                        {p.stock <= p.reorderLevel && !out && (
-                          <span className="text-[10px] font-bold text-amber-500">low</span>
-                        )}
-                        {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
-                      </div>
-                      <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
-                      <div className="mt-2 flex items-end justify-between">
-                        <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
-                        <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-400"}`}>
-                          {p.stock} {p.unit}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {filtered.slice(0, 24).map((p) => (
+                  <ProductCard
+                    key={p.id}
+                    p={p}
+                    onAdd={(x) => {
+                      addToCart(x);
+                      setQuery("");
+                    }}
+                  />
+                ))}
                 {filtered.length === 0 && (
                   <p className="col-span-full py-12 text-center text-sm text-slate-400">
                     No products match “{query.trim()}”.
                   </p>
                 )}
               </div>
-            ))}
+            )
+          ) : loading ? (
+            <Spinner label="Loading products…" />
+          ) : directSaleCount === 0 ? (
+            <div className="py-16 text-center">
+              <ScanLine className="mx-auto mb-2 text-slate-300" size={26} />
+              <p className="text-sm font-semibold text-slate-600">Scan to sell</p>
+              <p className="mt-1 text-xs text-slate-400">Every product has a barcode — scan it to add to the sale.</p>
+            </div>
+          ) : (
+            /* Sell-directly items, grouped by category. */
+            <div className="space-y-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
+                Sell directly · no barcode{" "}
+                <span className="font-semibold normal-case tracking-normal text-slate-400">({directSaleCount})</span>
+              </p>
+              {directSaleGroups.map((g) => (
+                <div key={g.category}>
+                  <p className="mb-2 text-xs font-bold text-ink-800">
+                    {g.category} <span className="font-normal text-slate-400">· {g.items.length}</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {g.items.map((p) => (
+                      <ProductCard key={p.id} p={p} onAdd={addToCart} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Cart */}
@@ -665,6 +681,31 @@ export default function PosPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// One tappable product tile — used for search results and for the
+// sell-directly (no barcode) groups.
+function ProductCard({ p, onAdd }: { p: Product; onAdd: (p: Product) => void }) {
+  const out = p.stock <= 0;
+  return (
+    <button
+      onClick={() => onAdd(p)}
+      className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+    >
+      <div className="mb-2 flex items-start justify-between">
+        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{p.sku}</span>
+        {p.stock <= p.reorderLevel && !out && <span className="text-[10px] font-bold text-amber-500">low</span>}
+        {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
+      </div>
+      <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
+      <div className="mt-2 flex items-end justify-between">
+        <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
+        <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-400"}`}>
+          {p.stock} {p.unit}
+        </span>
+      </div>
+    </button>
   );
 }
 
