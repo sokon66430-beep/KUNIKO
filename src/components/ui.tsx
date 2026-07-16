@@ -15,7 +15,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4 sm:mb-8">
       <div>
-        <h1 className="text-[22px] font-extrabold leading-tight tracking-[-0.03em] text-ink-900 sm:text-[28px]">
+        <h1 className="text-xl font-extrabold leading-tight tracking-[-0.03em] text-ink-900 sm:text-[28px]">
           {title}
         </h1>
         {subtitle && <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 sm:mt-2 sm:text-sm">{subtitle}</p>}

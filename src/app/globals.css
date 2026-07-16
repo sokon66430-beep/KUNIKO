@@ -20,6 +20,16 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Phones: scale the whole interface down a notch so text feels right for a
+   handheld and more content fits. Tailwind's rem-based sizes (the bulk of the
+   app — text, padding, gaps) all shrink together; the fixed 44px tap targets
+   set under `pointer: coarse` below are in px, so they stay comfortable. */
+@media (max-width: 639px) {
+  html {
+    font-size: 14px;
+  }
+}
+
 body {
   /* Clean neutral canvas — a soft cool gray so white cards/sidebar read as layered surfaces. */
   background-color: #f6f8fb;
