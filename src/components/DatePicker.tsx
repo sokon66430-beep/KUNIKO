@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 
 // A small, on-brand date picker that replaces the browser-native <input type="date">
@@ -44,6 +45,13 @@ export function DatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  // The calendar hangs off document.body rather than out of this wrapper: inside
+  // a dialog it would otherwise be cut off by the body's overflow-y-auto (and no
+  // z-index can escape a clip), leaving the picker unusable in every modal that
+  // has one. Fixed coords are measured off the trigger instead.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const now = new Date();
   const parsed = parse(value);
   const [viewY, setViewY] = useState(parsed?.y ?? now.getFullYear());
@@ -58,11 +66,50 @@ export function DatePicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Close on outside click or Escape.
+  // Place the calendar against the viewport: under the button, flipped above
+  // when the bottom of the screen is close (a date field low in a dialog, or on
+  // a phone), and never off the left/right edge.
+  const GAP = 8;
+  function place() {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const pw = popRef.current?.offsetWidth || 288;
+    const ph = popRef.current?.offsetHeight || 320;
+    let top = b.bottom + GAP;
+    if (top + ph > window.innerHeight - GAP) {
+      const above = b.top - ph - GAP;
+      // Prefer above; if it doesn't fit either way, sit it against the bottom.
+      top = above >= GAP ? above : Math.max(GAP, window.innerHeight - ph - GAP);
+    }
+    const left = Math.max(GAP, Math.min(b.left, window.innerWidth - pw - GAP));
+    setPos({ top, left });
+  }
+
+  // After it mounts its real size is known, so re-place with the true height —
+  // that's what makes the flip-above decision correct rather than a guess.
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    const onMove = () => place();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true); // capture: any scrolling ancestor
+    return () => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, viewY, viewMo]);
+
+  // Close on outside click or Escape. The calendar is no longer inside the
+  // wrapper, so a click in it has to be checked separately or picking a date
+  // would close the picker before it registered.
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -114,16 +161,32 @@ export function DatePicker({
   return (
     <div ref={ref} className={`relative ${className || ""}`}>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => {
+            const next = !o;
+            // Seed a position from the trigger before it paints, so the calendar
+            // never flashes at the wrong spot on its first frame.
+            if (next && btnRef.current) {
+              const b = btnRef.current.getBoundingClientRect();
+              setPos({ top: b.bottom + GAP, left: b.left });
+            }
+            return next;
+          });
+        }}
         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-ink-800 outline-none transition hover:border-slate-300 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
       >
         <CalendarIcon size={15} className="text-slate-400" />
         <span className={parsed ? "" : "text-slate-400"}>{label(value)}</span>
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full z-[70] mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lift">
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: "fixed", top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}
+          className="z-[80] w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lift"
+        >
           {/* Month header + navigation */}
           <div className="mb-2 flex items-center justify-between">
             <button
@@ -204,7 +267,8 @@ export function DatePicker({
               Today
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

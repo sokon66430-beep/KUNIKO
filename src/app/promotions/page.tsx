@@ -696,7 +696,7 @@ function NewMarkdownModal({
         open
         onClose={onClose}
         title="New discount"
-        size="lg"
+        size="xl"
         footer={
           <>
             <button className="btn-ghost" onClick={onClose} disabled={busy}>
