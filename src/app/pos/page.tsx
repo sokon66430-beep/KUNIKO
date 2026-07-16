@@ -361,15 +361,13 @@ export default function PosPage() {
             </div>
           </div>
 
-          {/* One-row, swipeable category strip — keeps products visible right
-              below on the Sunmi L3 and phones instead of a 100-row chip cloud. */}
-          <div className="no-scrollbar -mx-4 mb-4 flex snap-x gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div className="mb-4 flex flex-wrap gap-2">
             {categories.map((c) => (
               <button
                 key={c}
                 onClick={() => setCategory(c)}
-                className={`shrink-0 snap-start whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-semibold transition ${
-                  category === c ? "bg-brand-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                  category === c ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"
                 }`}
               >
                 {c}
