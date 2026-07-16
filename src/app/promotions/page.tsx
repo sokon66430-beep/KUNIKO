@@ -5,8 +5,7 @@ import { Tag, Plus, Minus, Printer, ScanLine, Camera, Ban, TicketPercent, Calend
 import JsBarcode from "jsbarcode";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Markdown } from "@/lib/types";
-import { PageHeader, Card, StatCard, Spinner, ErrorBox, EmptyState, Badge, Modal } from "@/components/ui";
-import { SearchSelect } from "@/components/SearchSelect";
+import { PageHeader, Card, StatCard, Spinner, ErrorBox, EmptyState, Badge } from "@/components/ui";
 import { CameraScanner } from "@/components/CameraScanner";
 import { DatePicker } from "@/components/DatePicker";
 import { confirmDialog } from "@/components/confirm";
@@ -166,7 +165,12 @@ export default function PromotionsPage() {
   const role = useRole();
   const mayDiscount = role ? canMarkDown(role) : false;
 
-  const [open, setOpen] = useState(false);
+  // The inline creator's fields — the whole discount is set on this page.
+  const [percent, setPercent] = useState(MARKDOWN_PERCENTS[0]);
+  const [startDate, setStartDate] = useState(storeToday());
+  const [endDate, setEndDate] = useState(storeToday());
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   // How many stickers to run off — one per reduced item. A row's worth by
@@ -176,11 +180,8 @@ export default function PromotionsPage() {
   // Which label is shown in the preview panel. Held as a CODE, not the object,
   // so the panel follows the record across a reload instead of going stale.
   const [previewCode, setPreviewCode] = useState<string | null>(null);
-  // A scanned item that has no label running — the offer to make one.
+  // The scanned item with no label running — the one being set up right now.
   const [scanned, setScanned] = useState<Product | null>(null);
-  // Product to pre-fill the New-discount form with (set when you scan an item
-  // that isn't on promotion, so the register step is one tap).
-  const [preset, setPreset] = useState<string>("");
 
   // Today is resolved in the store's timezone, not the tablet's — a Sunmi with a
   // wrong clock shouldn't change which labels look live.
@@ -285,7 +286,9 @@ export default function PromotionsPage() {
   // scanner's burst from human typing, so normal searching still works.
   const scanStateRef = useRef({ buf: "", last: 0 });
   const blockRef = useRef(false);
-  blockRef.current = open || cameraOpen;
+  // Only the camera overlay stands the wedge scanner down — the creator is part
+  // of the page now, so scanning a second item there just switches to it.
+  blockRef.current = cameraOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (blockRef.current) return;
@@ -308,6 +311,33 @@ export default function PromotionsPage() {
     return () => window.removeEventListener("keydown", onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, markdowns, today]);
+
+  // What the customer would pay — shown live as the cut is chosen, before
+  // anything is committed.
+  const newPrice = scanned ? markdownPrice(scanned.price, percent) : 0;
+
+  async function createMarkdown() {
+    if (!scanned || creating) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      const m = await api<Markdown>("/api/markdowns", {
+        method: "POST",
+        body: JSON.stringify({ productId: scanned.id, percent, startDate, endDate }),
+      });
+      setScanned(null);
+      setQ("");
+      // Put the new label straight up in the sheet below, ready to print — the
+      // reason they came to this page.
+      setPreviewCode(m.code);
+      reload();
+      setToast(`${m.code} created — ${m.percent}% off ${m.name}. Print the labels and stick them on.`);
+    } catch (e: any) {
+      setCreateErr(e.message);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function stop(m: Markdown) {
     const ok = await confirmDialog({
@@ -405,28 +435,104 @@ export default function PromotionsPage() {
             </button>
           </div>
 
-          {/* Scanned an item with nothing running on it — offer the discount
-              right here rather than making them find it again in a dropdown. */}
+          {/* Scanned an item with nothing running on it — the whole job is done
+              here: pick the cut, the dates and how many stickers, then create.
+              No dialog in the way; the item is in your hand at the shelf. */}
           {scanned && (
-            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-brand-50 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-ink-900">{scanned.name}</p>
-                <p className="text-xs text-slate-500">
-                  {usd(scanned.price)} · no discount running — scan registered, set the price cut
+            <div className="mt-3 rounded-xl bg-brand-50 p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-ink-900">{scanned.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {scanned.sku}
+                    {scanned.category ? ` · ${scanned.category}` : ""} · no discount running
+                  </p>
+                </div>
+                <p className="text-right">
+                  <span className="text-lg font-extrabold text-amber-700">{usd(newPrice)}</span>
+                  <span className="ml-2 text-xs text-slate-400 line-through">{usd(scanned.price)}</span>
                 </p>
               </div>
+
               {mayDiscount ? (
-                <button
-                  className="btn-primary !py-2 text-xs"
-                  onClick={() => {
-                    setPreset(scanned.id);
-                    setOpen(true);
-                  }}
-                >
-                  <Plus size={14} /> Discount this
-                </button>
+                <>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[auto_1fr_auto]">
+                    <div>
+                      <label className="label">Discount</label>
+                      <div className="flex gap-1.5">
+                        {MARKDOWN_PERCENTS.map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setPercent(p)}
+                            className={`h-11 min-w-[3.5rem] rounded-lg px-3 text-sm font-bold transition active:scale-[0.98] ${
+                              percent === p ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            {p}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="label">Selling days</label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DatePicker
+                          value={startDate}
+                          min={today}
+                          onChange={(v) => {
+                            setStartDate(v);
+                            if (endDate < v) setEndDate(v); // keep the range sane
+                          }}
+                        />
+                        <span className="text-xs font-semibold text-slate-400">→</span>
+                        <DatePicker value={endDate} min={startDate > today ? startDate : today} onChange={setEndDate} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="label">Labels</label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setQty((n) => Math.max(1, n - 1))}
+                          aria-label="Fewer labels"
+                          className="grid h-11 w-11 place-items-center rounded-lg bg-white text-slate-600 hover:bg-slate-100"
+                        >
+                          <Minus size={16} />
+                        </button>
+                        <input
+                          className="input h-11 w-16 text-center text-sm font-bold"
+                          type="number"
+                          min={1}
+                          max={MAX_LABELS}
+                          value={qty}
+                          onChange={(e) => setQty(clampQty(Number(e.target.value)))}
+                          aria-label="How many labels"
+                        />
+                        <button
+                          onClick={() => setQty((n) => Math.min(MAX_LABELS, n + 1))}
+                          aria-label="More labels"
+                          className="grid h-11 w-11 place-items-center rounded-lg bg-white text-slate-600 hover:bg-slate-100"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-brand-100 pt-3">
+                    <p className="text-xs text-slate-500">
+                      Customer saves {usd(scanned.price - newPrice)} · a new barcode is minted, the item's own one keeps
+                      selling at {usd(scanned.price)}
+                    </p>
+                    <button className="btn-primary !py-2 text-xs" onClick={createMarkdown} disabled={creating}>
+                      <Plus size={14} /> {creating ? "Creating…" : `Create ${qty} label${qty === 1 ? "" : "s"}`}
+                    </button>
+                  </div>
+                  {createErr && <p className="mt-2 text-xs font-semibold text-rose-600">{createErr}</p>}
+                </>
               ) : (
-                <span className="text-xs font-semibold text-slate-500">Ask a manager to discount it</span>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Ask a manager to discount it</p>
               )}
             </div>
           )}
@@ -609,25 +715,6 @@ export default function PromotionsPage() {
         hint="Point the camera at the item's barcode, or a discount sticker."
       />
 
-      {open && (
-        <NewMarkdownModal
-          products={products || []}
-          today={today}
-          initialProductId={preset}
-          onClose={() => {
-            setOpen(false);
-            setPreset("");
-          }}
-          onCreated={(m) => {
-            setOpen(false);
-            setPreset("");
-            setScanned(null);
-            reload();
-            setToast(`${m.code} created — ${m.percent}% off ${m.name}. Print the label and stick it on.`);
-          }}
-        />
-      )}
-
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl bg-ink-900 px-4 py-3 text-sm text-white shadow-soft">
           {toast}
@@ -637,229 +724,5 @@ export default function PromotionsPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function NewMarkdownModal({
-  products,
-  today,
-  initialProductId = "",
-  onClose,
-  onCreated,
-}: {
-  products: Product[];
-  today: string;
-  initialProductId?: string;
-  onClose: () => void;
-  onCreated: (m: Markdown) => void;
-}) {
-  const [productId, setProductId] = useState(initialProductId);
-  const [percent, setPercent] = useState(30);
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [scanNote, setScanNote] = useState<string | null>(null);
-
-  // Pick the product by scanning it — the item is in your hand when you decide
-  // to mark it down, so reaching for its barcode beats hunting for the name in
-  // a list of thousands.
-  const productsRef = useRef(products);
-  productsRef.current = products;
-  function resolveScan(code: string) {
-    const c = code.trim();
-    if (!c) return;
-    const lc = c.toLowerCase();
-    const hit = productsRef.current.find((p) => p.barcode === c || p.sku.toLowerCase() === lc);
-    setCameraOpen(false);
-    if (!hit) {
-      setScanNote(`No product matches ${c}.`);
-      return;
-    }
-    setProductId(hit.id);
-    setScanNote(null);
-    setErr(null);
-  }
-
-  // The Sunmi's wedge scanner while this dialog is up. The page's own listener
-  // stands down whenever the dialog is open, so only one of them ever fires.
-  const scanRef = useRef({ buf: "", last: 0 });
-  const camRef = useRef(false);
-  camRef.current = cameraOpen;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (camRef.current) return;
-      const now = Date.now();
-      const s = scanRef.current;
-      if (now - s.last > 120) s.buf = ""; // slow, human typing never builds up
-      s.last = now;
-      if (e.key === "Enter") {
-        const code = s.buf.trim();
-        s.buf = "";
-        if (code.length < 3) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        resolveScan(code);
-        return;
-      }
-      if (e.key.length === 1) s.buf += e.key;
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const options = useMemo(
-    () =>
-      products.map((p) => ({
-        value: p.id,
-        label: p.name,
-        hint: `${p.sku} · ${usd(p.price)}${p.barcode ? ` · ${p.barcode}` : ""}`,
-      })),
-    [products],
-  );
-
-  const product = products.find((p) => p.id === productId) || null;
-  const newPrice = product ? markdownPrice(product.price, percent) : 0;
-  const saving = product ? product.price - newPrice : 0;
-
-  async function submit() {
-    if (!product) {
-      setErr("Pick the product first.");
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      const m = await api<Markdown>("/api/markdowns", {
-        method: "POST",
-        body: JSON.stringify({ productId: product.id, percent, startDate, endDate }),
-      });
-      onCreated(m);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      {/* Deliberately OUTSIDE the Modal: the dialog's fade-up animation leaves a
-          transform on the panel, which would make it the containing block for
-          this fullscreen (position: fixed) scanner and trap it in the box. */}
-      <CameraScanner
-        open={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        onScan={(code) => resolveScan(code)}
-        hint="Point the camera at the item's barcode to pick it."
-      />
-      <Modal
-        open
-        onClose={onClose}
-        title="New discount"
-        size="xl"
-        footer={
-          <>
-            <button className="btn-ghost" onClick={onClose} disabled={busy}>
-              Cancel
-            </button>
-            <button className="btn-primary" onClick={submit} disabled={busy || !product}>
-              {busy ? "Creating…" : "Create label"}
-            </button>
-          </>
-      }
-    >
-      <div className="space-y-4">
-        <div>
-          <label className="label flex items-center gap-1.5">
-            <ScanLine size={13} /> Product — scan it, or search
-          </label>
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <SearchSelect
-                value={productId}
-                options={options}
-                onChange={(v) => {
-                  setProductId(v);
-                  setScanNote(null);
-                }}
-                placeholder="Scan the barcode · or search by name, item ID…"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setCameraOpen(true)}
-              title="Scan with the camera"
-              aria-label="Scan the product barcode with the camera"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-600 text-white hover:bg-brand-700"
-            >
-              <Camera size={18} />
-            </button>
-          </div>
-          {scanNote && <p className="mt-1.5 text-xs font-semibold text-amber-600">{scanNote}</p>}
-        </div>
-
-        <div>
-          <label className="label">Discount</label>
-          <div className="grid grid-cols-3 gap-2">
-            {MARKDOWN_PERCENTS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setPercent(p)}
-                className={`rounded-xl py-3 text-base font-bold transition active:scale-[0.98] ${
-                  percent === p ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                {p}%
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label">First selling day</label>
-            <DatePicker
-              value={startDate}
-              onChange={(v) => {
-                setStartDate(v);
-                if (endDate < v) setEndDate(v); // keep the range sane as they pick
-              }}
-              min={today}
-            />
-          </div>
-          <div>
-            <label className="label">Last selling day</label>
-            <DatePicker value={endDate} onChange={setEndDate} min={startDate > today ? startDate : today} />
-            <p className="mt-1 text-[11px] text-slate-400">The barcode stops scanning the next morning.</p>
-          </div>
-        </div>
-
-        {product && (
-          <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-ink-900">{product.name}</p>
-                <p className="text-xs text-slate-400">
-                  Customer saves {usd(saving)} · was {usd(product.price)}
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="block text-2xl font-extrabold text-amber-700">{usd(newPrice)}</span>
-                <span className="block text-[11px] font-semibold text-slate-400">{percent}% off</span>
-              </div>
-            </div>
-            <p className="mt-2 border-t border-slate-200 pt-2 text-[11px] text-slate-500">
-              A new barcode is generated when you create this. The item's normal barcode keeps selling at full price.
-            </p>
-          </div>
-        )}
-
-        {err && <ErrorBox message={err} />}
-      </div>
-      </Modal>
-    </>
   );
 }
