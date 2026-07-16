@@ -15,6 +15,7 @@ import {
   Upload,
   FileSpreadsheet,
   BarChart3,
+  ScanLine,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod } from "@/lib/types";
@@ -22,6 +23,7 @@ import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
 import { DatePicker } from "@/components/DatePicker";
+import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 
 type CartLine = { product: Product; qty: number; seq: number };
@@ -57,6 +59,7 @@ export default function PosPage() {
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   // Import is all-or-nothing: nothing lands until every row is fully readable
   // and none of its dates are already on record. This holds whatever the
@@ -77,7 +80,7 @@ export default function PosPage() {
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products ?? [];
   const blockScanRef = useRef(false);
-  blockScanRef.current = khqrOpen || !!receipt || reportOpen;
+  blockScanRef.current = khqrOpen || !!receipt || reportOpen || cameraOpen;
 
   async function importSales(file: File) {
     setImporting(true);
@@ -199,6 +202,21 @@ export default function PosPage() {
     setPayment("Cash");
   }
 
+  // Shared scan handler for BOTH scan paths (hardware keyboard-wedge scanner and
+  // the on-screen camera scanner): find the product by barcode or SKU and ring
+  // it straight into the cart. Returns whether a product was matched.
+  function ringUpByCode(code: string): boolean {
+    const q = code.trim();
+    if (!q) return false;
+    const prod = productsRef.current.find(
+      (p) => p.barcode === q || p.sku.toLowerCase() === q.toLowerCase(),
+    );
+    if (!prod) return false;
+    addToCart(prod);
+    setToast(`Added ${prod.name}`);
+    return true;
+  }
+
   // Real-POS barcode scanning: the Sunmi L3's built-in scanner (and any USB
   // "keyboard-wedge" scanner) types the barcode very fast and then sends Enter.
   // We watch keystrokes for the whole page — so the cashier can just scan, with
@@ -210,7 +228,7 @@ export default function PosPage() {
     let last = 0;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (blockScanRef.current) return; // a dialog (KHQR / receipt / report) is open
+      if (blockScanRef.current) return; // a dialog (KHQR / receipt / report / camera) is open
       const now = Date.now();
       if (now - last > 120) buf = ""; // gap too long → human, not a scan; restart
       last = now;
@@ -218,23 +236,20 @@ export default function PosPage() {
         const code = buf.trim();
         buf = "";
         if (code.length < 3) return; // too short to be a real barcode/scan
-        const prod = productsRef.current.find(
-          (p) => p.barcode === code || p.sku.toLowerCase() === code.toLowerCase(),
-        );
-        if (!prod) return; // unknown code → let normal Enter handling run
-        // It's a scan of a known product: ring it up and swallow the Enter so a
-        // focused field (e.g. search) doesn't also act on it.
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        addToCart(prod);
-        setQuery("");
-        setToast(`Added ${prod.name}`);
+        // Ring it up and swallow the Enter so a focused field (e.g. search)
+        // doesn't also act on it. Unknown codes fall through to normal handling.
+        if (ringUpByCode(code)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setQuery("");
+        }
         return;
       }
       if (e.key.length === 1) buf += e.key; // accumulate printable chars
     };
     window.addEventListener("keydown", onKey, true); // capture: run before field handlers
     return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function commitSale(paymentRef?: string) {
@@ -363,10 +378,15 @@ export default function PosPage() {
 
       {reportOpen && <SalesReportModal onClose={() => setReportOpen(false)} />}
 
+      {/* Camera barcode scanner — for phones, iPads and any device without a
+          hardware scanner. Stays open for continuous scanning; each barcode is
+          rung straight into the cart. */}
+      <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => ringUpByCode(code)} />
+
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         {/* Product picker */}
         <div>
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row">
+          <div className="mb-3 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -394,6 +414,15 @@ export default function PosPage() {
                 autoComplete="off"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              className="btn-ghost shrink-0"
+              title="Scan a barcode with the camera"
+            >
+              <ScanLine size={18} />
+              <span className="hidden sm:inline">Scan</span>
+            </button>
           </div>
 
           <div className="mb-4 flex flex-wrap gap-2">
