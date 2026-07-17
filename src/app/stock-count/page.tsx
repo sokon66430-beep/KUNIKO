@@ -724,29 +724,28 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-bold text-ink-800">Count sheet</p>
-              {/* Measured against what this store CARRIES, not the synced
-                  catalog — every store holds all 4,250 master products on file,
-                  but a branch ranges a fraction of them, and "0 of 4,250" told
-                  the team nothing about how far through THEIR shop they were.
-                  Carried = has stock, or sales/PR/PO/receiving/write-off/
-                  markdown/count history (see lib/assortment). Falls back to the
-                  catalog figure until the scope loads. */}
+              {/* Plain "N counted" — no denominator. The sheet holds the full
+                  catalog (an auditor counts whatever is on the shelf), but a
+                  branch ranges a fraction of it, so neither "of 4,250" nor
+                  "of <carried>" reads as honest progress. The store's real
+                  range sits in the tooltip instead. */}
               <p
                 className="truncate text-[11px] text-slate-500"
                 title={
                   scope
-                    ? `${num(scope.carried)} product${scope.carried === 1 ? "" : "s"} carried by this store (of ${num(scope.catalog)} in the catalog) — carried means it has stock or any sales, order, receiving, write-off, markdown or count history`
+                    ? `This store carries ${num(scope.carried)} product${scope.carried === 1 ? "" : "s"} (of ${num(scope.catalog)} in the catalog) — carried means it has stock or any sales, order, receiving, write-off, markdown or count history. The report shows only those.`
                     : undefined
                 }
               >
-                {num(items.length)} of {num(scope?.carried ?? products?.length ?? 0)} counted
+                {num(items.length)} counted
+                {scope ? ` · store carries ${num(scope.carried)}` : ""}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <a
                 href={`/api/stock-counts/${id}/export`}
                 className="btn-ghost !px-3 !py-1.5 text-xs"
-                title="Download the count sheet — every product with its system stock. Fill the yellow “Counted Qty” column."
+                title="Working sheet (Excel) — ALL products, so anything on the shelf has a row. Fill the yellow “Counted Qty” column, then import it back."
               >
                 <FileSpreadsheet size={14} /> Excel
               </a>
@@ -754,7 +753,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                 className="btn-ghost !px-3 !py-1.5 text-xs"
                 disabled={pdfLoading}
                 onClick={openPdf}
-                title="View or print the count sheet as a PDF"
+                title="Report (PDF) — only this store's own products (counted, or with stock / sales / order history), not the full catalog"
               >
                 <FileType2 size={14} /> {pdfLoading ? "Opening…" : "PDF"}
               </button>

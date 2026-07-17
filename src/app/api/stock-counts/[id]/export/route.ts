@@ -24,12 +24,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const stamp = new Date().toISOString().slice(0, 10);
   const filename = `${count.countNo}-${stamp}`;
 
-  // The sheet lists what this store CARRIES, not the whole synced catalog — a
-  // branch ranges a fraction of the 4,000+ master products, and a count sheet
-  // padded with items it has never stocked, sold or ordered buries the real
-  // rows. Anything counted in this count is in the set by definition (see
-  // lib/assortment), so a scanned oddball still exports.
-  const sheetProducts = assortment(db);
+  // Two different documents come out of this route (user-specified split):
+  //   xlsx — the WORKING SHEET the team fills in. Full catalog: an auditor
+  //   counts whatever is physically in the store, and a pre-filtered sheet
+  //   would hide the row for an item history didn't predict.
+  //   csv/pdf — the REPORT of results. Scoped to what the store carries
+  //   (stock, sales, PR/PO, receiving, write-off, markdown or count history —
+  //   see lib/assortment; anything counted in this count is in by definition).
+  //   A report padded with thousands of never-ranged catalog rows buries the
+  //   rows that mean something.
+  const reportProducts = assortment(db);
 
   if (format === "csv" || format === "pdf") {
     const counted = new Map(count.items.map((i) => [i.productId, i.countedQty]));
@@ -45,7 +49,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         i.placeQty ? (["Store", "Stock", "Vault"] as const).filter((pl) => i.placeQty![pl]).map((pl) => `${pl} ${i.placeQty![pl]}`).join(" · ") : "",
       ]),
     );
-    const rows = sheetProducts.map((p, i) => {
+    const rows = reportProducts.map((p, i) => {
       const cq = counted.has(p.id) ? (counted.get(p.id) as number) : null;
       return {
         no: i + 1,
@@ -117,7 +121,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     });
   }
 
-  const wb = buildStockCountWorkbook(count, sheetProducts, db.meta.business, showValue);
+  const wb = buildStockCountWorkbook(count, db.products, db.meta.business, showValue);
   const buffer = await wb.xlsx.writeBuffer();
 
   return new NextResponse(buffer as ArrayBuffer, {
