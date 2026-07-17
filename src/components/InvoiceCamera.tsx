@@ -82,6 +82,23 @@ export function InvoiceCamera({
     };
   }, [open]);
 
+  // Re-attach the live stream to the <video> whenever we're back on the camera.
+  //
+  // Belt and braces for the element being recreated: the stream lives in a ref
+  // and survives re-renders, but a <video> that React remounts comes back with
+  // srcObject empty — and an empty video element is simply BLACK, with no error
+  // anywhere to say why. Cheap to check, and it can't fire when nothing changed.
+  useEffect(() => {
+    if (!open || shot) return;
+    const v = videoRef.current;
+    const stream = streamRef.current;
+    if (!v || !stream || v.srcObject === stream) return;
+    v.srcObject = stream;
+    v.play().catch(() => {
+      /* autoplay is already on the element; a rejected play() here is harmless */
+    });
+  }, [open, shot]);
+
   if (!open) return null;
 
   async function toggleTorch() {
@@ -230,10 +247,56 @@ export function InvoiceCamera({
       <div className="relative flex-1 overflow-hidden">
         {error ? (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white/80">{error}</div>
-        ) : shot ? (
+        ) : (
+          <>
+            {/* The camera element stays MOUNTED for the whole session, and is
+                hidden behind the review rather than swapped out for it.
+                Rendering it as `shot ? <img> : <video>` meant every Add page /
+                Retake destroyed the element and built a new one with no stream
+                attached — a black rectangle, with the camera still running.
+                `invisible` (not `hidden`) because the review image is
+                object-contain: display:none would collapse it, and letting the
+                live feed show through the letterbox bars looks like a glitch. */}
+            <video
+              ref={videoRef}
+              className={`h-full w-full object-cover ${shot ? "invisible" : ""}`}
+              playsInline
+              muted
+              autoPlay
+            />
+
+            {!shot && (
+              <>
+                {/* Darken everything OUTSIDE the guide so the document area pops */}
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div
+                    ref={guideRef}
+                    className="relative rounded-xl border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]"
+                    style={{ aspectRatio: "210/297", height: "72%", maxWidth: "88%" }}
+                  >
+                    {/* corner marks */}
+                    {[
+                      "left-0 top-0 border-l-4 border-t-4 rounded-tl-xl",
+                      "right-0 top-0 border-r-4 border-t-4 rounded-tr-xl",
+                      "left-0 bottom-0 border-l-4 border-b-4 rounded-bl-xl",
+                      "right-0 bottom-0 border-r-4 border-b-4 rounded-br-xl",
+                    ].map((c) => (
+                      <span key={c} className={`absolute h-7 w-7 border-brand-400 ${c}`} />
+                    ))}
+                  </div>
+                </div>
+                <p className="pointer-events-none absolute inset-x-0 top-3 text-center text-xs font-medium text-white/90">
+                  Fill the frame with the invoice — everything outside is cut away
+                </p>
+              </>
+            )}
+          </>
+        )}
+
+        {!error && shot && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={shot} alt="Invoice scan" className="h-full w-full bg-black object-contain" />
+            <img src={shot} alt="Invoice scan" className="absolute inset-0 h-full w-full bg-black object-contain" />
             {/* Scan / Color toggle over the preview */}
             <div className="absolute inset-x-0 top-3 flex justify-center">
               <div className="inline-flex rounded-full bg-black/60 p-1 backdrop-blur">
@@ -258,31 +321,6 @@ export function InvoiceCamera({
                 ))}
               </div>
             </div>
-          </>
-        ) : (
-          <>
-            <video ref={videoRef} className="h-full w-full object-cover" playsInline muted autoPlay />
-            {/* Darken everything OUTSIDE the guide so the document area pops */}
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div
-                ref={guideRef}
-                className="relative rounded-xl border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]"
-                style={{ aspectRatio: "210/297", height: "72%", maxWidth: "88%" }}
-              >
-                {/* corner marks */}
-                {[
-                  "left-0 top-0 border-l-4 border-t-4 rounded-tl-xl",
-                  "right-0 top-0 border-r-4 border-t-4 rounded-tr-xl",
-                  "left-0 bottom-0 border-l-4 border-b-4 rounded-bl-xl",
-                  "right-0 bottom-0 border-r-4 border-b-4 rounded-br-xl",
-                ].map((c) => (
-                  <span key={c} className={`absolute h-7 w-7 border-brand-400 ${c}`} />
-                ))}
-              </div>
-            </div>
-            <p className="pointer-events-none absolute inset-x-0 top-3 text-center text-xs font-medium text-white/90">
-              Fill the frame with the invoice — everything outside is cut away
-            </p>
           </>
         )}
       </div>
