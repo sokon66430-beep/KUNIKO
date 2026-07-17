@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Select } from "@/components/Select";
+
+// How the lines of one PO can be ordered on screen.
+type ItemSort = "original" | "name" | "ordered" | "outstanding" | "line";
 import {
   Plus,
   ClipboardList,
@@ -918,8 +922,47 @@ function ViewPOModal({
     }
   }
 
-  const shown = editing ? draft : items;
-  const totalValue = shown.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
+  const base = editing ? draft : items;
+
+  // Search + sort over the lines. A real opening order runs to dozens of items,
+  // and finding one by eye down an unsorted list is the slow, error-prone bit.
+  //
+  // Both are OFF while editing: the rows are index-free (keyed by productId) but
+  // reordering or hiding rows mid-edit would mean typing into one line and
+  // watching a different one move. Nothing is hidden from an edit you're saving.
+  const [itemQuery, setItemQuery] = useState("");
+  const [itemSort, setItemSort] = useState<ItemSort>("original");
+
+  const shown = useMemo(() => {
+    if (editing) return base;
+    const q = itemQuery.trim().toLowerCase();
+    const filtered = q
+      ? base.filter(
+          (i) =>
+            i.name.toLowerCase().includes(q) ||
+            i.sku.toLowerCase().includes(q) ||
+            (i.barcode || "").toLowerCase().includes(q),
+        )
+      : base;
+    const sorted = [...filtered];
+    switch (itemSort) {
+      case "name":
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case "ordered":
+        return sorted.sort((a, b) => b.qtyOrdered - a.qtyOrdered);
+      case "outstanding":
+        // What's still owed — the question you open a part-received PO to answer.
+        return sorted.sort((a, b) => b.qtyOrdered - b.qtyReceived - (a.qtyOrdered - a.qtyReceived));
+      case "line":
+        return sorted.sort((a, b) => b.cost * b.qtyOrdered - a.cost * a.qtyOrdered);
+      default:
+        return sorted; // the order the document was raised in
+    }
+  }, [base, editing, itemQuery, itemSort]);
+
+  // The total always covers the WHOLE order, never just what's filtered — a
+  // total that quietly changed with a search box would be a lie.
+  const totalValue = base.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
 
   async function save() {
     setBusy(true);
@@ -1029,6 +1072,44 @@ function ViewPOModal({
       {po.note && !editing && (
         <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{po.note}</p>
       )}
+      {/* Find a line / order the list — only when not editing (see `shown`). */}
+      {!editing && base.length > 6 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="flex min-w-[12rem] flex-1 items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+            <Search size={15} className="shrink-0 text-slate-400" />
+            <input
+              value={itemQuery}
+              onChange={(e) => setItemQuery(e.target.value)}
+              placeholder="Find an item — name, item ID or barcode…"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-slate-400"
+            />
+            {itemQuery && (
+              <button onClick={() => setItemQuery("")} className="shrink-0 text-slate-400 hover:text-slate-600">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="w-52">
+            <Select
+              value={itemSort}
+              onChange={(v) => setItemSort(v as ItemSort)}
+              options={[
+                { value: "original", label: "Order as raised" },
+                { value: "name", label: "Name (A–Z)" },
+                { value: "ordered", label: "Most ordered" },
+                { value: "outstanding", label: "Most outstanding" },
+                { value: "line", label: "Highest line value" },
+              ]}
+            />
+          </div>
+          {itemQuery && (
+            <span className="text-[12px] text-slate-500">
+              {shown.length} of {base.length}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full min-w-[34rem] text-sm">
           <thead>

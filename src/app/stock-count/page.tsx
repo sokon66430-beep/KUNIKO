@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { findByBarcode as findProductsByBarcode, barcodeIncludes } from "@/lib/barcodes";
 import {
   ClipboardCheck,
   Plus,
@@ -444,7 +445,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
       .filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
-          (p.barcode || "").includes(q) ||
+          barcodeIncludes(p, q) ||
           p.sku.toLowerCase().includes(q),
       )
       .slice(0, 8);
@@ -515,7 +516,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     const code = (codeArg ?? query).trim();
     if (!code || !products) return;
     const lc = code.toLowerCase();
-    const byBarcode = products.filter((p) => p.barcode === code);
+    const byBarcode = findProductsByBarcode(products, code);
     if (byBarcode.length > 1) {
       setNotice({ tone: "warn", text: `Barcode matches ${byBarcode.length} products — search by name` });
       if (!fromCamera) setQuery("");

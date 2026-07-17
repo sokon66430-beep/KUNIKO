@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { readMaster, applyMasterFields, propagateSuppliersToStores, reconcileSupplierNames } from "@/lib/master";
+import {
+  readMaster,
+  applyMasterFields,
+  propagateSuppliersToStores,
+  reconcileSupplierNames,
+  repairMasterBarcodes,
+} from "@/lib/master";
 import { readSystem } from "@/lib/system";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -29,6 +35,9 @@ export async function POST() {
   // its code points at, BEFORE pushing anything out — otherwise a stale name in
   // the master would be copied into every store as though it were correct.
   const supplierNames = await reconcileSupplierNames();
+  // Same reason: `barcode` is master-owned, so the master has to be repaired
+  // before it pushes, or it would copy the unscannable "A,B" over every store.
+  const barcodesFixed = await repairMasterBarcodes();
 
   const master = await readMaster();
   const masterIds = new Set(master.map((m) => m.id));
@@ -90,5 +99,5 @@ export async function POST() {
   // Suppliers follow the master too — mirror them into every store.
   await propagateSuppliersToStores();
 
-  return NextResponse.json({ masterCount: master.length, stores: results, supplierNames });
+  return NextResponse.json({ masterCount: master.length, stores: results, supplierNames, barcodesFixed });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { matchesBarcode, barcodeIncludes } from "@/lib/barcodes";
 import {
   ScanLine,
   Camera,
@@ -192,7 +193,7 @@ export default function PriceLabelsPage() {
     const q = scan.trim().toLowerCase();
     if (q.length < 2) return [];
     const score = (p: Product) => {
-      if ((p.barcode || "").includes(q)) return 0;
+      if (barcodeIncludes(p, q)) return 0;
       if (p.sku.toLowerCase().includes(q)) return 1;
       const n = p.name.toLowerCase();
       if (n.startsWith(q)) return 2;
@@ -263,7 +264,7 @@ export default function PriceLabelsPage() {
     if (!code) return;
     const lc = code.toLowerCase();
     const match =
-      list.find((p) => p.barcode === code) ||
+      list.find((p) => matchesBarcode(p, code)) ||
       list.find((p) => p.sku.toLowerCase() === lc) ||
       list.find((p) => p.name.toLowerCase() === lc) ||
       searchResults[0];

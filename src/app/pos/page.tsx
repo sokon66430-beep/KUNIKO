@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { barcodeIncludes } from "@/lib/barcodes";
 import {
   Search,
   Plus,
@@ -213,7 +214,7 @@ export default function PosPage() {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return catalog.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcode?.includes(q),
+      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || barcodeIncludes(p, q),
     );
   }, [catalog, query]);
 

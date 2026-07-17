@@ -16,7 +16,11 @@ export type Product = {
   price: number; // USD sell price per unit
   stock: number; // units on hand
   reorderLevel: number;
-  barcode?: string;
+  barcode?: string; // the PRIMARY code — what price labels print, what a PO line snapshots
+  // Other codes the same product answers to (packaging changed, two plants, or
+  // the POS export recorded two). Never printed, always scanned — see
+  // lib/barcodes, which is the only place that knows a product has several.
+  altBarcodes?: string[];
   trackStock?: boolean;
   // Show this product on the POS screen for the cashier to TAP (fresh food,
   // made-to-order drinks…). Unset = fall back to the default POS categories —
@@ -601,6 +605,9 @@ export type DB = {
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().
     supplierTaxInitialized?: boolean;
+    // One-time flag: multi-code products imported as "A,B" in one field have
+    // been split into barcode + altBarcodes. See backfill() and lib/barcodes.
+    barcodesSplit?: boolean;
     business: {
       name: string;
       currency: string;

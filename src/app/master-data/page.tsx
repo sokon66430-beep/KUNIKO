@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { barcodeIncludes } from "@/lib/barcodes";
 import {
   Search,
   Plus,
@@ -151,7 +152,7 @@ export default function MasterDataPage() {
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
-        (p.barcode || "").includes(q) ||
+        barcodeIncludes(p, q) ||
         (p.category || "").toLowerCase().includes(q) ||
         (p.supplier || "").toLowerCase().includes(q) ||
         (p.supplierCode || "").toLowerCase().includes(q),

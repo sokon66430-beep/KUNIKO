@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { matchesBarcode } from "@/lib/barcodes";
 import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
 
   const result = await mutateDB((db) => {
     const product = db.products.find(
-      (p) => p.id === body.productId || (body.barcode && p.barcode === body.barcode),
+      (p) => p.id === body.productId || (body.barcode && matchesBarcode(p, body.barcode)),
     );
     if (!product) return { error: "not_found" as const };
 

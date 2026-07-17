@@ -1,4 +1,5 @@
 import type { Product, SellingUnit } from "./types";
+import { matchesBarcode } from "./barcodes";
 
 // ---------------------------------------------------------------------------
 // Selling units — one product, several packagings, ONE stock balance
@@ -119,7 +120,8 @@ export function findByBarcode(products: Product[], code: string): BarcodeHit | u
     }
   }
   for (const product of products) {
-    if (product.barcode === q || product.sku.toLowerCase() === q.toLowerCase()) {
+    // Any of the product's codes, not just the primary — see lib/barcodes.
+    if (matchesBarcode(product, q) || product.sku.toLowerCase() === q.toLowerCase()) {
       return { product, unit: unitsOf(product)[0] };
     }
   }

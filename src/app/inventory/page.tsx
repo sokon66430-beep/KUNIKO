@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { barcodeIncludes } from "@/lib/barcodes";
 import { useSearchParams } from "next/navigation";
 import {
   Search,
@@ -99,7 +100,7 @@ export default function InventoryPage() {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
-          (p.barcode || "").includes(q),
+          barcodeIncludes(p, q),
       );
     }
     return list;

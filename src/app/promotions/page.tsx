@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { matchesBarcode, barcodeIncludes } from "@/lib/barcodes";
 import { Tag, Plus, Minus, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useFetch, api, useRole } from "@/lib/client";
@@ -204,7 +205,7 @@ export default function PromotionsPage() {
           p.name.toLowerCase().includes(needle) ||
           (p.nameKh || "").includes(needle) ||
           p.sku.toLowerCase().includes(needle) ||
-          (p.barcode || "").includes(needle) ||
+          barcodeIncludes(p, needle) ||
           (p.supplier || "").toLowerCase().includes(needle) ||
           (p.supplierCode || "").toLowerCase().includes(needle) ||
           (p.category || "").toLowerCase().includes(needle),
@@ -290,7 +291,7 @@ export default function PromotionsPage() {
     // contains it; otherwise only an unambiguous partial.
     const named = list.filter((p) => p.name.toLowerCase().includes(lc));
     const prod =
-      list.find((p) => p.barcode === c || p.sku.toLowerCase() === lc) ??
+      list.find((p) => matchesBarcode(p, c) || p.sku.toLowerCase() === lc) ??
       list.find((p) => p.name.toLowerCase() === lc) ??
       (named.length === 1 ? named[0] : undefined);
     if (!prod) {

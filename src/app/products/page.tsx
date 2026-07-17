@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { matchesBarcode, barcodeIncludes } from "@/lib/barcodes";
 import Link from "next/link";
 import {
   Search,
@@ -142,7 +143,7 @@ export default function ProductsPage() {
     const q = scan.trim().toLowerCase();
     if (q.length < 2) return [];
     const score = (p: Product) => {
-      if ((p.barcode || "").includes(q)) return 0;
+      if (barcodeIncludes(p, q)) return 0;
       if (p.sku.toLowerCase().includes(q)) return 1;
       const n = p.name.toLowerCase();
       if (n.startsWith(q)) return 2;
@@ -164,7 +165,7 @@ export default function ProductsPage() {
     if (!code) return;
     const lc = code.toLowerCase();
     const match =
-      list.find((p) => p.barcode === code) ||
+      list.find((p) => matchesBarcode(p, code)) ||
       list.find((p) => p.sku.toLowerCase() === lc) ||
       list.find((p) => p.name.toLowerCase() === lc) ||
       scanResults[0];
@@ -199,7 +200,7 @@ export default function ProductsPage() {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
-          (p.barcode || "").includes(q) ||
+          barcodeIncludes(p, q) ||
           // location lookup: type a gondola/shelf to find what's placed there
           (p.gondola || "").toLowerCase().includes(q) ||
           (p.shelf || "").toLowerCase().includes(q),

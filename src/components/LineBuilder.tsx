@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { findByBarcode as findProductsByBarcode } from "@/lib/barcodes";
 import { ScanLine, Search, Trash2, Sparkles, X, Camera, Minus, Plus } from "lucide-react";
 import type { Product } from "@/lib/types";
 import { usd } from "@/lib/format";
@@ -196,7 +197,7 @@ export function LineBuilder({
     const lc = code.toLowerCase();
     // Some barcodes in the master are shared by 2+ products (data re-listing) —
     // never silently guess which one; make the picker resolve it.
-    const byBarcode = products.filter((p) => p.barcode === code);
+    const byBarcode = findProductsByBarcode(products, code);
     if (byBarcode.length > 1) {
       setAmbiguous(byBarcode);
       setNotice(null);

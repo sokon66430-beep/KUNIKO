@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { Product, Supplier } from "./types";
+import { repairBarcodes } from "./barcodes";
 import { DATA_DIR, DEFAULT_STORE_ID, readSystem } from "./system";
 import { readDB, mutateDB } from "./db";
 
@@ -21,6 +22,7 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "name",
   "nameKh",
   "barcode",
+  "altBarcodes", // travels with `barcode` — a product's codes are one fact, not two
   "category",
   "unit",
   "cost",
@@ -218,6 +220,26 @@ export async function reconcileSupplierNames(): Promise<{ fixed: number; unlinke
     return true;
   });
   return { fixed, unlinked };
+}
+
+/**
+ * Split any master product whose codes are still crammed into one field.
+ *
+ * The import wrote "A,B" into `barcode`, and every scan compares the whole
+ * field for equality — so those products answered to no code at all. This puts
+ * the first code in `barcode` and the rest in `altBarcodes`, which is what the
+ * scanners actually read.
+ *
+ * Runs in sync, BEFORE the push: `barcode` is a master-owned field, so a store
+ * repaired on its own would just have the broken value copied back over it.
+ */
+export async function repairMasterBarcodes(): Promise<number> {
+  let fixed = 0;
+  await mutateMaster((products) => {
+    for (const p of products) if (repairBarcodes(p)) fixed++;
+    return true;
+  });
+  return fixed;
 }
 
 // Remove a supplier from every store's list (used when it's deleted from the

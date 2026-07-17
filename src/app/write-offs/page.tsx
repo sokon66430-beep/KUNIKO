@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { findByBarcode as findProductsByBarcode, barcodeIncludes } from "@/lib/barcodes";
 import {
   Trash2,
   ScanLine,
@@ -111,7 +112,7 @@ export default function WriteOffsPage() {
     const q = scan.trim().toLowerCase();
     if (q.length < 2 || !products) return [];
     const score = (p: Product) => {
-      if ((p.barcode || "").includes(q)) return 0;
+      if (barcodeIncludes(p, q)) return 0;
       if (p.sku.toLowerCase().includes(q)) return 1;
       const n = p.name.toLowerCase();
       if (n.startsWith(q)) return 2;
@@ -131,7 +132,7 @@ export default function WriteOffsPage() {
     const code = (codeArg ?? scan).trim();
     if (!code || !products) return;
     const lc = code.toLowerCase();
-    const byBarcode = products.filter((p) => p.barcode === code);
+    const byBarcode = findProductsByBarcode(products, code);
     if (byBarcode.length > 1) {
       setAmbiguous(byBarcode);
       setNotice(null);

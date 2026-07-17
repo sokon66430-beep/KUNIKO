@@ -3,6 +3,7 @@ import path from "path";
 import type { DB } from "./types";
 import { buildSeed } from "./seed";
 import { getSession } from "./session";
+import { repairBarcodes } from "./barcodes";
 import { STORES_DIR, DEFAULT_STORE_ID, readSystem } from "./system";
 
 // One JSON file per store; the active store comes from the logged-in session.
@@ -51,6 +52,14 @@ function backfill(db: DB): DB {
   // Every product carries a ranking on its price label; default everything to "A".
   for (const p of db.products || []) {
     if (!p.ranking) p.ranking = "A";
+  }
+  // The import crammed multi-code products into one field ("A,B"), which every
+  // scan compares whole — so those products answered to no code at all. Split
+  // them once, here, so scanning is fixed on the next read rather than only
+  // after someone remembers to run a master sync.
+  if (!db.meta.barcodesSplit) {
+    for (const p of db.products || []) repairBarcodes(p);
+    db.meta.barcodesSplit = true;
   }
   if (db.meta.business && !db.meta.business.approvers) {
     db.meta.business.approvers = [
