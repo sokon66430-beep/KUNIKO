@@ -568,7 +568,12 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     if (
       !(await confirmDialog({
         title: "Post stock count",
-        message: "Post this count? Stock will be adjusted to the counted quantities.",
+        // Says what actually happens. Stock is corrected BY the variance found,
+        // not set TO the counted number — anything sold since a line was counted
+        // stays sold. Promising the counted quantity would be promising the
+        // till's sales get reversed.
+        message:
+          "Post this count? Each item's stock is corrected by the difference this count found — anything sold since it was counted stays sold.",
         confirmText: "Post count",
         tone: "brand",
       }))
