@@ -24,6 +24,7 @@ import type { Product, Supplier } from "@/lib/types";
 import RecipesManager from "@/components/RecipesManager";
 import PromotionsManager from "@/components/PromotionsManager";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
+import { Select } from "@/components/Select";
 import { confirmDialog } from "@/components/confirm";
 import { ProductModal, EMPTY_PRODUCT as EMPTY } from "@/components/ProductModal";
 import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
@@ -40,7 +41,26 @@ type SyncResult = {
 export default function MasterDataPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/master/products");
   const { data: suppliers, reload: reloadSuppliers } = useFetch<Supplier[]>("/api/master/suppliers");
+  const { data: stores } = useFetch<{ id: string; name: string }[]>("/api/stores");
   const [tab, setTab] = useState<"products" | "suppliers" | "recipes" | "promotions">("products");
+
+  // Where a Sync pushes to. "all" is the normal case; naming one store is the
+  // repair — its copy looks wrong and rewriting the others to fix it would be a
+  // bigger move than the problem.
+  const [syncStoreId, setSyncStoreId] = useState("all");
+  const syncQuery = syncStoreId === "all" ? "" : `?storeId=${encodeURIComponent(syncStoreId)}`;
+  const storePicker = (
+    <div className="w-44">
+      <Select
+        value={syncStoreId}
+        onChange={setSyncStoreId}
+        options={[
+          { value: "all", label: "All stores" },
+          ...(stores || []).map((s) => ({ value: s.id, label: s.name })),
+        ]}
+      />
+    </div>
+  );
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [editingSup, setEditingSup] = useState<Partial<Supplier> | null>(null);
@@ -71,7 +91,10 @@ export default function MasterDataPage() {
     setSyncingSup(true);
     setSupSyncResult(null);
     try {
-      const r = await api<{ suppliers: number; stores: number }>("/api/master/suppliers/sync", { method: "POST" });
+      const r = await api<{ suppliers: number; stores: number; storeNames: string[] }>(
+        `/api/master/suppliers/sync${syncQuery}`,
+        { method: "POST" },
+      );
       setSupSyncResult(r);
     } catch (e: any) {
       alert(e.message);
@@ -89,13 +112,13 @@ export default function MasterDataPage() {
     setCentralSyncMsg(null);
     try {
       if (kind === "recipes") {
-        const r = await api<{ recipes: number; stores: number }>("/api/master/recipes/sync", { method: "POST" });
-        setCentralSyncMsg(
-          `Synced ${num(r.recipes)} recipe${r.recipes === 1 ? "" : "s"} to ${r.stores} store${r.stores === 1 ? "" : "s"}.`,
-        );
+        const r = await api<{ recipes: number; stores: string[] }>(`/api/master/recipes/sync${syncQuery}`, {
+          method: "POST",
+        });
+        setCentralSyncMsg(`Synced ${num(r.recipes)} recipe${r.recipes === 1 ? "" : "s"} to ${r.stores.join(" · ")}.`);
       } else {
         const r = await api<{ promotions: number; stores: { store: string; promotions: number }[] }>(
-          "/api/master/promotions/sync",
+          `/api/master/promotions/sync${syncQuery}`,
           { method: "POST" },
         );
         // Per store, because a deal aimed at one shop isn't in the others — a
@@ -221,12 +244,16 @@ export default function MasterDataPage() {
   }
 
   async function sync() {
+    // The dialog has to name the ACTUAL target. This one removes store products
+    // that aren't in the master, so "all stores" on a run that touches one shop
+    // would be asking for consent to the wrong thing.
+    const target = stores?.find((s) => s.id === syncStoreId);
+    const where = target ? target.name : "every store";
     if (
       !(await confirmDialog({
-        title: "Sync master to all stores",
-        message:
-          "Make every store an exact mirror of the master: master info (name, barcode, category, cost, selling price, supplier) is pushed to all stores; new products are added (stock 0). Each store keeps its own reorder level, stock and shelf location. Products a store has that are NOT in the master are removed — except any that still hold stock, which are kept and reported.",
-        confirmText: "Sync to stores",
+        title: target ? `Sync master to ${target.name}` : "Sync master to all stores",
+        message: `Make ${where} an exact mirror of the master: master info (name, barcode, category, cost, selling price, supplier) is pushed${target ? ` to ${target.name}` : " to all stores"}; new products are added (stock 0). ${target ? "It keeps" : "Each store keeps"} its own reorder level, stock and shelf location. Products ${target ? "it has" : "a store has"} that are NOT in the master are removed — except any that still hold stock, which are kept and reported.`,
+        confirmText: target ? `Sync to ${target.name}` : "Sync to stores",
         tone: "brand",
       }))
     )
@@ -234,7 +261,7 @@ export default function MasterDataPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const r = await api<SyncResult>("/api/master/sync", { method: "POST" });
+      const r = await api<SyncResult>(`/api/master/sync${syncQuery}`, { method: "POST" });
       setSyncResult(r);
     } catch (e: any) {
       alert(e.message);
@@ -268,8 +295,9 @@ export default function MasterDataPage() {
                 <a className="btn-ghost !py-2 text-sm" href="/api/master/products/export" title="Download master as Excel">
                   <FileSpreadsheet size={16} /> Export
                 </a>
-                <button className="btn-ghost !py-2 text-sm" disabled={syncing} onClick={sync} title="Push shared info to every store">
-                  <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing…" : "Sync to stores"}
+                {storePicker}
+                <button className="btn-ghost !py-2 text-sm" disabled={syncing} onClick={sync} title="Push shared info to the store(s) chosen">
+                  <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing…" : "Sync"}
                 </button>
                 <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
                   <Plus size={18} /> Add Product
@@ -277,29 +305,33 @@ export default function MasterDataPage() {
               </>
             ) : tab === "suppliers" ? (
               <>
+                {storePicker}
                 <button
                   className="btn-ghost !py-2 text-sm"
                   disabled={syncingSup}
                   onClick={syncSuppliers}
-                  title="Push the supplier list to every store"
+                  title="Push the supplier list to the store(s) chosen"
                 >
                   <RefreshCw size={16} className={syncingSup ? "animate-spin" : ""} />{" "}
-                  {syncingSup ? "Syncing…" : "Sync to stores"}
+                  {syncingSup ? "Syncing…" : "Sync"}
                 </button>
                 <button className="btn-primary" onClick={() => setEditingSup({ ...EMPTY_SUPPLIER })}>
                   <Plus size={18} /> Add Supplier
                 </button>
               </>
             ) : (
-              <button
-                className="btn-ghost !py-2 text-sm"
-                disabled={syncingCentral}
-                onClick={() => syncCentral(tab === "recipes" ? "recipes" : "promotions")}
-                title={`Push the ${tab} to every store`}
-              >
-                <RefreshCw size={16} className={syncingCentral ? "animate-spin" : ""} />{" "}
-                {syncingCentral ? "Syncing…" : "Sync to stores"}
-              </button>
+              <>
+                {storePicker}
+                <button
+                  className="btn-ghost !py-2 text-sm"
+                  disabled={syncingCentral}
+                  onClick={() => syncCentral(tab === "recipes" ? "recipes" : "promotions")}
+                  title={`Push the ${tab} to the store(s) chosen`}
+                >
+                  <RefreshCw size={16} className={syncingCentral ? "animate-spin" : ""} />{" "}
+                  {syncingCentral ? "Syncing…" : "Sync"}
+                </button>
+              </>
             )}
           </div>
         }

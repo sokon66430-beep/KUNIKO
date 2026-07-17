@@ -137,10 +137,25 @@ export async function mutateMasterSuppliers<T>(mutator: (suppliers: Supplier[]) 
 // their supplier NAME as text, so a store never loses a reference. Store-only
 // suppliers (not in the master) are left in place — a delete is handled
 // separately via removeSupplierFromStores so nothing vanishes by surprise.
-export async function propagateSuppliersToStores(): Promise<void> {
-  const master = await readMasterSuppliers();
+/**
+ * Which stores a push should touch.
+ *
+ * Every propagate below takes an optional `storeId`. Left out — which is what
+ * every save does — it means all of them, so a normal edit still reaches the
+ * whole chain. Naming one is the repair case: a single shop's copy looks wrong
+ * and you'd rather not rewrite the others to fix it.
+ *
+ * An id that matches nothing yields an EMPTY list, not every store. A typo'd id
+ * quietly rewriting all three shops is the opposite of what was asked for.
+ */
+async function targetStores(storeId?: string) {
   const sys = await readSystem();
-  for (const store of sys.stores) {
+  return storeId ? sys.stores.filter((s) => s.id === storeId) : sys.stores;
+}
+
+export async function propagateSuppliersToStores(storeId?: string): Promise<void> {
+  const master = await readMasterSuppliers();
+  for (const store of await targetStores(storeId)) {
     await mutateDB((db) => {
       const byCode = new Map((db.suppliers || []).map((s) => [s.code, s]));
       for (const m of master) byCode.set(m.code, { ...m });
@@ -493,10 +508,9 @@ export async function mutateMasterPromotions<T>(mutator: (m: MasterPromotions) =
  * recipes first — so by the time anything mirrors, the master already holds
  * them. Without that, this would be a silent delete.
  */
-export async function propagateRecipesToStores(): Promise<void> {
+export async function propagateRecipesToStores(storeId?: string): Promise<void> {
   const master = await readMasterRecipes();
-  const sys = await readSystem();
-  for (const store of sys.stores) {
+  for (const store of await targetStores(storeId)) {
     await mutateDB((db) => {
       db.recipes = master.items.map((r) => ({ ...r, items: r.items.map((i) => ({ ...i })) }));
       db.meta.nextRecipe = master.next;
@@ -521,10 +535,9 @@ export function promotionRunsIn(p: Promotion, storeId: string): boolean {
   return !p.storeIds || p.storeIds.length === 0 || p.storeIds.includes(storeId);
 }
 
-export async function propagatePromotionsToStores(): Promise<void> {
+export async function propagatePromotionsToStores(storeId?: string): Promise<void> {
   const master = await readMasterPromotions();
-  const sys = await readSystem();
-  for (const store of sys.stores) {
+  for (const store of await targetStores(storeId)) {
     await mutateDB((db) => {
       db.promotions = master.items
         .filter((p) => promotionRunsIn(p, store.id))

@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
 // in the master are removed — EXCEPT any that still hold stock, which are kept
 // (never silently lose inventory) and reported back as "keptWithStock" so the
 // owner can add them to the master or write them off first.
-export async function POST() {
+export async function POST(req: Request) {
   const session = await getSession();
   if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
   const actor = await currentActor();
@@ -47,9 +47,18 @@ export async function POST() {
   const masterIds = new Set(master.map((m) => m.id));
   const sys = await readSystem();
 
+  // ?storeId= pushes to ONE store instead of all of them — the repair case,
+  // where a single shop's catalog looks wrong and rewriting the others to fix
+  // it would be a bigger move than the problem. Absent means every store, which
+  // is what this button has always done.
+  const storeId = new URL(req.url).searchParams.get("storeId") || undefined;
+  const target = storeId ? sys.stores.find((st) => st.id === storeId) : undefined;
+  if (storeId && !target) return NextResponse.json({ error: "No such store." }, { status: 400 });
+  const stores = target ? [target] : sys.stores;
+
   const results: { store: string; added: number; updated: number; removed: number; keptWithStock: number }[] = [];
 
-  for (const store of sys.stores) {
+  for (const store of stores) {
     const r = await mutateDB((db) => {
       const byId = new Map(db.products.map((p) => [p.id, p]));
       let added = 0;
@@ -100,11 +109,13 @@ export async function POST() {
     results.push({ store: store.name, ...r });
   }
 
-  // Suppliers follow the master too — mirror them into every store.
-  await propagateSuppliersToStores();
+  // Suppliers follow the master too — mirror them into the same store(s) this
+  // run is for, not always all of them: "sync PDK" shouldn't quietly rewrite
+  // the other two shops' supplier lists as a side effect.
+  await propagateSuppliersToStores(storeId);
   // As do recipes and promotions: built once centrally, run in every shop.
-  await propagateRecipesToStores();
-  await propagatePromotionsToStores();
+  await propagateRecipesToStores(storeId);
+  await propagatePromotionsToStores(storeId);
   const recipes = (await readMasterRecipes()).items.length;
   const promotions = (await readMasterPromotions()).items.length;
 
