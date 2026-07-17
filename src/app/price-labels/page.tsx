@@ -547,6 +547,14 @@ export default function PriceLabelsPage() {
           </p>
         </Card>
 
+        {/* Everything registered so far — the answer to "what did we put on
+            that shelf?", which the page could set but never show back.
+
+            Sits directly under the location field it reports on, not at the
+            bottom: you set a Gondola/Shelf up there, and the check of what's
+            already registered belongs next to it — not below a label sheet
+            that can run to dozens of items. */}
+        <RegisteredLocations products={list} />
 
         {/* Batch list */}
         {batch.length > 0 && (
@@ -639,10 +647,6 @@ export default function PriceLabelsPage() {
             <EmptyState title="No labels yet" hint="Scan a barcode or search a product above — each one becomes a printable shelf label." />
           </Card>
         )}
-
-        {/* Everything registered so far — the answer to "what did we put on
-            that shelf?", which the page could set but never show back. */}
-        <RegisteredLocations products={list} />
 
         {batch.length > 0 && (
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Preview — exactly what prints</p>
