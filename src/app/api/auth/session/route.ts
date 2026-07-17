@@ -31,10 +31,15 @@ export async function GET() {
   // Effective denied-page list for this role — the owner's live /permissions
   // config if set, otherwise the built-in baseline. Owner is never denied.
   const denied = s.role === "owner" ? [] : sys.rolePermissions?.[s.role] ?? DEFAULT_ROLE_DENIED[s.role] ?? [];
+  // Capabilities (profit/cost) for this role, so a screen can hide a figure it
+  // isn't allowed to show. The server strips the numbers regardless — this only
+  // stops an empty card being drawn around data that never arrived.
+  const caps = sys.roleCaps?.[s.role] ?? {};
   return NextResponse.json({
     user: { id: s.uid, name: s.name, role: s.role, storeId: s.storeId, storeName: s.storeName },
     stores,
     denied,
+    caps,
   });
 }
 

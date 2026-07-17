@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { buildStats, type RangeKey } from "@/lib/analytics";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   const stats = buildStats(db, range);
 
   const session = await getSession();
-  if (!session || canSeeProfit(session.role)) return NextResponse.json(stats);
+  if (!session || (await profitFor(session.role))) return NextResponse.json(stats);
 
   // Profit/margin/cost are restricted to Procurement + owner — zero them out
   // rather than send the real figures for every other role to inspect.

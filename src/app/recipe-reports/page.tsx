@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChefHat, Boxes, TrendingUp, Filter } from "lucide-react";
-import { useFetch, useRole } from "@/lib/client";
+import { useFetch, useAccess } from "@/lib/client";
 import type { Product, Recipe, Sale, StockMovement } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, EmptyState } from "@/components/ui";
 import { DatePicker } from "@/components/DatePicker";
@@ -37,8 +37,8 @@ export default function RecipeReportsPage() {
   const { data: sales, loading: sLoading } = useFetch<Sale[]>("/api/sales?limit=100000");
   const { data: recipes } = useFetch<Recipe[]>("/api/recipes");
   const { data: products } = useFetch<Product[]>("/api/products");
-  const role = useRole();
-  const maySeeProfit = role ? canSeeProfit(role) : false;
+  const { role, caps } = useAccess();
+  const maySeeProfit = role ? canSeeProfit(role, caps) : false;
 
   const recipeList = recipes || [];
   const catalog = products || [];

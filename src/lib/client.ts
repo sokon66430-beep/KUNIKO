@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Role } from "./auth";
+import type { RoleCaps } from "./access";
 
 // Mirrors the server-side write-block for view-only roles (Management / Board).
 // Set once the session role is known (see useRole). Purely for UX — the real
@@ -77,13 +78,22 @@ export function useFetch<T>(url: string): {
   return { data, loading, error, reload };
 }
 
-// Current user's role, for screens that need to hide a widget rather than a
-// whole page (e.g. profit figures) — full page-level gating lives in
-// AppShell/Sidebar via canAccessPage instead.
-export function useRole(): Role | null {
-  const { data } = useFetch<{ user: { role: Role } }>("/api/auth/session");
+// Current user's role plus their capabilities, for screens that need to hide a
+// widget rather than a whole page (e.g. profit figures) — full page-level
+// gating lives in AppShell/Sidebar via canAccessPage instead.
+//
+// `caps` is empty until the session lands, which reads as "not decided" and so
+// falls back to the baseline — never to "allowed" (see access.ts). Pair it with
+// `role`, which is null while loading, and hold both from the same fetch: two
+// hooks would mean two polls of the same endpoint that could disagree mid-flight.
+export function useAccess(): { role: Role | null; caps: RoleCaps } {
+  const { data } = useFetch<{ user: { role: Role }; caps?: RoleCaps }>("/api/auth/session");
   const role = data?.user.role ?? null;
   // Keep the client write-guard in sync with the signed-in role.
   if (role) setViewOnly(role === "management");
-  return role;
+  return { role, caps: data?.caps ?? {} };
+}
+
+export function useRole(): Role | null {
+  return useAccess().role;
 }

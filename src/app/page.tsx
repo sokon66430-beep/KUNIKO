@@ -24,7 +24,7 @@ import {
   Tag,
   TrendingDown,
 } from "lucide-react";
-import { useFetch, useRole } from "@/lib/client";
+import { useFetch, useAccess } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num, pct } from "@/lib/format";
@@ -106,8 +106,8 @@ function CategoryMix({ categories }: { categories: { name: string; value: number
 export default function DashboardPage() {
   const [range, setRange] = useState<RangeKey>("30d");
   const { data, loading, error } = useFetch<Stats>(`/api/stats?range=${range}`);
-  const role = useRole();
-  const showProfit = role == null || canSeeProfit(role);
+  const { role, caps } = useAccess();
+  const showProfit = role == null || canSeeProfit(role, caps);
 
   return (
     <div>

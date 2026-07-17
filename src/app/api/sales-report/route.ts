@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,7 @@ export async function GET(req: Request) {
   const session = await getSession();
   // Cost + profit are restricted to Procurement + owner — showing revenue and
   // cost side by side lets anyone back out the margin, so both are zeroed.
-  const hideProfit = !session || !canSeeProfit(session.role);
+  const hideProfit = !session || !(await profitFor(session.role));
   const strip = <T extends { cost: number; profit: number }>(x: T) => (hideProfit ? { ...x, cost: 0, profit: 0 } : x);
 
   return NextResponse.json({

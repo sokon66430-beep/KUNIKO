@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { Download, RotateCcw } from "lucide-react";
-import { useFetch, api, useRole } from "@/lib/client";
+import { useFetch, api, useAccess } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import type { Sale } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
@@ -37,8 +37,8 @@ export default function ReportsPage() {
   const { data, loading, error, reload } = useFetch<Stats>(`/api/stats?range=${range}`);
   const { data: sales, reload: reloadSales } = useFetch<Sale[]>("/api/sales?limit=25");
   const [resetting, setResetting] = useState(false);
-  const role = useRole();
-  const showProfit = role == null || canSeeProfit(role);
+  const { role, caps } = useAccess();
+  const showProfit = role == null || canSeeProfit(role, caps);
 
   async function resetDemo() {
     if (

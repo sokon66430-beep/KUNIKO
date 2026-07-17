@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TrendingUp, TrendingDown, Trophy, Layers, Snail, Store as StoreIcon, ArrowRight } from "lucide-react";
-import { useFetch, useRole } from "@/lib/client";
+import { useFetch, useAccess } from "@/lib/client";
 import { canSeeProfit, canSeeAllStores } from "@/lib/access";
 import type { Role } from "@/lib/auth";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState } from "@/components/ui";
@@ -31,8 +31,8 @@ const toKey = (dt: Date) => {
 };
 
 export default function BusinessReportsPage() {
-  const role = useRole();
-  const showProfit = role == null || canSeeProfit(role);
+  const { role, caps } = useAccess();
+  const showProfit = role == null || canSeeProfit(role, caps);
   const today = toKey(new Date());
   const yesterday = toKey(new Date(Date.now() - 86_400_000));
 

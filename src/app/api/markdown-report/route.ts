@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 import { markdownReportRows } from "@/lib/markdownReport";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export async function GET() {
   const rows = markdownReportRows(db.markdowns, db.sales);
 
   const session = await getSession();
-  if (session && canSeeProfit(session.role)) return NextResponse.json(rows);
+  if (session && (await profitFor(session.role))) return NextResponse.json(rows);
 
   // Cost and profit are Procurement + owner only — same rule as /api/sales.
   // Revenue and the discount given stay: they're shelf facts, not margin.

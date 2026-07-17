@@ -21,7 +21,7 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
-import { useFetch, api, useRole } from "@/lib/client";
+import { useFetch, api, useAccess } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
@@ -1697,8 +1697,8 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
     rangeTo === today
       ? presets.find((p) => rangeFrom === toKey(new Date(Date.now() - (p.days - 1) * 86_400_000)))?.days ?? 0
       : 0;
-  const role = useRole();
-  const showProfit = role == null || canSeeProfit(role);
+  const { role, caps } = useAccess();
+  const showProfit = role == null || canSeeProfit(role, caps);
 
   const categoryOptions = useMemo(
     () => [

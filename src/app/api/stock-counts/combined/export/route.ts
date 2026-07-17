@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 import { buildCombinedStockCountWorkbook, type CombinedCountRow } from "@/lib/excelExport";
 import { buildPdf, buildCsv, type Col, type ReportData } from "@/lib/reportExport";
 import { COUNT_PLACES } from "@/lib/types";
@@ -20,7 +20,7 @@ const hhmm = (iso?: string) => (iso ? `${pad(new Date(iso).getHours())}:${pad(ne
 export async function GET(req: Request) {
   const db = await readDB();
   const session = await getSession();
-  const showValue = !!session && canSeeProfit(session.role);
+  const showValue = !!session && (await profitFor(session.role));
   const format = new URL(req.url).searchParams.get("format") || "xlsx";
 
   // Sum countedQty per product across every stock count, and note how many

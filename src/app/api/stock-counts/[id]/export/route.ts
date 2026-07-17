@@ -3,7 +3,7 @@ import { readDB } from "@/lib/db";
 import { buildStockCountWorkbook } from "@/lib/excelExport";
 import { buildCsv, buildPdf, type Col } from "@/lib/reportExport";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 import { formatLocations } from "@/lib/location";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // Cost / Sell Price / Total are money figures — same rule as everywhere else,
   // only the owner and procurement see them.
   const session = await getSession();
-  const showValue = !!session && canSeeProfit(session.role);
+  const showValue = !!session && (await profitFor(session.role));
 
   const format = new URL(req.url).searchParams.get("format") || "xlsx";
   const stamp = new Date().toISOString().slice(0, 10);

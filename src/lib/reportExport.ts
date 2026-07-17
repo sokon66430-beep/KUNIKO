@@ -529,12 +529,12 @@ export async function respondReport(r: ReportData, format: string): Promise<Next
 export async function sendReport(req: Request, key: ReportKey): Promise<NextResponse> {
   const { readDB } = await import("./db");
   const { getSession } = await import("./session");
-  const { canSeeProfit } = await import("./access");
+  const { profitFor } = await import("./caps");
   const db = await readDB();
   const q = parseQuery(req.url);
   const format = new URL(req.url).searchParams.get("format") || "xlsx";
   const session = await getSession();
-  const showProfit = !!session && canSeeProfit(session.role);
+  const showProfit = !!session && (await profitFor(session.role));
   const data = getReportData(key, db, q, showProfit);
   return respondReport(data, format);
 }

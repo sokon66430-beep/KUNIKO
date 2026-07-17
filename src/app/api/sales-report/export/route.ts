@@ -1,7 +1,7 @@
 import { readDB } from "@/lib/db";
 import { respondReport, type ReportData } from "@/lib/reportExport";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   const session = await getSession();
   // Profit is restricted to Procurement + owner — drop the column for
   // everyone else rather than exporting the real figure to a file.
-  const showProfit = !!session && canSeeProfit(session.role);
+  const showProfit = !!session && (await profitFor(session.role));
 
   const period = from && from === to ? from : `${from || "start"} → ${to || "today"}`;
   // Stamp the report with the date & time it was generated, in Cambodia local

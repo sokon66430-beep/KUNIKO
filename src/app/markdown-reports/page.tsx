@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TicketPercent, TrendingDown, PackageX, CircleSlash, FileSpreadsheet, FileType2, FileDown } from "lucide-react";
-import { useFetch, useRole } from "@/lib/client";
+import { useFetch, useAccess } from "@/lib/client";
 import { canSeeProfit } from "@/lib/access";
 import type { MarkdownReportRow } from "@/lib/markdownReport";
 import { markdownReportTotals } from "@/lib/markdownReport";
@@ -26,8 +26,8 @@ function monthStart(): string {
 }
 
 export default function MarkdownReportsPage() {
-  const role = useRole();
-  const showProfit = role == null || canSeeProfit(role);
+  const { role, caps } = useAccess();
+  const showProfit = role == null || canSeeProfit(role, caps);
 
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(storeToday());

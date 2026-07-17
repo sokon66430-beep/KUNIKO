@@ -74,6 +74,53 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/settings", label: "Store Settings" },
 ];
 
+// ---------------------------------------------------------------------------
+// Capabilities
+//
+// A capability is something a role may SEE, not a page it may open — profit and
+// cost show up on the Dashboard, Reports, POS and half a dozen exports, so
+// there's no URL to deny.
+//
+// They are stored apart from the denied-page lists (system.json roleCaps, an
+// explicit true/false per role) and NOT as another entry in `denied`. That looks
+// like duplication but isn't: a denied list says what's forbidden, so anything
+// absent is allowed — and every list saved before a capability existed is,
+// necessarily, absent. Filing profit in there would have read as "allowed" for
+// every role the owner had already configured, and shipping it would have handed
+// margin to Store Crew. An explicit flag can say "not decided yet" (undefined)
+// and fall through to the baseline below, which is the whole point.
+// ---------------------------------------------------------------------------
+
+export const PROFIT_CAP = "cap:profit";
+
+export type RoleCaps = Partial<Record<string, boolean>>;
+
+// Rows the owner can toggle that aren't pages. `note` explains what the toggle
+// covers, since unlike a page the name alone doesn't say where it shows up.
+export const PERMISSION_CAPS: { href: string; label: string; note: string }[] = [
+  {
+    href: PROFIT_CAP,
+    label: "Profit & Cost",
+    note: "Profit, margin and cost prices on the Dashboard, Reports, POS and exports",
+  },
+];
+
+// Who gets a capability until the owner says otherwise. Profit/margin figures
+// are a level more sensitive than the pages above — Procurement negotiate cost,
+// so they've always had it. Cost is gated the same way: showing revenue and cost
+// side by side lets anyone back out the profit anyway.
+const CAP_BASELINE: Record<string, Role[]> = {
+  [PROFIT_CAP]: ["procurement"],
+};
+
+export function hasCap(role: Role, cap: string, caps?: RoleCaps): boolean {
+  // Owner and Management have every capability, the same way they have every
+  // page — their columns aren't toggleable on /permissions.
+  if (role === "owner" || role === "management") return true;
+  const set = caps?.[cap];
+  return set === undefined ? (CAP_BASELINE[cap] ?? []).includes(role) : set;
+}
+
 // Roles the owner manages on the Permissions page (the owner always has full access).
 export const PERMISSION_ROLES: Role[] = [
   "store_crew",
@@ -162,12 +209,13 @@ export function reachesAllStores(role: Role): boolean {
   );
 }
 
-// Profit/margin figures (Dashboard, Reports, POS Sales Report) are a level
-// more sensitive than the pages above — restricted to Procurement, who
-// negotiate cost, plus the owner. Cost is gated the same way: showing revenue
-// and cost side by side lets anyone back out the profit anyway.
-export function canSeeProfit(role: Role): boolean {
-  return role === "owner" || role === "procurement" || role === "management";
+// Profit/margin figures (Dashboard, Reports, POS Sales Report, exports).
+// Owner-configurable per role on /permissions — pass the live caps for that
+// role (server: `profitFor` in lib/caps.ts; client: `useAccess`). Called
+// without them it answers from the baseline, which is the pre-/permissions
+// behaviour: Owner, Management and Procurement.
+export function canSeeProfit(role: Role, caps?: RoleCaps): boolean {
+  return hasCap(role, PROFIT_CAP, caps);
 }
 
 // Who may put a product on markdown. Cutting a price 30–70% is a margin

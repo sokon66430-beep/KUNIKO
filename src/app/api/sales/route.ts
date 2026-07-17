@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   const sales = [...db.sales].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, limit);
 
   const session = await getSession();
-  if (session && canSeeProfit(session.role)) return NextResponse.json(sales);
+  if (session && (await profitFor(session.role))) return NextResponse.json(sales);
 
   // Cost/profit are restricted to Procurement + owner.
   const redacted = sales.map((s) => ({ ...s, cost: 0, profit: 0 }));

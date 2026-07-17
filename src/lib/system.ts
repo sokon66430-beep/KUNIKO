@@ -27,6 +27,12 @@ export type SystemData = {
   // Owner-configurable page access per role (denied page paths). Falls back to
   // DEFAULT_ROLE_DENIED in access.ts until the owner customizes it here.
   rolePermissions?: Partial<Record<Role, string[]>>;
+  // Owner-configurable capabilities per role (e.g. "cap:profit") — things that
+  // aren't a page, so they can't be expressed as a denied path. Explicit
+  // true/false; a missing key means "owner hasn't decided", which falls back to
+  // CAP_BASELINE in access.ts. See the capabilities note there for why these
+  // don't live in rolePermissions.
+  roleCaps?: Partial<Record<Role, Record<string, boolean>>>;
 };
 
 // The default store keeps the existing ON Mart Tuol Kork demo data.

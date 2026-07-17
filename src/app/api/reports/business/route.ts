@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { canSeeProfit } from "@/lib/access";
+import { profitFor } from "@/lib/caps";
 
 export const dynamic = "force-dynamic";
 
@@ -131,7 +131,7 @@ export async function GET(req: Request) {
   };
 
   const session = await getSession();
-  const showProfit = !session || canSeeProfit(session.role);
+  const showProfit = !session || (await profitFor(session.role));
   const stripProfit = <T extends { cost?: number; profit?: number }>(x: T): T =>
     showProfit ? x : { ...x, cost: 0, profit: 0 };
 

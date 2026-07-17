@@ -8,7 +8,10 @@ import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 
 type PermissionsResponse = {
   roles: Role[];
-  pages: { href: string; label: string }[];
+  // Pages, then capabilities (profit/cost) — the API flattens both into one
+  // list of rows keyed by href, so the grid doesn't care which is which.
+  // `note` is set on rows whose name doesn't say where they apply.
+  pages: { href: string; label: string; note?: string }[];
   permissions: Partial<Record<Role, string[]>>;
 };
 
@@ -84,7 +87,10 @@ export default function PermissionsPage() {
         <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-30 border-b border-slate-100 bg-slate-50 px-5 py-3 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+              {/* Fixed width: the function column is sticky, so it takes
+                  whatever the auto-layout leaves it — which was little enough
+                  that "Purchase Orders" wrapped onto two lines. */}
+              <th className="sticky left-0 top-0 z-30 w-60 min-w-[15rem] border-b border-slate-100 bg-slate-50 px-5 py-3 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
                 Function
               </th>
               {FIXED_ROLES.map((f) => (
@@ -109,8 +115,11 @@ export default function PermissionsPage() {
           <tbody>
             {data.pages.map((page) => (
               <tr key={page.href} className="hover:bg-slate-50/40">
-                <td className="sticky left-0 z-10 border-b border-slate-50 bg-white px-5 py-3 font-medium text-ink-800">
+                <td className="sticky left-0 z-10 w-60 min-w-[15rem] border-b border-slate-50 bg-white px-5 py-3 font-medium text-ink-800">
                   {page.label}
+                  {page.note && (
+                    <span className="mt-0.5 block text-[11px] font-normal leading-snug text-slate-400">{page.note}</span>
+                  )}
                 </td>
                 {FIXED_ROLES.map((f) => (
                   <td key={f.role} className="border-b border-slate-50 px-3 py-3 text-center">
@@ -158,6 +167,8 @@ export default function PermissionsPage() {
         <ShieldCheck size={14} className="mt-0.5 shrink-0" />
         Owner and Management always have full access (Management is view-only), so their columns can&apos;t be
         changed. Dashboard is always available to every signed-in role, so there&apos;s always somewhere safe to land.
+        Most rows are a page; <strong className="font-semibold text-slate-500">Profit &amp; Cost</strong> is a figure —
+        denying it leaves the page open but takes the money columns out of it, in the reports and the exports alike.
       </p>
     </div>
   );

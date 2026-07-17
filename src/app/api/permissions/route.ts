@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { readSystem, mutateSystem } from "@/lib/system";
-import { DEFAULT_ROLE_DENIED, PERMISSION_PAGES, PERMISSION_ROLES } from "@/lib/access";
+import { DEFAULT_ROLE_DENIED, PERMISSION_CAPS, PERMISSION_PAGES, PERMISSION_ROLES, hasCap } from "@/lib/access";
 import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-// Owner-only: view/edit which pages each non-owner role may open. Stored in
-// system.json (sys.rolePermissions), falling back to DEFAULT_ROLE_DENIED for
-// any role the owner hasn't customized yet.
+// Owner-only: view/edit what each non-owner role may open (pages, stored as
+// denied paths in sys.rolePermissions) and what it may see (capabilities like
+// profit, stored as explicit flags in sys.roleCaps). Both fall back to the
+// baselines in access.ts until the owner customizes them.
 export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -17,13 +18,30 @@ export async function GET() {
   const sys = await readSystem();
   const permissions: Partial<Record<Role, string[]>> = {};
   for (const role of PERMISSION_ROLES) {
-    permissions[role] = sys.rolePermissions?.[role] ?? DEFAULT_ROLE_DENIED[role] ?? [];
+    // Capabilities are flattened INTO the denied list for the wire, so the
+    // matrix stays one uniform grid of "href is in the list = unchecked" and
+    // doesn't need to know two storage shapes. The split matters for storage
+    // (see access.ts), not for drawing a checkbox. Any stale cap: entry in a
+    // saved list is dropped — roleCaps is the only source of truth for these.
+    const pages = (sys.rolePermissions?.[role] ?? DEFAULT_ROLE_DENIED[role] ?? []).filter(
+      (h) => !h.startsWith("cap:"),
+    );
+    const deniedCaps = PERMISSION_CAPS.filter((c) => !hasCap(role, c.href, sys.roleCaps?.[role])).map((c) => c.href);
+    permissions[role] = [...pages, ...deniedCaps];
   }
-  return NextResponse.json({ roles: PERMISSION_ROLES, pages: PERMISSION_PAGES, permissions });
+  return NextResponse.json({
+    roles: PERMISSION_ROLES,
+    pages: [...PERMISSION_PAGES, ...PERMISSION_CAPS],
+    permissions,
+  });
 }
 
-// Toggle one role/page cell. Body: { role, href, allowed }. `allowed: true`
-// removes the page from that role's denied list; `false` adds it.
+// Toggle one role/cell. Body: { role, href, allowed }.
+//
+// For a page, `allowed: true` removes it from that role's denied list and
+// `false` adds it. For a capability (href starting "cap:") the flag is written
+// straight to sys.roleCaps instead — same request from the UI's point of view,
+// different store. See the capabilities note in access.ts.
 export async function PATCH(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -34,6 +52,15 @@ export async function PATCH(req: Request) {
   const href = String(body.href || "");
   const allowed = !!body.allowed;
   if (!PERMISSION_ROLES.includes(role)) return NextResponse.json({ error: "Unknown role" }, { status: 400 });
+
+  if (PERMISSION_CAPS.some((c) => c.href === href)) {
+    await mutateSystem((sys) => {
+      if (!sys.roleCaps) sys.roleCaps = {};
+      sys.roleCaps[role] = { ...(sys.roleCaps[role] ?? {}), [href]: allowed };
+    });
+    return NextResponse.json({ role, href, allowed });
+  }
+
   if (!PERMISSION_PAGES.some((p) => p.href === href)) return NextResponse.json({ error: "Unknown page" }, { status: 400 });
 
   const result = await mutateSystem((sys) => {
