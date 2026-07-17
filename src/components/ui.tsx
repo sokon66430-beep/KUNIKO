@@ -76,8 +76,14 @@ export function StatCard({
   };
   return (
     <div className="card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 sm:text-[11.5px] sm:tracking-[0.1em]">
+      {/* Fixed header height so the VALUES line up across a row.
+          It used to be max(label, icon): a one-line label gave 32px, two lines
+          34, three 51 — so one long label dropped its number below its
+          neighbours' and the row stopped reading as a straight line. Now the
+          header is always h-9 and the label is clamped to two lines inside it,
+          so a number sits at the same height whatever it's called. */}
+      <div className="flex h-9 items-start justify-between gap-2">
+        <p className="line-clamp-2 text-[11px] font-bold uppercase leading-tight tracking-[0.08em] text-slate-500 sm:text-[11.5px] sm:tracking-[0.1em]">
           {label}
         </p>
         {icon && (

@@ -156,7 +156,7 @@ export default function DashboardPage() {
               accent="brand"
             />
             <StatCard
-              label={`Discount (${labelFor(range)})`}
+              label="Discount"
               value={usd(data.discount)}
               // Say where it went. One lump sum can't be acted on: a deal is a
               // rule you can change, a mark down is stock you chose to clear.
@@ -169,14 +169,14 @@ export default function DashboardPage() {
               accent="rose"
             />
             <StatCard
-              label={`After Discount (${labelFor(range)})`}
+              label="After Discount"
               value={usd(data.revenue)}
               sub={`${num(data.txCount)} transaction${data.txCount === 1 ? "" : "s"}`}
               icon={<Receipt size={18} />}
               accent="brand"
             />
             <StatCard
-              label={`Revenue (${labelFor(range)})`}
+              label="Revenue"
               value={usd(data.grossRevenue)}
               sub="at full price, before discount"
               icon={<Tag size={18} />}
@@ -184,7 +184,7 @@ export default function DashboardPage() {
             />
             {showProfit && (
               <StatCard
-                label={`Profit (${labelFor(range)})`}
+                label="Profit"
                 value={usd(data.profit)}
                 sub={`${pct(data.margin)} margin`}
                 icon={<TrendingUp size={18} />}
@@ -333,23 +333,17 @@ export default function DashboardPage() {
   );
 }
 
-// The suffix on each card's label. A Record, not a chain of ternaries: the old
-// chain ended in a bare `: "90d"`, so any range it didn't name got labelled 90d
-// — a card confidently reporting the wrong period. This way a new range is a
-// type error until it's given a name.
-const RANGE_LABEL: Record<RangeKey, string> = {
-  today: "today",
-  yesterday: "yesterday",
-  "7d": "7d",
-  "30d": "30d",
-  "90d": "90d",
-};
-
-// The first card's own title. It follows the range like the rest of the row:
-// pinned to today, it sat there reading $0.00 next to yesterday's takings —
-// technically true, and useless. Named in full rather than suffixed, because
-// "Sales (yesterday)" beside "Discount (yesterday)" is the row saying the same
-// word five times.
+// The first card's title, and the only one that names the period.
+//
+// The others dropped their "(yesterday)" suffix: the range picker sits right
+// above the row, so repeating it on all five cards said nothing and cost
+// everything — "AFTER DISCOUNT (YESTERDAY)" needed three lines where the rest
+// took two, which pushed its number below its neighbours' and broke the row's
+// straight line.
+//
+// A Record, not a chain of ternaries: the old chain ended in a bare `: "90d"`,
+// so any range it didn't name was labelled 90d — a card confidently reporting
+// the wrong period. Now a new range won't compile until it's given a name.
 const SALES_LABEL: Record<RangeKey, string> = {
   today: "Today's Sales",
   yesterday: "Yesterday's Sales",
@@ -357,10 +351,6 @@ const SALES_LABEL: Record<RangeKey, string> = {
   "30d": "Sales · Last 30 Days",
   "90d": "Sales · Last 90 Days",
 };
-
-function labelFor(range: RangeKey) {
-  return RANGE_LABEL[range];
-}
 
 type RecipeAlerts = {
   recipeCount: number;
