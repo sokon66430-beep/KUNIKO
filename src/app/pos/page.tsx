@@ -185,6 +185,20 @@ export default function PosPage() {
   }
 
   // The till only shows matches while the cashier is actually searching.
+  // Is anything modal on screen? A toast has to get out of a dialog's way — a
+  // dialog's buttons live at the bottom, which is exactly where the toast sits.
+  const modalOpen = khqrOpen || cashOpen || !!receipt || reportOpen || cameraOpen;
+
+  // Toasts clear themselves. Without this a message stayed until someone
+  // clicked its X by hand — which is how a note about a star tapped minutes
+  // earlier was still on screen, on top of the cash dialog's Confirm button.
+  // A till can't have yesterday's message sitting over today's button.
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
   const searching = query.trim().length > 0;
 
   // The catalogue as the SCREEN should show it: the server's copy with any
@@ -245,7 +259,9 @@ export default function PosPage() {
     setFavPending((s) => ({ ...s, [p.id]: next }));
     try {
       await api(`/api/products/${p.id}`, { method: "PATCH", body: JSON.stringify({ favourite: next }) });
-      setToast(next ? `${p.name} added to favourites` : `${p.name} removed from favourites`);
+      // No toast: the star fills in and the tile moves to Favourites, which says
+      // it better than a message would. A toast for something already visible is
+      // just something else in the cashier's way.
       reload();
     } catch (e: any) {
       // The write failed, so drop the guess and let the server's answer stand.
@@ -985,9 +1001,15 @@ export default function PosPage() {
       {/* Receipt modal */}
       {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}
 
-      {/* Toast */}
+      {/* Toast — clears itself (see the effect above) and, while a modal is
+          open, sits ABOVE it rather than across its buttons: this is the till,
+          and nothing may cover Confirm. */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl bg-ink-900 px-4 py-3 text-sm text-white shadow-soft">
+        <div
+          className={`fixed left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-xl bg-ink-900 px-4 py-3 text-sm text-white shadow-lift ${
+            modalOpen ? "top-6" : "bottom-6"
+          }`}
+        >
           {toast}
           <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white">
             <X size={16} />
