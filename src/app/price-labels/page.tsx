@@ -11,14 +11,19 @@ import {
   Plus,
   Minus,
   FileDown,
+  MapPin,
+  Search,
+  X,
+  ChevronDown,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import type { Product } from "@/lib/types";
-import { PageHeader, Card, ErrorBox, EmptyState } from "@/components/ui";
+import { PageHeader, Card, ErrorBox, EmptyState, Badge } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
-import { usd, rielShelfPrice, EXCHANGE_RATE } from "@/lib/format";
+import { usd, num, rielShelfPrice, EXCHANGE_RATE } from "@/lib/format";
+import { productLocations, formatLocation } from "@/lib/location";
 
 // Riel price = USD × 4,100 rounded UP to the next 100 riel — the rule now lives
 // in lib/format (rielShelfPrice) so the promotion sticker rounds identically.
@@ -635,6 +640,10 @@ export default function PriceLabelsPage() {
           </Card>
         )}
 
+        {/* Everything registered so far — the answer to "what did we put on
+            that shelf?", which the page could set but never show back. */}
+        <RegisteredLocations products={list} />
+
         {batch.length > 0 && (
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Preview — exactly what prints</p>
         )}
@@ -664,5 +673,184 @@ export default function PriceLabelsPage() {
 
       <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => lookup(code)} />
     </div>
+  );
+}
+
+/**
+ * Everything registered on a shelf, read back.
+ *
+ * This page has always been able to SET a location — type a Gondola/Shelf,
+ * scan, and it's saved onto the product — but there was nowhere to read it
+ * back, so "what's on G12?" or "did that item ever get registered?" had no
+ * answer short of opening products one at a time.
+ *
+ * Grouped Gondola → Shelf because that's the shape of the question: you're
+ * standing at a shelf asking what belongs on it. A product registered in two
+ * places appears under both — that's not duplication, it's where it is.
+ */
+function RegisteredLocations({ products }: { products: Product[] }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+
+  // One row per product PER PLACE it sits.
+  const placed = useMemo(() => {
+    const rows: { product: Product; gondola: string; shelf: string }[] = [];
+    for (const p of products) {
+      for (const l of productLocations(p)) {
+        const gondola = (l.gondola || "").trim();
+        const shelf = (l.shelf || "").trim();
+        if (gondola || shelf) rows.push({ product: p, gondola, shelf });
+      }
+    }
+    return rows;
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return placed;
+    return placed.filter(
+      (r) =>
+        r.product.name.toLowerCase().includes(needle) ||
+        (r.product.nameKh || "").includes(needle) ||
+        r.product.sku.toLowerCase().includes(needle) ||
+        barcodeIncludes(r.product, needle) ||
+        r.gondola.toLowerCase().includes(needle) ||
+        r.shelf.toLowerCase().includes(needle) ||
+        `${r.gondola}/${r.shelf}`.toLowerCase().includes(needle),
+    );
+  }, [placed, q]);
+
+  // Gondola → Shelf → products. Sorted naturally, so G2 comes before G10 —
+  // plain string sort walks the aisle in the wrong order.
+  const grouped = useMemo(() => {
+    const byGondola = new Map<string, Map<string, typeof filtered>>();
+    for (const r of filtered) {
+      const g = r.gondola || "—";
+      const s = r.shelf || "—";
+      if (!byGondola.has(g)) byGondola.set(g, new Map());
+      const shelves = byGondola.get(g)!;
+      if (!shelves.has(s)) shelves.set(s, []);
+      shelves.get(s)!.push(r);
+    }
+    const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    return [...byGondola.entries()].sort((a, b) => natural(a[0], b[0])).map(([gondola, shelves]) => ({
+      gondola,
+      shelves: [...shelves.entries()].sort((a, b) => natural(a[0], b[0])).map(([shelf, items]) => ({
+        shelf,
+        items: [...items].sort((a, b) => a.product.name.localeCompare(b.product.name)),
+      })),
+    }));
+  }, [filtered]);
+
+  /** The product's other shelves — the row already says the one it's under. */
+  const elsewhere = (r: { product: Product; gondola: string; shelf: string }) =>
+    productLocations(r.product)
+      .filter((l) => (l.gondola || "").trim() !== r.gondola || (l.shelf || "").trim() !== r.shelf)
+      .map(formatLocation)
+      .filter(Boolean)
+      .join(", ");
+
+  const gondolaCount = useMemo(() => new Set(placed.map((r) => r.gondola || "—")).size, [placed]);
+  const productCount = useMemo(() => new Set(placed.map((r) => r.product.id)).size, [placed]);
+  const unregistered = products.length - productCount;
+
+  return (
+    <Card className="mb-6">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-3 text-left">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600">
+            <MapPin size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-base font-bold text-ink-900">Registered Locations</p>
+            <p className="mt-0.5 text-[12.5px] text-slate-500">
+              {productCount === 0
+                ? "Nothing registered yet — set a Gondola/Shelf above, then scan."
+                : `${num(productCount)} product${productCount === 1 ? "" : "s"} across ${num(gondolaCount)} gondola${gondolaCount === 1 ? "" : "s"}`}
+              {unregistered > 0 && productCount > 0 ? ` · ${num(unregistered)} with no location` : ""}
+            </p>
+          </div>
+        </div>
+        <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="mb-3 flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+            <Search size={15} className="shrink-0 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Find a product, or a gondola / shelf — e.g. G12, or 12/3…"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-slate-400"
+            />
+            {q && (
+              <button onClick={() => setQ("")} className="shrink-0 text-slate-400 hover:text-slate-600">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {grouped.length === 0 ? (
+            <EmptyState
+              title={placed.length === 0 ? "No shelf locations registered yet" : `Nothing matches “${q.trim()}”`}
+              hint={
+                placed.length === 0
+                  ? "Type a Gondola and Shelf at the top, then scan the items on it — each scan registers that spot on the product."
+                  : "Search by product name, item ID, barcode, or a gondola / shelf."
+              }
+              icon={<MapPin size={18} />}
+            />
+          ) : (
+            <div className="space-y-4">
+              {grouped.map((g) => (
+                <div key={g.gondola}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <p className="text-[13px] font-bold text-ink-900">
+                      Gondola <span className="font-mono">{g.gondola}</span>
+                    </p>
+                    <Badge tone="muted">
+                      {num(g.shelves.reduce((s, sh) => s + sh.items.length, 0))} item
+                      {g.shelves.reduce((s, sh) => s + sh.items.length, 0) === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {g.shelves.map((sh) => (
+                      <div key={sh.shelf} className="rounded-xl border border-slate-200">
+                        <p className="border-b border-slate-100 px-3 py-2 text-[12px] font-bold uppercase tracking-[0.06em] text-slate-500">
+                          Shelf <span className="font-mono normal-case text-ink-800">{sh.shelf}</span>
+                        </p>
+                        <ul className="divide-y divide-slate-50">
+                          {sh.items.map((r) => (
+                            <li key={`${r.product.id}-${r.gondola}-${r.shelf}`} className="flex flex-wrap items-center gap-3 px-3 py-2">
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[13px] font-semibold text-ink-900">{r.product.name}</span>
+                                <span className="block truncate text-[11.5px] text-slate-400">
+                                  {r.product.sku}
+                                  {r.product.barcode ? ` · ${r.product.barcode}` : ""}
+                                  {/* The OTHER places it sits, so a product on
+                                      two shelves says so from either one.
+                                      "Also at" must exclude the shelf you're
+                                      reading it under — telling someone stood
+                                      at G2/5 that it's also at G2/5 is noise. */}
+                                  {elsewhere(r) ? ` · also at ${elsewhere(r)}` : ""}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-[13px] font-semibold tabular-nums text-slate-600">
+                                {usd(r.product.price)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
