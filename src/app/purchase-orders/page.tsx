@@ -964,6 +964,18 @@ function ViewPOModal({
   // total that quietly changed with a search box would be a lie.
   const totalValue = base.reduce((s, i) => s + i.cost * i.qtyOrdered, 0);
 
+  /**
+   * Each line's number ON THE DOCUMENT — fixed to the order the PO was raised
+   * in, so it matches the "NO" column of the printed sheet the supplier is
+   * holding. Taken before any sort or search, which is the whole point: sorting
+   * by name and finding line 12 still means line 12 to them on the phone.
+   */
+  const lineNo = useMemo(() => {
+    const m = new Map<string, number>();
+    base.forEach((it, i) => m.set(it.productId, i + 1));
+    return m;
+  }, [base]);
+
   async function save() {
     setBusy(true);
     try {
@@ -1114,6 +1126,8 @@ function ViewPOModal({
         <table className="w-full min-w-[34rem] text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              {/* "No" matches the printed sheet's first column exactly. */}
+              <th className="w-10 px-3 py-2 text-right font-semibold">No</th>
               <th className="px-3 py-2 font-semibold">Product</th>
               {editing && <th className="px-3 py-2 text-center font-semibold">Unit cost</th>}
               <th className="px-3 py-2 text-center font-semibold">Ordered</th>
@@ -1127,6 +1141,9 @@ function ViewPOModal({
               const short = it.qtyOrdered - it.qtyReceived;
               return (
                 <tr key={it.productId} className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-2 text-right align-top text-[12px] tabular-nums text-slate-400">
+                    {lineNo.get(it.productId)}
+                  </td>
                   <td className="px-3 py-2">
                     <p className="font-semibold text-ink-800">{it.name}</p>
                     <p className="text-xs text-slate-400">
@@ -1193,8 +1210,15 @@ function ViewPOModal({
           </tbody>
           <tfoot>
             <tr className="bg-slate-50">
-              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={editing ? 4 : 3}>
+              {/* +1 for the "No" column. */}
+              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={editing ? 5 : 4}>
                 Total order value
+                {itemQuery && (
+                  // The total is the whole order, so say so when the list isn't.
+                  <span className="ml-2 font-normal normal-case text-slate-400">
+                    (all {base.length} lines)
+                  </span>
+                )}
               </td>
               <td className="px-3 py-2.5 text-right font-bold text-ink-900">{usd(totalValue)}</td>
               {showActions && <td></td>}
