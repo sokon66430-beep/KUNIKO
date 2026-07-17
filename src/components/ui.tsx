@@ -75,7 +75,7 @@ export function StatCard({
     rose: "bg-rose-50 text-rose-600",
   };
   return (
-    <div className="card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
+    <div className="stat card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
       {/* Fixed header height so the VALUES line up across a row.
           It used to be max(label, icon): a one-line label gave 32px, two lines
           34, three 51 — so one long label dropped its number below its
@@ -90,9 +90,14 @@ export function StatCard({
           <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${accents[accent]}`}>{icon}</div>
         )}
       </div>
-      {/* Fluid size: scales down on narrow phones so long amounts (e.g.
-          $50,579.43) never clip in a 2-up grid, and caps at 32px on desktop. */}
-      <p className="mt-3 whitespace-nowrap text-[clamp(1.05rem,4.2vw,2rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-ink-900 sm:mt-5">
+      {/* Sized against the card (see `.stat`), not the viewport: `cqi` is a
+          percentage of this card's own width, so a number gets big when the
+          card is wide and steps back when the row is crowded. The old `4.2vw`
+          asked the screen instead, which is why $50,263.32 in a 5-up row was
+          drawn at 32px in 167px of space and ran into its own padding.
+          Floor keeps it legible on a 2-up phone; cap stops a lone wide card
+          from turning $7.00 into a billboard. */}
+      <p className="mt-3 whitespace-nowrap text-[clamp(1.05rem,14cqi,1.75rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-ink-900 sm:mt-5">
         {value}
       </p>
       {sub && <p className="mt-2 text-[12px] text-slate-400 sm:mt-2.5 sm:text-[13px]">{sub}</p>}

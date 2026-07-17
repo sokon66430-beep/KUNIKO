@@ -50,6 +50,14 @@ body {
     /* Flat & minimal — a soft hairline, no shadow, so surfaces feel calm and airy. */
     @apply rounded-2xl bg-white ring-1 ring-slate-200/70;
   }
+  .stat {
+    /* Makes the card itself the reference for the `cqi` units on its value, so
+       the number is sized by the space it actually has rather than by the
+       viewport. A stat card is 215px wide in a 5-up row and 430 in a 3-up; a
+       vw-based size can't tell those apart and drew both as if they owned the
+       screen, which is how a big number ended up touching its own padding. */
+    container-type: inline-size;
+  }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
   }
