@@ -4,6 +4,8 @@ import type { Recipe } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { canManageRecipes, isReadOnly } from "@/lib/access";
 import { validateRecipeInput } from "@/lib/recipes";
+import { readMaster, readMasterRecipes, mutateMasterRecipes, propagateRecipesToStores } from "@/lib/master";
+import { readSystem } from "@/lib/system";
 import { logAudit } from "@/lib/audit";
 import { currentActor } from "@/lib/actor";
 
@@ -18,7 +20,17 @@ async function guard() {
   return null;
 }
 
-// GET one recipe.
+// Write the audit line into the store the actor is working in. The change lands
+// in every store, but the trail should read as what a person did and where they
+// did it — not as three identical entries nobody performed.
+async function audit(actor: string, action: string, recipe: Recipe, detail: string) {
+  await mutateDB((db) => {
+    logAudit(db, { actor, action, entityType: "Recipe", entity: `${recipe.code} · ${recipe.name}`, detail });
+    return true;
+  });
+}
+
+// GET one recipe — from the store mirror.
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const db = await readDB();
   const recipe = db.recipes.find((r) => r.id === params.id);
@@ -26,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json(recipe);
 }
 
-// PUT — replace the recipe's contents.
+// PUT — replace the recipe's contents, everywhere.
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   const denied = await guard();
   if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
@@ -34,41 +46,37 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   const body = await req.json().catch(() => ({}));
   const actor = await currentActor();
 
-  const result = await mutateDB((db) => {
-    const recipe = db.recipes.find((r) => r.id === params.id);
+  const result = await mutateMasterRecipes(async (m) => {
+    const recipe = m.items.find((r) => r.id === params.id);
     if (!recipe) return { error: "not_found" as const };
 
-    const parsed = validateRecipeInput(body, db.products);
+    const products = await readMaster();
+    const parsed = validateRecipeInput(body, products);
     if (!parsed.ok) return { error: parsed.error };
     const input = parsed.value;
 
-    const clash = db.recipes.find(
-      (r) => r.id !== recipe.id && r.name.toLowerCase() === input.name.toLowerCase(),
-    );
+    const clash = m.items.find((r) => r.id !== recipe.id && r.name.toLowerCase() === input.name.toLowerCase());
     if (clash) return { error: `A recipe called "${clash.name}" already exists.` };
 
     const before = recipe.items.length;
     Object.assign(recipe, input);
     recipe.updatedBy = actor;
     recipe.updatedAt = new Date().toISOString();
-
-    logAudit(db, {
-      actor,
-      action: "Updated",
-      entityType: "Recipe",
-      entity: `${recipe.code} · ${recipe.name}`,
-      detail: `${before} → ${recipe.items.length} ingredients · ${recipe.status}`,
-    });
-    return { recipe };
+    return { recipe, before };
   });
 
   if ("error" in result) {
     const notFound = result.error === "not_found";
-    return NextResponse.json(
-      { error: notFound ? "Recipe not found" : result.error },
-      { status: notFound ? 404 : 400 },
-    );
+    return NextResponse.json({ error: notFound ? "Recipe not found" : result.error }, { status: notFound ? 404 : 400 });
   }
+
+  await propagateRecipesToStores();
+  await audit(
+    actor,
+    "Updated",
+    result.recipe,
+    `${result.before} → ${result.recipe.items.length} ingredients · ${result.recipe.status} · every store`,
+  );
   return NextResponse.json(result.recipe);
 }
 
@@ -78,19 +86,19 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
 
   const actor = await currentActor();
-  const result = await mutateDB((db) => {
-    const source = db.recipes.find((r) => r.id === params.id);
+  const result = await mutateMasterRecipes((m) => {
+    const source = m.items.find((r) => r.id === params.id);
     if (!source) return { error: "not_found" as const };
 
     // "X (copy)", "X (copy 2)" … so duplicating twice doesn't hit the
     // duplicate-name guard and make the button look broken.
     const base = `${source.name} (copy`;
     let name = `${base})`;
-    for (let n = 2; db.recipes.some((r) => r.name.toLowerCase() === name.toLowerCase()); n++) {
+    for (let n = 2; m.items.some((r) => r.name.toLowerCase() === name.toLowerCase()); n++) {
       name = `${base} ${n})`;
     }
 
-    const seq = db.meta.nextRecipe;
+    const seq = m.next;
     const copy: Recipe = {
       id: `rcp${seq}`,
       code: `RCP-${seq}`,
@@ -103,68 +111,88 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       createdBy: actor,
       createdAt: new Date().toISOString(),
     };
-    db.meta.nextRecipe += 1;
-    db.recipes.push(copy);
-
-    logAudit(db, {
-      actor,
-      action: "Duplicated",
-      entityType: "Recipe",
-      entity: `${copy.code} · ${copy.name}`,
-      detail: `copied from ${source.code}`,
-    });
-    return { recipe: copy };
+    m.next += 1;
+    m.items.push(copy);
+    return { recipe: copy, from: source.code };
   });
 
   if ("error" in result) {
     const notFound = result.error === "not_found";
-    return NextResponse.json(
-      { error: notFound ? "Recipe not found" : result.error },
-      { status: notFound ? 404 : 400 },
-    );
+    return NextResponse.json({ error: notFound ? "Recipe not found" : result.error }, { status: notFound ? 404 : 400 });
   }
+
+  await propagateRecipesToStores();
+  await audit(actor, "Duplicated", result.recipe, `copied from ${result.from}`);
   return NextResponse.json(result.recipe, { status: 201 });
 }
 
-// DELETE — remove a recipe outright.
+/**
+ * Every store where a product still cooks from this recipe.
+ *
+ * The recipe is central but the menu LINK is per store, so a shop the deleter
+ * isn't standing in can still be using it. Deleting anyway wouldn't break the
+ * sale — it would quietly stop deducting ingredients there, which nobody
+ * notices until the stock has drifted. So the check spans every store, not just
+ * the one whose screen the button was pressed on.
+ */
+async function storesStillUsing(recipeId: string): Promise<{ store: string; products: string[] }[]> {
+  const sys = await readSystem();
+  const out: { store: string; products: string[] }[] = [];
+  for (const store of sys.stores) {
+    try {
+      const db = await readDB(store.id);
+      const linked = db.products.filter((p) => p.recipeId === recipeId).map((p) => p.name);
+      if (linked.length) out.push({ store: store.name, products: linked });
+    } catch {
+      /* a store that won't load can't be checked — and can't be linked either */
+    }
+  }
+  return out;
+}
+
+// DELETE — remove a recipe outright, everywhere.
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const denied = await guard();
   if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
 
   const actor = await currentActor();
-  const result = await mutateDB((db) => {
-    const recipe = db.recipes.find((r) => r.id === params.id);
-    if (!recipe) return { error: "not_found" as const };
 
-    // Deleting a recipe a product still sells would silently stop that product
-    // deducting anything — the sale keeps working, so nobody would notice until
-    // stock drifted. Make them unlink it first, or set the recipe Inactive.
-    const linked = db.products.filter((p) => p.recipeId === recipe.id);
-    if (linked.length) {
-      const names = linked.slice(0, 3).map((p) => p.name).join(", ");
-      const more = linked.length > 3 ? ` and ${linked.length - 3} more` : "";
-      return {
-        error: `${linked.length === 1 ? "1 product still uses" : `${linked.length} products still use`} this recipe (${names}${more}). Unlink ${linked.length === 1 ? "it" : "them"} first, or set the recipe Inactive to pause it.`,
-      };
-    }
+  // Checked BEFORE the master is opened for writing: walking every store while
+  // holding the write chain would block every other recipe edit behind it.
+  const master = await readMasterRecipes();
+  if (!master.items.some((r) => r.id === params.id)) {
+    return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
+  }
 
-    db.recipes = db.recipes.filter((r) => r.id !== recipe.id);
-    logAudit(db, {
-      actor,
-      action: "Deleted",
-      entityType: "Recipe",
-      entity: `${recipe.code} · ${recipe.name}`,
-      detail: `${recipe.items.length} ingredient${recipe.items.length === 1 ? "" : "s"}`,
-    });
-    return { ok: true };
-  });
-
-  if ("error" in result) {
-    const notFound = result.error === "not_found";
+  const inUse = await storesStillUsing(params.id);
+  if (inUse.length) {
+    const total = inUse.reduce((s, u) => s + u.products.length, 0);
+    const where = inUse
+      .map((u) => `${u.store} (${u.products.slice(0, 2).join(", ")}${u.products.length > 2 ? "…" : ""})`)
+      .join("; ");
     return NextResponse.json(
-      { error: notFound ? "Recipe not found" : result.error },
-      { status: notFound ? 404 : 400 },
+      {
+        error: `${total === 1 ? "1 product still uses" : `${total} products still use`} this recipe — ${where}. Unlink ${total === 1 ? "it" : "them"} first, or set the recipe Inactive to pause it.`,
+      },
+      { status: 400 },
     );
   }
-  return NextResponse.json(result);
+
+  const result = await mutateMasterRecipes((m) => {
+    const recipe = m.items.find((r) => r.id === params.id);
+    if (!recipe) return { error: "not_found" as const };
+    m.items = m.items.filter((r) => r.id !== recipe.id);
+    return { recipe };
+  });
+
+  if ("error" in result) return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
+
+  await propagateRecipesToStores();
+  await audit(
+    actor,
+    "Deleted",
+    result.recipe,
+    `${result.recipe.items.length} ingredient${result.recipe.items.length === 1 ? "" : "s"} · every store`,
+  );
+  return NextResponse.json({ ok: true });
 }

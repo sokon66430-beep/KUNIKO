@@ -12,6 +12,12 @@ npm-debug.log*
 /data/stores/
 /data/system.json
 /data/master-products.json
+# Recipes and promotions build themselves from the stores the FIRST time they're
+# read, and only when the file is missing. Committing one — even an empty one —
+# would land in a deploy where DATA_DIR isn't a disk, suppress that migration
+# forever, and let the next sync mirror {} over every store's real recipes.
+/data/master-recipes.json
+/data/master-promotions.json
 
 # Source spreadsheets & scratch files
 *.xlsx

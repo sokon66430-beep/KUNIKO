@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import type { Product, Supplier } from "./types";
+import type { Product, Supplier, Recipe, Promotion } from "./types";
 import { repairBarcodes } from "./barcodes";
 import { DATA_DIR, DEFAULT_STORE_ID, readSystem } from "./system";
 import { readDB, mutateDB } from "./db";
@@ -249,6 +249,269 @@ export async function removeSupplierFromStores(code: string): Promise<void> {
   for (const store of sys.stores) {
     await mutateDB((db) => {
       db.suppliers = (db.suppliers || []).filter((s) => s.code !== code);
+      return true;
+    }, store.id);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recipes and promotions — central, like the catalog
+//
+// Both used to live per store, so a chain running three shops had to key the
+// same "Beef Noodle" recipe and the same "buy 2 get 1" deal three times, and
+// nothing kept them honest afterwards. They're master-owned now: written once
+// here, mirrored into every store.
+//
+// Stores still hold a full copy rather than reading the master at the till. The
+// POS, the sale route and the reports all read `db.recipes` / `db.promotions`
+// on the hot path, and a deal has to resolve while a customer is standing
+// there — so the copy is the cache, and the master is the truth.
+//
+// Each file keeps its own `next` counter. The per-store counters can't be
+// reused: two stores minting from their own sequence both produce rcp100001 for
+// different recipes, which is exactly the collision the migration below has to
+// clean up once.
+// ---------------------------------------------------------------------------
+
+const MASTER_RECIPES_FILE = path.join(DATA_DIR, "master-recipes.json");
+const MASTER_PROMOTIONS_FILE = path.join(DATA_DIR, "master-promotions.json");
+let masterRecipeWriteChain: Promise<unknown> = Promise.resolve();
+let masterPromoWriteChain: Promise<unknown> = Promise.resolve();
+
+export type MasterRecipes = { next: number; items: Recipe[] };
+export type MasterPromotions = { next: number; items: Promotion[] };
+
+/**
+ * Build the master recipe list from what the stores already have.
+ *
+ * Runs ONCE, the first time the master file is read. It can't just take the
+ * default store's list the way the product master does: a recipe written at one
+ * shop and never copied to the others would be dropped, and the mirror would
+ * then delete it everywhere. So every store is adopted.
+ *
+ * Two things have to be resolved while adopting:
+ *
+ *  - The same recipe keyed at two shops (same name) becomes ONE master recipe.
+ *  - Two DIFFERENT recipes that happen to share an id — both stores minted
+ *    #100001 from their own counter — can't both keep it, so the later one is
+ *    re-numbered.
+ *
+ * Either way a store's `product.recipeId` may now point at an id that no longer
+ * means what it did, so every link is rewired in the same pass. Nothing is
+ * dropped, and no product is left pointing at a recipe that isn't there.
+ */
+async function seedMasterRecipes(): Promise<MasterRecipes> {
+  const sys = await readSystem();
+  const items: Recipe[] = [];
+  const byId = new Map<string, Recipe>();
+  const byName = new Map<string, Recipe>();
+  const remap = new Map<string, Map<string, string>>(); // storeId -> (old id -> master id)
+
+  // Start past the highest counter any store reached, so a re-numbered recipe
+  // can never take an id a store has already handed out.
+  let next = 100001;
+  for (const store of sys.stores) {
+    try {
+      const db = await readDB(store.id);
+      next = Math.max(next, Number(db.meta?.nextRecipe) || 100001);
+    } catch {
+      /* a store that will not load cannot contribute a counter */
+    }
+  }
+
+  for (const store of sys.stores) {
+    const map = new Map<string, string>();
+    remap.set(store.id, map);
+    let db;
+    try {
+      db = await readDB(store.id);
+    } catch {
+      continue;
+    }
+    for (const r of db.recipes || []) {
+      const key = (r.name || "").trim().toLowerCase();
+      const twin = byName.get(key);
+      if (twin) {
+        map.set(r.id, twin.id); // same recipe, keyed twice — point at the one copy
+        continue;
+      }
+      const adopted: Recipe = { ...r, items: (r.items || []).map((i) => ({ ...i })) };
+      if (byId.has(adopted.id)) {
+        adopted.id = `rcp${next}`;
+        adopted.code = `RCP-${next}`;
+        next += 1;
+      }
+      byId.set(adopted.id, adopted);
+      byName.set(key, adopted);
+      items.push(adopted);
+      map.set(r.id, adopted.id);
+    }
+  }
+
+  // Rewire the menu links that just moved.
+  for (const store of sys.stores) {
+    const map = remap.get(store.id);
+    if (!map || map.size === 0) continue;
+    try {
+      await mutateDB((db) => {
+        for (const p of db.products) {
+          const to = p.recipeId ? map.get(p.recipeId) : undefined;
+          if (to && to !== p.recipeId) p.recipeId = to;
+        }
+        return true;
+      }, store.id);
+    } catch {
+      /* nothing to rewire in a store that will not load */
+    }
+  }
+
+  return { next, items };
+}
+
+/** Same idea for promotions — no product points at one, so nothing to rewire. */
+async function seedMasterPromotions(): Promise<MasterPromotions> {
+  const sys = await readSystem();
+  const items: Promotion[] = [];
+  const byId = new Map<string, Promotion>();
+  const byName = new Map<string, Promotion>();
+
+  let next = 100001;
+  for (const store of sys.stores) {
+    try {
+      const db = await readDB(store.id);
+      next = Math.max(next, Number(db.meta?.nextPromotion) || 100001);
+    } catch {
+      /* skip */
+    }
+  }
+
+  for (const store of sys.stores) {
+    let db;
+    try {
+      db = await readDB(store.id);
+    } catch {
+      continue;
+    }
+    for (const p of db.promotions || []) {
+      const key = (p.name || "").trim().toLowerCase();
+      if (byName.has(key)) continue;
+      const adopted: Promotion = { ...p, scope: JSON.parse(JSON.stringify(p.scope)) };
+      if (byId.has(adopted.id)) {
+        adopted.id = `prm${next}`;
+        adopted.code = `PRM-${next}`;
+        next += 1;
+      }
+      byId.set(adopted.id, adopted);
+      byName.set(key, adopted);
+      items.push(adopted);
+    }
+  }
+
+  return { next, items };
+}
+
+async function ensureMasterRecipes(): Promise<void> {
+  try {
+    await fs.access(MASTER_RECIPES_FILE);
+    return;
+  } catch {
+    /* seed below */
+  }
+  let seed: MasterRecipes = { next: 100001, items: [] };
+  try {
+    seed = await seedMasterRecipes();
+  } catch {
+    /* an empty master is recoverable; a half-written one is not */
+  }
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(MASTER_RECIPES_FILE, JSON.stringify(seed, null, 2), "utf8");
+}
+
+async function ensureMasterPromotions(): Promise<void> {
+  try {
+    await fs.access(MASTER_PROMOTIONS_FILE);
+    return;
+  } catch {
+    /* seed below */
+  }
+  let seed: MasterPromotions = { next: 100001, items: [] };
+  try {
+    seed = await seedMasterPromotions();
+  } catch {
+    /* as above */
+  }
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(MASTER_PROMOTIONS_FILE, JSON.stringify(seed, null, 2), "utf8");
+}
+
+export async function readMasterRecipes(): Promise<MasterRecipes> {
+  await ensureMasterRecipes();
+  const raw = await fs.readFile(MASTER_RECIPES_FILE, "utf8");
+  return JSON.parse(raw) as MasterRecipes;
+}
+
+export async function mutateMasterRecipes<T>(mutator: (m: MasterRecipes) => T | Promise<T>): Promise<T> {
+  const run = async (): Promise<T> => {
+    await ensureMasterRecipes();
+    const raw = await fs.readFile(MASTER_RECIPES_FILE, "utf8");
+    const m = JSON.parse(raw) as MasterRecipes;
+    const result = await mutator(m);
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(MASTER_RECIPES_FILE, JSON.stringify(m, null, 2), "utf8");
+    return result;
+  };
+  const next = masterRecipeWriteChain.then(run, run);
+  masterRecipeWriteChain = next.catch(() => undefined);
+  return next;
+}
+
+export async function readMasterPromotions(): Promise<MasterPromotions> {
+  await ensureMasterPromotions();
+  const raw = await fs.readFile(MASTER_PROMOTIONS_FILE, "utf8");
+  return JSON.parse(raw) as MasterPromotions;
+}
+
+export async function mutateMasterPromotions<T>(mutator: (m: MasterPromotions) => T | Promise<T>): Promise<T> {
+  const run = async (): Promise<T> => {
+    await ensureMasterPromotions();
+    const raw = await fs.readFile(MASTER_PROMOTIONS_FILE, "utf8");
+    const m = JSON.parse(raw) as MasterPromotions;
+    const result = await mutator(m);
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(MASTER_PROMOTIONS_FILE, JSON.stringify(m, null, 2), "utf8");
+    return result;
+  };
+  const next = masterPromoWriteChain.then(run, run);
+  masterPromoWriteChain = next.catch(() => undefined);
+  return next;
+}
+
+/**
+ * Mirror the master recipes into every store, replacing what's there.
+ *
+ * A straight replace is safe ONLY because the seed above adopted every store's
+ * recipes first — so by the time anything mirrors, the master already holds
+ * them. Without that, this would be a silent delete.
+ */
+export async function propagateRecipesToStores(): Promise<void> {
+  const master = await readMasterRecipes();
+  const sys = await readSystem();
+  for (const store of sys.stores) {
+    await mutateDB((db) => {
+      db.recipes = master.items.map((r) => ({ ...r, items: r.items.map((i) => ({ ...i })) }));
+      db.meta.nextRecipe = master.next;
+      return true;
+    }, store.id);
+  }
+}
+
+export async function propagatePromotionsToStores(): Promise<void> {
+  const master = await readMasterPromotions();
+  const sys = await readSystem();
+  for (const store of sys.stores) {
+    await mutateDB((db) => {
+      db.promotions = master.items.map((p) => ({ ...p, scope: JSON.parse(JSON.stringify(p.scope)) }));
+      db.meta.nextPromotion = master.next;
       return true;
     }, store.id);
   }

@@ -16,9 +16,12 @@ import {
   FileSpreadsheet,
   Truck,
   Phone,
+  ChefHat,
+  Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 import { useFetch, api } from "@/lib/client";
-import type { Product, Supplier } from "@/lib/types";
+import type { Product, Supplier, Recipe, Promotion } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { ProductModal, EMPTY_PRODUCT as EMPTY } from "@/components/ProductModal";
@@ -36,7 +39,9 @@ type SyncResult = {
 export default function MasterDataPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/master/products");
   const { data: suppliers, reload: reloadSuppliers } = useFetch<Supplier[]>("/api/master/suppliers");
-  const [tab, setTab] = useState<"products" | "suppliers">("products");
+  const { data: masterRecipes } = useFetch<Recipe[]>("/api/master/recipes");
+  const { data: masterPromotions } = useFetch<Promotion[]>("/api/master/promotions");
+  const [tab, setTab] = useState<"products" | "suppliers" | "recipes" | "promotions">("products");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [editingSup, setEditingSup] = useState<Partial<Supplier> | null>(null);
@@ -241,7 +246,7 @@ export default function MasterDataPage() {
                   <Plus size={18} /> Add Product
                 </button>
               </>
-            ) : (
+            ) : tab === "suppliers" ? (
               <>
                 <button
                   className="btn-ghost !py-2 text-sm"
@@ -256,17 +261,27 @@ export default function MasterDataPage() {
                   <Plus size={18} /> Add Supplier
                 </button>
               </>
+            ) : (
+              // Recipes and deals are written on their own pages — store
+              // leadership can reach those, and this one is owner-only. Sending
+              // them there beats a second editor that could drift from the first.
+              <Link className="btn-primary" href={tab === "recipes" ? "/recipes" : "/deals"}>
+                <Pencil size={16} /> {tab === "recipes" ? "Manage recipes" : "Manage promotions"}
+              </Link>
             )}
           </div>
         }
       />
 
-      {/* Master Data has two catalogs — Products and Suppliers — both the single
-          source of truth, pushed to every store. */}
+      {/* Everything the chain shares lives here — the catalogs it buys and sells
+          from, plus the recipes and deals every shop runs. All of it is the
+          single source of truth, pushed to every store. */}
       <div className="mb-5 inline-flex rounded-xl bg-slate-100 p-1">
         {([
           { key: "products", label: "Products", icon: <Boxes size={15} /> },
           { key: "suppliers", label: "Suppliers", icon: <Truck size={15} /> },
+          { key: "recipes", label: "Recipes", icon: <ChefHat size={15} /> },
+          { key: "promotions", label: "Promotions", icon: <Sparkles size={15} /> },
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -492,6 +507,117 @@ export default function MasterDataPage() {
           <p className="mt-3 text-xs text-slate-400">
             Suppliers are controlled here and mirrored to every store automatically. A supplier can&apos;t be deleted
             while products are still linked to it.
+          </p>
+        </>
+      )}
+
+      {tab === "recipes" && (
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatCard label="Master Recipes" value={num(masterRecipes?.length || 0)} icon={<ChefHat size={18} />} accent="violet" />
+            <StatCard
+              label="Live"
+              value={num((masterRecipes || []).filter((r) => r.status === "Active").length)}
+              sub="deducting on every sale"
+              icon={<CheckCircle2 size={18} />}
+              accent="emerald"
+            />
+            <StatCard
+              label="Ingredients"
+              value={num((masterRecipes || []).reduce((s, r) => s + r.items.length, 0))}
+              sub="lines across all recipes"
+              icon={<Boxes size={18} />}
+            />
+          </div>
+          <Card>
+            {!masterRecipes ? (
+              <Spinner label="Loading recipes…" />
+            ) : masterRecipes.length === 0 ? (
+              <p className="px-5 py-12 text-center text-slate-400">No recipes yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {masterRecipes.map((r) => (
+                  <div key={r.id} className="flex flex-wrap items-center gap-3 px-1 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-bold text-ink-900">{r.name}</p>
+                        <Badge tone={r.status === "Active" ? "emerald" : "muted"}>{r.status}</Badge>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        <span className="font-mono font-semibold text-slate-500">{r.code}</span> ·{" "}
+                        {r.items.length} ingredient{r.items.length === 1 ? "" : "s"}
+                        {r.items.length ? ` · ${r.items.map((i) => i.name).slice(0, 3).join(", ")}` : ""}
+                        {r.items.length > 3 ? "…" : ""}
+                      </p>
+                    </div>
+                    <Link href="/recipes" className="btn-ghost !py-2 text-xs">
+                      <Pencil size={14} /> Edit
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <p className="mt-3 text-xs text-slate-400">
+            Recipes are central — written once and mirrored into every store, so a bowl costs the same wherever it&apos;s
+            made. Edit them on the Recipes page; which product a recipe is cooked for stays per store.
+          </p>
+        </>
+      )}
+
+      {tab === "promotions" && (
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatCard
+              label="Master Promotions"
+              value={num(masterPromotions?.length || 0)}
+              icon={<Sparkles size={18} />}
+              accent="emerald"
+            />
+            <StatCard
+              label="Live"
+              value={num((masterPromotions || []).filter((p) => p.status === "Active").length)}
+              sub="can fire at the till"
+              icon={<CheckCircle2 size={18} />}
+              accent="brand"
+            />
+            <StatCard
+              label="Paused"
+              value={num((masterPromotions || []).filter((p) => p.status !== "Active").length)}
+              sub="kept, not running"
+              icon={<Package size={18} />}
+              accent="amber"
+            />
+          </div>
+          <Card>
+            {!masterPromotions ? (
+              <Spinner label="Loading promotions…" />
+            ) : masterPromotions.length === 0 ? (
+              <p className="px-5 py-12 text-center text-slate-400">No promotions yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {masterPromotions.map((p) => (
+                  <div key={p.id} className="flex flex-wrap items-center gap-3 px-1 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-bold text-ink-900">{p.name}</p>
+                        <Badge tone={p.status === "Active" ? "emerald" : "muted"}>{p.status}</Badge>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        <span className="font-mono font-semibold text-slate-500">{p.code}</span> · {p.startDate} to{" "}
+                        {p.endDate} · priority {p.priority}
+                      </p>
+                    </div>
+                    <Link href="/deals" className="btn-ghost !py-2 text-xs">
+                      <Pencil size={14} /> Edit
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <p className="mt-3 text-xs text-slate-400">
+            Promotions are central — set one up once and it runs in every store. Edit them on the Promotions page.
           </p>
         </>
       )}

@@ -6,6 +6,10 @@ import {
   propagateSuppliersToStores,
   reconcileSupplierNames,
   repairMasterBarcodes,
+  propagateRecipesToStores,
+  propagatePromotionsToStores,
+  readMasterRecipes,
+  readMasterPromotions,
 } from "@/lib/master";
 import { readSystem } from "@/lib/system";
 import { mutateDB } from "@/lib/db";
@@ -98,6 +102,18 @@ export async function POST() {
 
   // Suppliers follow the master too — mirror them into every store.
   await propagateSuppliersToStores();
+  // As do recipes and promotions: built once centrally, run in every shop.
+  await propagateRecipesToStores();
+  await propagatePromotionsToStores();
+  const recipes = (await readMasterRecipes()).items.length;
+  const promotions = (await readMasterPromotions()).items.length;
 
-  return NextResponse.json({ masterCount: master.length, stores: results, supplierNames, barcodesFixed });
+  return NextResponse.json({
+    masterCount: master.length,
+    stores: results,
+    supplierNames,
+    barcodesFixed,
+    recipes,
+    promotions,
+  });
 }
