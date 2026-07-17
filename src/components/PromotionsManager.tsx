@@ -12,6 +12,8 @@ import {
   Layers,
   Gift,
   AlertTriangle,
+  Check,
+  Store as StoreIcon,
 } from "lucide-react";
 import { api, useFetch, useRole } from "@/lib/client";
 import type { Product, Promotion, PromotionScope, PromotionType, Supplier, PromotionSettings } from "@/lib/types";
@@ -32,6 +34,10 @@ import {
   type PromotionState,
 } from "@/lib/promotions";
 
+// Only what the picker needs. /api/stores returns more, but a deal cares about
+// nothing beyond which shop is which.
+type StoreRow = { id: string; name: string };
+
 type Draft = {
   id?: string;
   name: string;
@@ -51,6 +57,11 @@ type Draft = {
   endTime: string;
   status: "Active" | "Paused";
   priority: string;
+  // Which shops run it. `allStores` is kept separate from the list so that
+  // switching to "some stores" and back doesn't lose the picks — and so an
+  // empty list can't be mistaken for "everywhere".
+  allStores: boolean;
+  storeIds: string[];
 };
 
 function emptyDraft(): Draft {
@@ -74,6 +85,8 @@ function emptyDraft(): Draft {
     status: "Active",
     // 50 leaves room to slot deals both above and below without renumbering.
     priority: "50",
+    allStores: true,
+    storeIds: [],
   };
 }
 
@@ -96,6 +109,9 @@ export default function PromotionsManager({ embedded = false }: { embedded?: boo
   const { data: promotions, loading, error, reload } = useFetch<Promotion[]>("/api/promotions");
   const { data: products } = useFetch<Product[]>("/api/products");
   const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
+  // Every store the signed-in user can see — an owner sees them all, which is
+  // who manages deals.
+  const { data: stores } = useFetch<StoreRow[]>("/api/stores");
   const { data: business, reload: reloadBusiness } = useFetch<{ promotionSettings?: PromotionSettings }>("/api/business");
   const role = useRole();
   const mayEdit = role ? canManagePromotions(role) : false;
@@ -146,6 +162,10 @@ export default function PromotionsManager({ embedded = false }: { embedded?: boo
       endTime: p.endTime || "",
       status: p.status,
       priority: String(p.priority),
+      // No storeIds on the record means every store — including deals written
+      // before a deal could be aimed at one.
+      allStores: !p.storeIds || p.storeIds.length === 0,
+      storeIds: p.storeIds || [],
     });
   }
 
@@ -176,6 +196,10 @@ export default function PromotionsManager({ embedded = false }: { embedded?: boo
         endTime: draft.endTime,
         status: draft.status,
         priority: Number(draft.priority),
+        // Omitted entirely for every store, so the deal also covers a shop
+        // opened after it was written. The server rejects an empty list rather
+        // than reading it as "everywhere".
+        storeIds: draft.allStores ? undefined : draft.storeIds,
       };
       if (draft.id) await api(`/api/promotions/${draft.id}`, { method: "PUT", body: JSON.stringify(payload) });
       else await api("/api/promotions", { method: "POST", body: JSON.stringify(payload) });
@@ -326,6 +350,7 @@ export default function PromotionsManager({ embedded = false }: { embedded?: boo
             key={p.id}
             promo={p}
             products={catalog}
+            stores={stores || []}
             today={today}
             mayEdit={mayEdit}
             onEdit={() => startEdit(p)}
@@ -340,6 +365,7 @@ export default function PromotionsManager({ embedded = false }: { embedded?: boo
           setDraft={setDraft}
           products={catalog}
           suppliers={suppliers || []}
+          stores={stores || []}
           busy={busy}
           error={formError}
           onClose={() => setDraft(null)}
@@ -390,6 +416,7 @@ function Toggle({
 function PromotionRow({
   promo,
   products,
+  stores,
   today,
   mayEdit,
   onEdit,
@@ -397,6 +424,7 @@ function PromotionRow({
 }: {
   promo: Promotion;
   products: Product[];
+  stores: StoreRow[];
   today: string;
   mayEdit: boolean;
   onEdit: () => void;
@@ -430,6 +458,15 @@ function PromotionRow({
               {promo.startDate} to {promo.endDate}
               {promo.startTime && ` · ${promo.startTime}–${promo.endTime} daily`}
             </p>
+            {/* Where it runs, but only when that's NOT everywhere. Tagging every
+                deal "all stores" would be noise on the common case and make the
+                targeted ones harder to spot, not easier. */}
+            {promo.storeIds && promo.storeIds.length > 0 && (
+              <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] font-medium text-violet-700">
+                <StoreIcon size={13} className="shrink-0" />
+                {promo.storeIds.map((id) => stores.find((s) => s.id === id)?.name || id).join(" · ")} only
+              </p>
+            )}
             {covers === 0 && (
               <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-amber-600">
                 <AlertTriangle size={13} /> Covers no products — this can never fire.
@@ -464,6 +501,7 @@ function PromotionEditor({
   setDraft,
   products,
   suppliers,
+  stores,
   busy,
   error,
   onClose,
@@ -473,6 +511,7 @@ function PromotionEditor({
   setDraft: (d: Draft) => void;
   products: Product[];
   suppliers: Supplier[];
+  stores: StoreRow[];
   busy: boolean;
   error: string | null;
   onClose: () => void;
@@ -758,6 +797,77 @@ function PromotionEditor({
           <p className={`mt-2 text-[12px] font-medium ${covers === 0 ? "text-amber-600" : "text-slate-500"}`}>
             {covers === 0 ? "Covers no products yet — pick something for the deal to apply to." : `Covers ${num(covers)} product${covers === 1 ? "" : "s"}.`}
           </p>
+        </div>
+
+        {/* Where it runs. A deal is written once for the whole chain, but it
+            doesn't have to run in all of it — a clearance at one shop shouldn't
+            discount the same item at the others. */}
+        <div>
+          <p className="mb-2 text-sm font-bold text-ink-900">Where it runs</p>
+          <div className="mb-3 flex gap-1.5 rounded-xl bg-slate-100 p-1 ring-1 ring-slate-200">
+            {(
+              [
+                { all: true, label: "Every store" },
+                { all: false, label: "Only some stores" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={String(t.all)}
+                onClick={() => set("allStores", t.all)}
+                className={`flex-1 rounded-lg px-3 py-2 text-[13px] font-semibold transition ${
+                  draft.allStores === t.all ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-ink-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {draft.allStores ? (
+            <p className="text-[12px] text-slate-500">
+              Runs everywhere — including any store you open later.
+            </p>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                {stores.map((s) => {
+                  const on = draft.storeIds.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() =>
+                        set("storeIds", on ? draft.storeIds.filter((x) => x !== s.id) : [...draft.storeIds, s.id])
+                      }
+                      className={`flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
+                        on ? "border-brand-300 bg-brand-50/60 text-ink-900" : "border-slate-200 text-slate-500 hover:border-slate-300"
+                      }`}
+                    >
+                      <span
+                        className={`grid h-4 w-4 shrink-0 place-items-center rounded border ${
+                          on ? "border-brand-500 bg-brand-500 text-white" : "border-slate-300"
+                        }`}
+                      >
+                        {on && <Check size={11} />}
+                      </span>
+                      {s.name}
+                    </button>
+                  );
+                })}
+                {stores.length === 0 && (
+                  <p className="text-[12px] text-slate-400">No stores to choose from.</p>
+                )}
+              </div>
+              <p
+                className={`mt-2 text-[12px] font-medium ${
+                  draft.storeIds.length === 0 ? "text-amber-600" : "text-slate-500"
+                }`}
+              >
+                {draft.storeIds.length === 0
+                  ? "Pick at least one store — a deal with none runs nowhere."
+                  : `Runs in ${num(draft.storeIds.length)} of ${num(stores.length)} stores. The others never see it.`}
+              </p>
+            </>
+          )}
         </div>
 
         {/* When */}

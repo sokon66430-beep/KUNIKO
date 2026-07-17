@@ -364,7 +364,16 @@ function parseScope(raw: unknown, products: Product[]): { ok: true; value: Promo
  * rather than demanding every field for every type — a "buy 2 get 1 free" has
  * no percentage, and asking for one would be nonsense.
  */
-export function validatePromotionInput(body: unknown, products: Product[]): ValidationResult {
+/**
+ * @param knownStoreIds every store that exists. A deal may name a subset to run
+ *   in; anything not on this list is a store that's been removed or was never
+ *   real, and silently keeping it would leave a deal aimed at nowhere.
+ */
+export function validatePromotionInput(
+  body: unknown,
+  products: Product[],
+  knownStoreIds?: string[],
+): ValidationResult {
   const b = (body || {}) as Record<string, unknown>;
 
   const name = String(b.name || "").trim();
@@ -428,9 +437,27 @@ export function validatePromotionInput(body: unknown, products: Product[]): Vali
     return { ok: false, error: "Priority must be between 1 and 100." };
   }
 
+  // Which shops run it. Absent = every store, which is also what a deal written
+  // before stores could be picked has always meant.
+  let storeIds: string[] | undefined;
+  if (Array.isArray(b.storeIds)) {
+    const picked = [...new Set(b.storeIds.map((x) => String(x)).filter(Boolean))];
+    // An empty list is NOT "all stores". Widening a discount to the whole chain
+    // because someone unticked the last shop is the one mistake here that costs
+    // real money, so it's an error, not a default.
+    if (!picked.length) return { ok: false, error: "Pick at least one store, or set the deal to run in every store." };
+    const unknown = knownStoreIds ? picked.filter((id) => !knownStoreIds.includes(id)) : [];
+    if (unknown.length) return { ok: false, error: `No such store: ${unknown.join(", ")}.` };
+    // Naming every store IS every store — stored as `undefined` so the deal
+    // still covers a shop opened next month, rather than quietly missing it.
+    const all = knownStoreIds ? knownStoreIds.every((id) => picked.includes(id)) : false;
+    storeIds = all ? undefined : picked;
+  }
+
   return {
     ok: true,
     value: {
+      storeIds,
       name,
       type,
       scope: scope.value,

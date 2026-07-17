@@ -49,7 +49,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (!promo) return { error: "not_found" as const };
 
     const products = await readMaster();
-    const parsed = validatePromotionInput(body, products);
+    const sys = await readSystem();
+    const parsed = validatePromotionInput(body, products, sys.stores.map((s) => s.id));
     if (!parsed.ok) return { error: parsed.error };
     const input = parsed.value;
 

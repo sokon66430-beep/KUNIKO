@@ -288,6 +288,15 @@ export type Promotion = {
   status: PromotionStatus;
   priority: number; // 1–100, highest wins when two deals want the same item
 
+  // Which shops run this deal. Undefined or empty = ALL stores, which is both
+  // the default and what every promotion written before this field meant — so
+  // old records read correctly without a migration.
+  //
+  // Enforced by NOT mirroring the deal into a store it doesn't name (see
+  // propagatePromotionsToStores): the till only ever holds deals that apply to
+  // it, so nothing at the counter has to know stores exist.
+  storeIds?: string[];
+
   createdBy: string;
   createdAt: string;
   updatedBy?: string;

@@ -4,20 +4,26 @@ import type { Promotion } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { canManagePromotions, isReadOnly } from "@/lib/access";
 import { validatePromotionInput, describePromotion } from "@/lib/promotions";
-import { readMaster, mutateMasterPromotions, propagatePromotionsToStores } from "@/lib/master";
+import { readMaster, readMasterPromotions, mutateMasterPromotions, propagatePromotionsToStores } from "@/lib/master";
+import { readSystem } from "@/lib/system";
 import { logAudit } from "@/lib/audit";
 import { currentActor } from "@/lib/actor";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/promotions — every deal, highest priority first (the order they
-// compete in), then newest.
+// GET /api/promotions — every deal in the chain, highest priority first (the
+// order they compete in), then newest.
 //
-// Read from the STORE, not the master: the store copy is an exact mirror, and
-// the till has to resolve a deal while a customer is standing there.
+// Reads the MASTER, not the store copy. Deals are managed centrally and can be
+// aimed at particular shops, so a store's copy holds only the ones IT runs —
+// listing that here would hide every deal belonging to another store from the
+// screen you manage them all on.
+//
+// The till doesn't come through here: the sale route and the preview read
+// db.promotions directly, which is exactly the filtered set they should apply.
 export async function GET() {
-  const db = await readDB();
-  const list = [...db.promotions].sort(
+  const master = await readMasterPromotions();
+  const list = [...master.items].sort(
     (a, b) => b.priority - a.priority || +new Date(b.createdAt) - +new Date(a.createdAt),
   );
   return NextResponse.json(list);
@@ -40,7 +46,8 @@ export async function POST(req: Request) {
 
   const result = await mutateMasterPromotions(async (m) => {
     const products = await readMaster();
-    const parsed = validatePromotionInput(body, products);
+    const sys = await readSystem();
+    const parsed = validatePromotionInput(body, products, sys.stores.map((s) => s.id));
     if (!parsed.ok) return { error: parsed.error };
     const input = parsed.value;
 

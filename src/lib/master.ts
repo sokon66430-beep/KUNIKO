@@ -505,12 +505,30 @@ export async function propagateRecipesToStores(): Promise<void> {
   }
 }
 
+/**
+ * Mirror the master promotions into every store — but only the ones that shop
+ * actually runs.
+ *
+ * This is where `storeIds` is ENFORCED. A store is given only the deals aimed
+ * at it, so the till, the sale route and the reports keep reading db.promotions
+ * exactly as before and never have to know that stores can be targeted. A deal
+ * that can't reach the counter can't fire there by mistake.
+ *
+ * No storeIds means every store, including ones opened after the deal was
+ * written.
+ */
+export function promotionRunsIn(p: Promotion, storeId: string): boolean {
+  return !p.storeIds || p.storeIds.length === 0 || p.storeIds.includes(storeId);
+}
+
 export async function propagatePromotionsToStores(): Promise<void> {
   const master = await readMasterPromotions();
   const sys = await readSystem();
   for (const store of sys.stores) {
     await mutateDB((db) => {
-      db.promotions = master.items.map((p) => ({ ...p, scope: JSON.parse(JSON.stringify(p.scope)) }));
+      db.promotions = master.items
+        .filter((p) => promotionRunsIn(p, store.id))
+        .map((p) => ({ ...p, scope: JSON.parse(JSON.stringify(p.scope)) }));
       db.meta.nextPromotion = master.next;
       return true;
     }, store.id);

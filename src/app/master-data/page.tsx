@@ -80,6 +80,36 @@ export default function MasterDataPage() {
     }
   }
 
+  // Re-push recipes / deals on demand. Both already mirror on every save, so
+  // this is the catch-up button: a store added later, or a copy someone doubts.
+  const [syncingCentral, setSyncingCentral] = useState(false);
+  const [centralSyncMsg, setCentralSyncMsg] = useState<string | null>(null);
+  async function syncCentral(kind: "recipes" | "promotions") {
+    setSyncingCentral(true);
+    setCentralSyncMsg(null);
+    try {
+      if (kind === "recipes") {
+        const r = await api<{ recipes: number; stores: number }>("/api/master/recipes/sync", { method: "POST" });
+        setCentralSyncMsg(
+          `Synced ${num(r.recipes)} recipe${r.recipes === 1 ? "" : "s"} to ${r.stores} store${r.stores === 1 ? "" : "s"}.`,
+        );
+      } else {
+        const r = await api<{ promotions: number; stores: { store: string; promotions: number }[] }>(
+          "/api/master/promotions/sync",
+          { method: "POST" },
+        );
+        // Per store, because a deal aimed at one shop isn't in the others — a
+        // single total would read as though every store got all of them.
+        const per = r.stores.map((s) => `${s.store}: ${num(s.promotions)}`).join(" · ");
+        setCentralSyncMsg(`Synced ${num(r.promotions)} promotion${r.promotions === 1 ? "" : "s"} — ${per}`);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSyncingCentral(false);
+    }
+  }
+
   async function saveSupplier(s: Partial<Supplier>) {
     setBusy(true);
     try {
@@ -260,7 +290,17 @@ export default function MasterDataPage() {
                   <Plus size={18} /> Add Supplier
                 </button>
               </>
-            ) : null}
+            ) : (
+              <button
+                className="btn-ghost !py-2 text-sm"
+                disabled={syncingCentral}
+                onClick={() => syncCentral(tab === "recipes" ? "recipes" : "promotions")}
+                title={`Push the ${tab} to every store`}
+              >
+                <RefreshCw size={16} className={syncingCentral ? "animate-spin" : ""} />{" "}
+                {syncingCentral ? "Syncing…" : "Sync to stores"}
+              </button>
+            )}
           </div>
         }
       />
@@ -507,6 +547,11 @@ export default function MasterDataPage() {
           every store. Mounted here rather than rebuilt: these are the same
           screens the /recipes and /deals routes render, so there is one editor
           to keep right, not two that drift. */}
+      {centralSyncMsg && (tab === "recipes" || tab === "promotions") && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> {centralSyncMsg}
+        </div>
+      )}
       {tab === "recipes" && <RecipesManager embedded />}
       {tab === "promotions" && <PromotionsManager embedded />}
 
