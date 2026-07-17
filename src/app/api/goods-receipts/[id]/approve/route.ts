@@ -38,15 +38,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       const li = grn.items.find((i) => i.productId === e.productId);
       if (!li) continue;
       const current = li.qtyReceived;
-      let newQty = Math.max(0, Number(e.qtyReceived) || 0);
+      const newQty = Math.max(0, Number(e.qtyReceived) || 0);
 
-      // Keep the PO's total received within [0, ordered].
+      // The corrected figure is what ARRIVED — it is not clamped to the order.
+      //
+      // This used to cap at the ordered quantity, which made the correction
+      // screen useless for the one case it was most needed: a PO for 5 that a
+      // supplier filled with 24. Typing 24 was silently snapped back to 5, so
+      // there was no way to tell the system the truth, and the 19 extra units
+      // stayed invisible. A receipt records the delivery, not the order.
       if (po) {
         const poLine = po.items.find((p) => p.productId === e.productId);
         if (poLine) {
           const otherReceived = poLine.qtyReceived - current; // from other GRNs
-          const maxForLine = Math.max(0, poLine.qtyOrdered - otherReceived);
-          if (newQty > maxForLine) newQty = maxForLine;
           poLine.qtyReceived = otherReceived + newQty;
         }
       }
@@ -54,7 +58,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       const delta = newQty - current;
       if (delta !== 0) {
         const product = db.products.find((p) => p.id === e.productId);
-        if (product) product.stock = Math.max(0, product.stock + delta);
+        // Stock follows the correction exactly — including downwards. Flooring
+        // at zero would hide a correction the count needs to reflect.
+        if (product) product.stock = Math.round((product.stock + delta) * 1e6) / 1e6;
         changes.push(`${li.name}: ${current}→${newQty}`);
       }
       li.qtyReceived = newQty;
