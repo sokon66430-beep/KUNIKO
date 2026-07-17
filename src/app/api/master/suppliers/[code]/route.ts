@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import {
   mutateMasterSuppliers,
   propagateSuppliersToStores,
+  propagateSupplierRename,
   removeSupplierFromStores,
   readMaster,
 } from "@/lib/master";
@@ -39,6 +40,7 @@ export async function PATCH(req: Request, { params }: { params: { code: string }
   const result = await mutateMasterSuppliers((suppliers) => {
     const s = suppliers.find((x) => x.code === code);
     if (!s) return { error: "not_found" as const };
+    const before = s.name;
     for (const f of FIELDS) {
       if (body[f] === undefined) continue;
       if (f === "minOrderAmount" || f === "leadTime" || f === "taxPct") {
@@ -48,12 +50,21 @@ export async function PATCH(req: Request, { params }: { params: { code: string }
       }
     }
     if (typeof body.name === "string" && body.name.trim()) s.name = body.name.trim();
-    return { supplier: s };
+    return { supplier: s, renamedFrom: s.name === before ? undefined : before };
   });
 
   if ("error" in result) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
   await propagateSuppliersToStores();
-  return NextResponse.json(result.supplier);
+
+  // Products keep the supplier's NAME as display text next to the code, so a
+  // rename has to reach them too. Without this the supplier record says one
+  // thing and all 4,000 products still say the old name — which is the drift
+  // the supplier master exists to prevent.
+  let updatedProducts = 0;
+  if (result.renamedFrom) {
+    updatedProducts = await propagateSupplierRename(code, result.supplier.name);
+  }
+  return NextResponse.json({ ...result.supplier, updatedProducts });
 }
 
 // Delete a master supplier — blocked while any master product is still linked

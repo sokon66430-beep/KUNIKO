@@ -148,6 +148,78 @@ export async function propagateSuppliersToStores(): Promise<void> {
   }
 }
 
+/**
+ * Rewrite the supplier NAME on every product linked to `code`.
+ *
+ * A product carries both `supplierCode` (the link) and `supplier` (the name, as
+ * display text). Renaming a supplier therefore has to rewrite that text or the
+ * catalogue keeps showing a name that no longer exists — which is exactly the
+ * free-text drift the supplier master was introduced to stop.
+ *
+ * Deliberately does NOT touch purchase requests, purchase orders or receipts:
+ * those lines are a frozen snapshot of what the document said when it was
+ * raised, and a PO the supplier already holds must keep reading the way they
+ * received it.
+ */
+export async function propagateSupplierRename(code: string, name: string): Promise<number> {
+  let touched = 0;
+  await mutateMaster((products) => {
+    for (const p of products) {
+      if (p.supplierCode === code && p.supplier !== name) {
+        p.supplier = name;
+        touched++;
+      }
+    }
+    return true;
+  });
+  const sys = await readSystem();
+  for (const store of sys.stores) {
+    await mutateDB((db) => {
+      for (const p of db.products) {
+        if (p.supplierCode === code) p.supplier = name;
+      }
+      return true;
+    }, store.id);
+  }
+  return touched;
+}
+
+/**
+ * Re-derive every master product's supplier NAME from the supplier record its
+ * `supplierCode` points at, and report what was out of step.
+ *
+ * The repair pass for drift that already exists — a rename done before renames
+ * cascaded, or a name edited straight into a product. The CODE is the link and
+ * is treated as the truth; the name is only ever a copy of it, so reconciling
+ * one way is safe.
+ *
+ * Products whose code matches no supplier are left alone and counted: that's a
+ * broken link, a different problem, and blanking the name would destroy the only
+ * clue to what it should be.
+ */
+export async function reconcileSupplierNames(): Promise<{ fixed: number; unlinked: number }> {
+  const suppliers = await readMasterSuppliers();
+  const byCode = new Map(suppliers.map((s) => [s.code, s.name]));
+  let fixed = 0;
+  let unlinked = 0;
+  await mutateMaster((products) => {
+    for (const p of products) {
+      if (!p.supplierCode) continue;
+      const name = byCode.get(p.supplierCode);
+      if (!name) {
+        unlinked++;
+        continue;
+      }
+      if (p.supplier !== name) {
+        p.supplier = name;
+        fixed++;
+      }
+    }
+    return true;
+  });
+  return { fixed, unlinked };
+}
+
 // Remove a supplier from every store's list (used when it's deleted from the
 // master). Only called once the master delete has confirmed nothing is linked.
 export async function removeSupplierFromStores(code: string): Promise<void> {

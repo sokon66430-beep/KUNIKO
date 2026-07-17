@@ -13,6 +13,11 @@ export function suggestedQty(p: Product): number {
 // the stored PO isn't mutated.
 export function reflectProductChanges(po: PurchaseOrder, products: Product[]): PurchaseOrder {
   if (po.status !== "Open" && po.status !== "Partial") return po;
+  // Once it's gone to the supplier, the PO is a copy of a document someone else
+  // is holding. Re-reading today's product data into it would quietly change
+  // the names and costs the supplier was actually sent — so a sent PO freezes
+  // exactly as it went out.
+  if (po.sentToSupplier) return po;
   const byId = new Map(products.map((p) => [p.id, p]));
   let changed = false;
   const items = po.items.map((it) => {

@@ -39,6 +39,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       po.status = "Cancelled";
       logAudit(db, { actor, action: "Cancelled", entityType: "PO", entity: po.poNo });
     }
+    // A PO that's been sent is locked: the supplier is holding that document, so
+    // changing what it says here would put the two out of step with nothing to
+    // show for it. Untick "sent" first if it really needs changing (and send the
+    // corrected order again).
+    if (Array.isArray(body.items) && po.sentToSupplier) {
+      return { error: `${po.poNo} has already been sent to ${po.supplier}. Untick "Sent" to change it.` };
+    }
+
     // Adjust the PO's lines: change ordered qty or remove a line. Never below
     // what's already received. Cancelled POs are locked.
     if (Array.isArray(body.items) && po.status !== "Cancelled" && canEditItems) {
@@ -71,17 +79,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // Tick/untick "sent to supplier" — a workflow marker so the team can see
     // at a glance which POs have already gone out.
     if (typeof body.sentToSupplier === "boolean") {
+      // Ticking "sent" FREEZES the lines — so first write down what's actually
+      // going out. Until this moment an Open PO only *displays* live product
+      // data (see reflectProductChanges); the stored lines can be older. Locking
+      // without persisting what was on screen would make the PO snap back to a
+      // stale cost the supplier never saw.
+      if (body.sentToSupplier) {
+        po.items = reflectProductChanges(po, db.products).items.map((i) => ({ ...i }));
+      }
       po.sentToSupplier = body.sentToSupplier || undefined;
       logAudit(db, {
         actor,
         action: body.sentToSupplier ? "Marked sent" : "Unmarked sent",
         entityType: "PO",
         entity: po.poNo,
+        detail: body.sentToSupplier ? "lines frozen as sent" : "reopened for editing",
       });
     }
     return po;
   });
   if (!result) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   return NextResponse.json(result);
 }
 

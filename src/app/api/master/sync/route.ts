@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { readMaster, applyMasterFields, propagateSuppliersToStores } from "@/lib/master";
+import { readMaster, applyMasterFields, propagateSuppliersToStores, reconcileSupplierNames } from "@/lib/master";
 import { readSystem } from "@/lib/system";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -24,6 +24,11 @@ export async function POST() {
   const session = await getSession();
   if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
   const actor = await currentActor();
+
+  // Bring every product's supplier NAME back in line with the supplier record
+  // its code points at, BEFORE pushing anything out — otherwise a stale name in
+  // the master would be copied into every store as though it were correct.
+  const supplierNames = await reconcileSupplierNames();
 
   const master = await readMaster();
   const masterIds = new Set(master.map((m) => m.id));
@@ -85,5 +90,5 @@ export async function POST() {
   // Suppliers follow the master too — mirror them into every store.
   await propagateSuppliersToStores();
 
-  return NextResponse.json({ masterCount: master.length, stores: results });
+  return NextResponse.json({ masterCount: master.length, stores: results, supplierNames });
 }

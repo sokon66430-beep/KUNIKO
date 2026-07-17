@@ -866,7 +866,11 @@ function ViewPOModal({
   // in Master Data only. Deleting the whole PO stays limited to owner / procurement.
   const canEdit = !!role;
   const canDelete = role === "owner" || role === "procurement";
-  const locked = po.status === "Cancelled";
+  // A sent PO is locked like a cancelled one: the supplier is holding that
+  // document, and editing our copy would only put the two out of step. Untick
+  // "Sent" on the list to reopen it. Receiving is unaffected — that's the whole
+  // point of having sent it.
+  const locked = po.status === "Cancelled" || !!po.sentToSupplier;
   // Deletable only when NOTHING was received — otherwise the stock would orphan.
   const hasReceipts = po.items.some((i) => i.qtyReceived > 0);
   const showActions = canEdit && !locked; // per-line trash column
@@ -1009,6 +1013,17 @@ function ViewPOModal({
         <p className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
           Adjust the ordered quantity. You can’t go below what’s already received; remove a line only if none was
           received. Unit cost is managed in Master Data.
+        </p>
+      )}
+      {/* Say WHY there's no Edit button. A missing control with no explanation
+          reads as a bug; this reads as a rule. */}
+      {po.sentToSupplier && !editing && (
+        <p className="mb-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+          <Check size={14} className="mt-0.5 shrink-0" />
+          <span>
+            Sent to {po.supplier} — locked, and its item names and costs are frozen exactly as they went out. Untick
+            <b> Sent</b> on the orders list if it genuinely needs changing. Receiving still works as normal.
+          </span>
         </p>
       )}
       {po.note && !editing && (
