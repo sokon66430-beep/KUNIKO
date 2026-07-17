@@ -37,7 +37,21 @@ export function buildStats(db: DB, range: RangeKey = "30d") {
   const profit = sum(sales, (s) => s.profit);
   const cogs = sum(sales, (s) => s.cost);
   const tax = sum(sales, (s) => s.tax);
-  const discount = sum(sales, (s) => s.discount);
+  // What was given away, and it has to cover BOTH kinds or the number lies.
+  //
+  // `sale.discount` is the basket-level cut — a manual discount plus whatever
+  // the deals engine worked out. A MARK DOWN never appears there: its label
+  // sells at an already-reduced price, so the cut is the gap between the line's
+  // `fullPrice` snapshot and what was actually charged. A shop that clears
+  // stock with markdown labels would otherwise read $0 discount while giving
+  // away real money every day.
+  const basketDiscount = sum(sales, (s) => s.discount);
+  const markdownDiscount = round2(
+    sum(sales, (s) =>
+      s.items.reduce((a, it) => a + (it.markdownCode ? it.qty * ((it.fullPrice ?? it.price) - it.price) : 0), 0),
+    ),
+  );
+  const discount = round2(basketDiscount + markdownDiscount);
   const txCount = sales.length;
   const itemsSold = sales.reduce(
     (acc, s) => acc + s.items.reduce((a, it) => a + it.qty, 0),
@@ -132,6 +146,10 @@ export function buildStats(db: DB, range: RangeKey = "30d") {
     cogs,
     tax,
     discount,
+    // The split, so a screen can say WHERE the money went rather than showing
+    // one number nobody can act on.
+    basketDiscount,
+    markdownDiscount,
     txCount,
     itemsSold,
     avgTicket,

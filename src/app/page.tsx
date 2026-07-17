@@ -22,6 +22,7 @@ import {
   Package,
   PackageCheck,
   ChefHat,
+  TrendingDown,
 } from "lucide-react";
 import { useFetch, useRole } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
@@ -134,8 +135,10 @@ export default function DashboardPage() {
 
       {data && (
         <div className="space-y-6">
-          {/* Headline cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {/* Headline cards. The column count follows the card count — Profit is
+              hidden from roles that can't see it, and a 5-column grid holding
+              four cards leaves a gap that reads as something failed to load. */}
+          <div className={`grid grid-cols-2 gap-4 ${showProfit ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
             <StatCard
               label="Today's Sales"
               value={usd(data.todayRevenue)}
@@ -159,6 +162,19 @@ export default function DashboardPage() {
                 accent="emerald"
               />
             )}
+            <StatCard
+              label={`Discount (${labelFor(range)})`}
+              value={usd(data.discount)}
+              // Say where it went. One lump sum can't be acted on: a deal is a
+              // rule you can change, a mark down is stock you chose to clear.
+              sub={
+                data.discount
+                  ? `${usd(data.basketDiscount)} deals · ${usd(data.markdownDiscount)} mark downs`
+                  : "nothing given away"
+              }
+              icon={<TrendingDown size={18} />}
+              accent="rose"
+            />
             <StatCard
               label="Low Stock Items"
               value={num(data.lowStockCount)}
