@@ -278,11 +278,19 @@ export default function RecipesPage() {
       {!loading && filtered.length === 0 && (
         <Card>
           <EmptyState
+            icon={<ChefHat size={19} />}
             title={q ? "No recipe matches that" : "No recipes yet"}
             hint={
               q
                 ? "Try an ingredient name, or the recipe code."
-                : "Add a recipe for a made-to-order item, then link it to the product the till sells."
+                : "Pick a made-to-order item off your menu and list what goes into it. Sell it at the till and the ingredients come off stock by themselves."
+            }
+            action={
+              !q && mayEdit ? (
+                <button onClick={startNew} className="btn-primary">
+                  <Plus size={16} /> New recipe
+                </button>
+              ) : undefined
             }
           />
         </Card>

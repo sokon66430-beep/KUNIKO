@@ -99,10 +99,14 @@ export function Badge({
   tone = "slate",
 }: {
   children: ReactNode;
-  tone?: "slate" | "emerald" | "amber" | "rose" | "brand" | "violet" | "gold";
+  // `muted` is for a state that's normal-but-notable. Reach for it when a badge
+  // appears on most rows: a colour every row shares stops being a signal, and
+  // spending red on the common case leaves nothing louder for the rare one.
+  tone?: "slate" | "muted" | "emerald" | "amber" | "rose" | "brand" | "violet" | "gold";
 }) {
   const tones: Record<string, string> = {
     slate: "bg-slate-100 text-slate-600",
+    muted: "bg-slate-50 text-slate-500 ring-1 ring-slate-200",
     emerald: "bg-emerald-100 text-emerald-700",
     amber: "bg-amber-100 text-amber-700",
     rose: "bg-rose-100 text-rose-700",
@@ -130,13 +134,130 @@ export function ErrorBox({ message }: { message: string }) {
   );
 }
 
-export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+/**
+ * The "nothing here" state.
+ *
+ * An icon and an action, not just grey text in a void: an empty screen is the
+ * first thing a new user sees, and it should tell them what to do next rather
+ * than look broken. Both are optional, so existing calls keep working.
+ */
+export function EmptyState({
+  title,
+  hint,
+  icon,
+  action,
+}: {
+  title: string;
+  hint?: string;
+  icon?: ReactNode;
+  action?: ReactNode;
+}) {
   return (
-    <div className="py-12 text-center">
-      <p className="text-sm font-semibold text-slate-600">{title}</p>
-      {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+    <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+      {icon && (
+        <div className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-400">{icon}</div>
+      )}
+      <div>
+        <p className="text-sm font-semibold text-slate-600">{title}</p>
+        {hint && <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-500">{hint}</p>}
+      </div>
+      {action}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Table primitives
+//
+// Every list screen used to hand-roll its own <table> markup, which is why some
+// carried column headers and others didn't, and why numbers lined up on one
+// page and not the next. One set of parts, so a table is consistent by default
+// rather than by whoever wrote it remembering.
+//
+// `align="right"` also switches on tabular figures: proportional digits make a
+// column of prices jitter, and a jittering column is hard to compare down.
+// ---------------------------------------------------------------------------
+
+type Align = "left" | "right" | "center";
+
+const ALIGN: Record<Align, string> = {
+  left: "text-left",
+  right: "text-right tabular-nums",
+  center: "text-center",
+};
+
+export function Table({ children, className = "" }: { children: ReactNode; className?: string }) {
+  // Wrapped so a wide table scrolls inside its own card instead of pushing the
+  // whole page sideways on a phone.
+  return (
+    <div className={`-mx-1 overflow-x-auto px-1 ${className}`}>
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  );
+}
+
+export function THead({ children }: { children: ReactNode }) {
+  return (
+    <thead>
+      <tr className="border-b border-slate-200">{children}</tr>
+    </thead>
+  );
+}
+
+export function Th({
+  children,
+  align = "left",
+  className = "",
+}: {
+  children?: ReactNode;
+  align?: Align;
+  className?: string;
+}) {
+  return (
+    <th
+      scope="col"
+      className={`whitespace-nowrap pb-2.5 text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500 ${ALIGN[align]} ${className}`}
+    >
+      {children}
+    </th>
+  );
+}
+
+export function TBody({ children }: { children: ReactNode }) {
+  return <tbody>{children}</tbody>;
+}
+
+export function Tr({
+  children,
+  onClick,
+  className = "",
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  className?: string;
+}) {
+  return (
+    <tr
+      onClick={onClick}
+      className={`border-b border-slate-100 last:border-0 ${
+        onClick ? "cursor-pointer transition-colors hover:bg-slate-50" : ""
+      } ${className}`}
+    >
+      {children}
+    </tr>
+  );
+}
+
+export function Td({
+  children,
+  align = "left",
+  className = "",
+}: {
+  children?: ReactNode;
+  align?: Align;
+  className?: string;
+}) {
+  return <td className={`py-2.5 ${ALIGN[align]} ${className}`}>{children}</td>;
 }
 
 export function Modal({

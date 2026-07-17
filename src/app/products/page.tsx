@@ -406,6 +406,15 @@ export default function ProductsPage() {
         ) : (
           <>
             <div>
+              {/* Column headers — the stock figure on the right was a bare
+                  number with nothing naming it. */}
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">
+                <span>Product</span>
+                <span className="flex items-center gap-3">
+                  <span className="w-24 text-right">On hand</span>
+                  <span className="w-4" />
+                </span>
+              </div>
               {shown.map((p) => {
                 const gp = gpPercent(p.cost, p.price);
                 return (
@@ -437,10 +446,17 @@ export default function ProductsPage() {
                           {p.shelf ? `SH${p.shelf}` : ""}
                         </span>
                       )}
-                      <span className="text-sm text-slate-500">
-                        <span className="font-bold text-ink-900">{p.stock}</span> {p.unit}
+                      <span className="w-24 text-right text-sm text-slate-500">
+                        <span
+                          className={`font-bold tabular-nums ${
+                            p.stock < 0 ? "text-rose-600" : p.stock === 0 ? "text-slate-400" : "text-ink-900"
+                          }`}
+                        >
+                          {num(p.stock)}
+                        </span>{" "}
+                        {p.unit}
                       </span>
-                      <ChevronRight size={16} className="text-slate-300" />
+                      <ChevronRight size={16} className="w-4 shrink-0 text-slate-300" />
                     </div>
                   </div>
                 );

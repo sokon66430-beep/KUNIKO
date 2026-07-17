@@ -285,11 +285,19 @@ export default function DealsPage() {
       {!loading && filtered.length === 0 && (
         <Card>
           <EmptyState
+            icon={<Sparkles size={19} />}
             title={q ? "No promotion matches that" : "No promotions yet"}
             hint={
               q
                 ? "Try the promotion's name or its code."
-                : "Set up a deal and the till starts applying it the moment it's live."
+                : "Set up a deal — buy 2 get 1 free, a bundle price, money or a percentage off — and the till starts applying it by itself the moment it's live."
+            }
+            action={
+              !q && mayEdit ? (
+                <button onClick={startNew} className="btn-primary">
+                  <Plus size={16} /> New promotion
+                </button>
+              ) : undefined
             }
           />
         </Card>

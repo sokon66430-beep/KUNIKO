@@ -234,6 +234,18 @@ export default function InventoryPage() {
           <Spinner label="Loading inventory…" />
         ) : (
           <div>
+            {/* A column header row. The stock figure used to sit in this list as
+                a bare number with nothing saying what it was. */}
+            {filtered.length > 0 && (
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">
+                <span>Product</span>
+                <span className="flex items-center gap-3">
+                  <span className="w-24 text-right">On hand</span>
+                  <span className="w-[4.5rem] text-center">Status</span>
+                  <span className="w-[6.5rem] text-right">Actions</span>
+                </span>
+              </div>
+            )}
             {filtered.map((p) => {
               const margin = gpPercent(p.cost, p.price);
               const status =
@@ -261,18 +273,29 @@ export default function InventoryPage() {
                     {/* The balance is always the base count. The packaging
                         breakdown underneath is for the human counting the
                         shelf, who thinks in cases. */}
-                    <span className="text-right">
-                      <span className="block font-bold text-ink-900">{p.stock}</span>
+                    <span className="w-24 text-right">
+                      <span
+                        className={`block text-[15px] font-bold tabular-nums ${
+                          p.stock < 0 ? "text-rose-600" : p.stock === 0 ? "text-slate-400" : "text-ink-900"
+                        }`}
+                      >
+                        {num(p.stock)}
+                      </span>
                       {describeBreakdown(p.stock, unitsOf(p)) && (
-                        <span className="block text-[11px] text-slate-400">
+                        <span className="block text-[11px] text-slate-500">
                           {describeBreakdown(p.stock, unitsOf(p))}
                         </span>
                       )}
                     </span>
-                    {status === "out" && <Badge tone="rose">Out</Badge>}
-                    {status === "low" && <Badge tone="amber">Low</Badge>}
-                    {status === "ok" && <Badge tone="emerald">In stock</Badge>}
-                    <div className="flex items-center gap-1">
+                    {/* Most of this catalogue sits at zero, so "Out" is the
+                        normal case here — in red on every row it would drown out
+                        the handful of items that are genuinely running low. */}
+                    <span className="flex w-[4.5rem] justify-center">
+                      {status === "out" && <Badge tone="muted">Out</Badge>}
+                      {status === "low" && <Badge tone="amber">Low</Badge>}
+                      {status === "ok" && <Badge tone="emerald">In stock</Badge>}
+                    </span>
+                    <div className="flex w-[6.5rem] items-center justify-end gap-1">
                       <button
                         title="Restock"
                         onClick={() => setRestock(p)}
