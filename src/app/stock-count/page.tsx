@@ -247,20 +247,23 @@ export default function StockCountPage() {
                 <input ref={salesRef} type="file" accept=".xlsx" hidden onChange={onSalesFile} />
               </>
             )}
+            {/* Short labels, detail in the tooltip — same treatment as the
+                count-sheet toolbar. "Combined" is the only export here, so the
+                word was earning nothing but width. */}
             <a
               href="/api/stock-counts/combined/export?format=xlsx"
               className="btn-ghost !py-2 text-sm"
-              title="Excel — every count summed into one report"
+              title="Combined Excel — every count summed into one report"
             >
-              <FileSpreadsheet size={16} /> Combined Excel
+              <FileSpreadsheet size={16} /> Excel
             </a>
             <button
               className="btn-ghost !py-2 text-sm"
               disabled={pdfLoading === "combined"}
               onClick={openCombinedPdf}
-              title="PDF — every count summed into one report"
+              title="Combined PDF — every count summed into one report"
             >
-              <FileType2 size={16} /> {pdfLoading === "combined" ? "Opening…" : "Combined PDF"}
+              <FileType2 size={16} /> {pdfLoading === "combined" ? "Opening…" : "PDF"}
             </button>
           </div>
         </div>
