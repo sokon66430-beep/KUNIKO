@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { splitBarcodeField } from "@/lib/barcodes";
 import {
   PackageCheck,
   Truck,
@@ -749,10 +750,16 @@ function ReceiveModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  // qty being received in THIS session, keyed by productId. Default to remaining.
+  // qty being received in THIS session, keyed by productId.
+  //
+  // Starts at ZERO for every line — nothing has been counted yet. Defaulting to
+  // the outstanding quantity meant the form arrived pre-filled with a full
+  // delivery, so Confirm would book in goods nobody had checked, or that were
+  // never on the truck. The receiver adds what actually turned up, by scanning
+  // it or typing it; what wasn't received stays 0 and the PO stays open for it.
   const initial = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const it of po.items) m[it.productId] = Math.max(it.qtyOrdered - it.qtyReceived, 0);
+    for (const it of po.items) m[it.productId] = 0;
     return m;
   }, [po]);
   const [now, setNow] = useState<Record<string, number>>(initial);
@@ -817,7 +824,11 @@ function ReceiveModal({
     // Scan matches the physical barcode first (what's actually on the box);
     // fall back to SKU/name for manual entry. A barcode shared by 2+ lines
     // on the same PO is rare but must not silently pick the wrong one.
-    const byBarcode = po.items.filter((i) => i.barcode === code);
+    // A PO line snapshots the product's barcode as it was when the order was
+    // raised — and an order raised before the multi-code repair (or one frozen
+    // by "sent") can still hold the old "A,B" field. Split it here so the box
+    // in the receiver's hands still scans either way. See lib/barcodes.
+    const byBarcode = po.items.filter((i) => splitBarcodeField(i.barcode).includes(code));
     if (byBarcode.length > 1) {
       setAmbiguous(byBarcode);
       setFlash(null);
