@@ -453,6 +453,33 @@ function RecipeEditor({
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
 
+  /**
+   * Picking the menu item IS naming the recipe — the product already carries
+   * the name, the Khmer name and the photo, so asking the cook to type them
+   * again is asking them to type something the system knows.
+   *
+   * Only fills fields that are still empty (or were themselves auto-filled from
+   * the product picked before), so a name someone deliberately typed is never
+   * overwritten.
+   */
+  function linkProduct(productId: string) {
+    const p = productById.get(productId);
+    if (!p) return;
+    const previous = draft.linkedProductIds[0] ? productById.get(draft.linkedProductIds[0]) : undefined;
+    const derived = (current: string, was: string | undefined) => !current.trim() || current === (was || "");
+    const first = draft.linkedProductIds.length === 0;
+
+    setDraft({
+      ...draft,
+      linkedProductIds: [...draft.linkedProductIds, productId],
+      // Only the FIRST product names the recipe — linking a second one that also
+      // sells this recipe shouldn't rename it.
+      name: first && derived(draft.name, previous?.name) ? p.name : draft.name,
+      nameKh: first && derived(draft.nameKh, previous?.nameKh) ? p.nameKh || "" : draft.nameKh,
+      image: first && !draft.image ? p.image : draft.image,
+    });
+  }
+
   // Ingredient picker: everything in the catalog, already-chosen lines removed
   // so the same product can't be added twice.
   const chosen = new Set(draft.items.map((i) => i.productId));
@@ -573,7 +600,54 @@ function RecipeEditor({
       <div className="space-y-6">
         {error && <ErrorBox message={error} />}
 
-        {/* Identity */}
+        {/* Menu item — picked FIRST, because it's what the recipe is for and it
+            already carries the name, the Khmer name and the photo. */}
+        <div>
+          <p className="mb-1 text-sm font-bold text-ink-900">Menu item</p>
+          <p className="mb-2 text-[12px] text-slate-400">
+            Pick the product the till sells. Its name and photo fill in below — and without one, nothing is ever
+            deducted.
+          </p>
+          {linkedProducts.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {linkedProducts.map((p) => (
+                <span
+                  key={p.id}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-50 px-2.5 py-1.5 text-[12.5px] font-semibold text-brand-700 ring-1 ring-brand-100"
+                >
+                  {p.image && (
+                    <img src={`/api/product-image/${p.image}`} alt="" className="h-5 w-5 rounded object-cover" />
+                  )}
+                  {p.name} · {usd(p.price)}
+                  <button
+                    onClick={() => set("linkedProductIds", draft.linkedProductIds.filter((id) => id !== p.id))}
+                    className="text-brand-400 transition hover:text-rose-600"
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <SearchSelect
+            value=""
+            options={linkOptions}
+            onChange={linkProduct}
+            placeholder={
+              linkedProducts.length
+                ? "+ Another product that sells this same recipe"
+                : "Search your products — the menu item this recipe makes"
+            }
+          />
+          {linkedProducts.length === 0 && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-amber-600">
+              <AlertTriangle size={13} /> Not linked yet — a recipe with no product never deducts anything.
+            </p>
+          )}
+        </div>
+
+        {/* Identity — pre-filled from the menu item, still editable in case the
+            recipe is called something different from what's on the menu. */}
         <div className="flex gap-4">
           <div>
             <input
@@ -586,6 +660,7 @@ function RecipeEditor({
             <button
               type="button"
               onClick={() => photoRef.current?.click()}
+              title="Change the photo"
               className="group relative grid h-20 w-20 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-400 ring-1 ring-slate-200 transition hover:ring-brand-300"
             >
               {draft.image ? (
@@ -603,7 +678,7 @@ function RecipeEditor({
               <input
                 value={draft.name}
                 onChange={(e) => set("name", e.target.value)}
-                placeholder="Spicy Noodle Beef"
+                placeholder="Pick a menu item above and this fills in"
                 className="input"
               />
             </div>
@@ -706,35 +781,6 @@ function RecipeEditor({
               placeholder="+ Add ingredient — search by name, item ID or category"
             />
           </div>
-        </div>
-
-        {/* Sold as */}
-        <div>
-          <p className="mb-1 text-sm font-bold text-ink-900">Sold as</p>
-          <p className="mb-2 text-[12px] text-slate-400">
-            The till product this recipe makes. Without one, nothing is ever deducted.
-          </p>
-          {linkedProducts.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {linkedProducts.map((p) => (
-                <span key={p.id} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-[12.5px] font-semibold text-brand-700 ring-1 ring-brand-100">
-                  {p.name} · {usd(p.price)}
-                  <button
-                    onClick={() => set("linkedProductIds", draft.linkedProductIds.filter((id) => id !== p.id))}
-                    className="text-brand-400 transition hover:text-rose-600"
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          <SearchSelect
-            value=""
-            options={linkOptions}
-            onChange={(id) => set("linkedProductIds", [...draft.linkedProductIds, id])}
-            placeholder="+ Link a product this recipe is sold as"
-          />
         </div>
 
         {/* Economics */}
