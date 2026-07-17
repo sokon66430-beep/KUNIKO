@@ -149,9 +149,9 @@ export default function DashboardPage() {
               leaves a gap that reads as something failed to load. */}
           <div className={`grid grid-cols-2 gap-4 ${showProfit ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
             <StatCard
-              label="Today's Sales"
-              value={usd(data.todayRevenue)}
-              sub={`${riel(data.todayRevenue)} · ${data.todayTx} sales`}
+              label={SALES_LABEL[range]}
+              value={usd(data.revenue)}
+              sub={`${riel(data.revenue)} · ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
               icon={<DollarSign size={18} />}
               accent="brand"
             />
@@ -343,6 +343,19 @@ const RANGE_LABEL: Record<RangeKey, string> = {
   "7d": "7d",
   "30d": "30d",
   "90d": "90d",
+};
+
+// The first card's own title. It follows the range like the rest of the row:
+// pinned to today, it sat there reading $0.00 next to yesterday's takings —
+// technically true, and useless. Named in full rather than suffixed, because
+// "Sales (yesterday)" beside "Discount (yesterday)" is the row saying the same
+// word five times.
+const SALES_LABEL: Record<RangeKey, string> = {
+  today: "Today's Sales",
+  yesterday: "Yesterday's Sales",
+  "7d": "Sales · Last 7 Days",
+  "30d": "Sales · Last 30 Days",
+  "90d": "Sales · Last 90 Days",
 };
 
 function labelFor(range: RangeKey) {
