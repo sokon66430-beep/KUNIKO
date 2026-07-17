@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   FileType2,
   Upload,
+  Receipt,
   CheckCircle2,
   Calculator,
   Scale,
@@ -377,6 +378,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [salesImporting, setSalesImporting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -388,6 +390,7 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [countValue, setCountValue] = useState("");
   const [alreadyCounted, setAlreadyCounted] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const salesRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -543,6 +546,40 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     reload();
   }
 
+  // The POS sales report for the count period. Goes through the same importer
+  // the POS page uses — one reader, one set of rules, and the day's takings land
+  // in the sales reports as usual. What's different is what it does with a
+  // product that's sitting in this open count: instead of touching stock, it
+  // records how much of it sold after the line was counted, which is the only
+  // moment that's knowable (an imported sale is stored by day, so the clock is
+  // gone afterwards).
+  async function onSalesFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSalesImporting(true);
+    setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/sales/import", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Could not read the sales report");
+      const s = data.stock || {};
+      const parts: string[] = [];
+      if (s.countedNow) parts.push(`${s.countedNow} units sold after counting — taken off the Final column`);
+      if (s.beforeCount) parts.push(`${s.beforeCount} line${s.beforeCount === 1 ? "" : "s"} sold before counting (already in the count)`);
+      if (s.sameDayNoTime) parts.push(`${s.sameDayNoTime} line${s.sameDayNoTime === 1 ? "" : "s"} had no time — left alone`);
+      if (data.matched === 0) parts.push("nothing new — already on record");
+      setMsg(`Sales report read: ${parts.join(" · ") || "no lines affected this count"}`);
+      reload();
+    } catch (err: any) {
+      setMsg(err.message);
+    } finally {
+      setSalesImporting(false);
+      if (salesRef.current) salesRef.current.value = "";
+    }
+  }
+
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -592,6 +629,10 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
 
   const netUnits = items.reduce((s, i) => s + (i.countedQty - i.systemQty), 0);
   const varValue = items.reduce((s, i) => s + (i.countedQty - i.systemQty) * (costOf.get(i.productId) || 0), 0);
+  // Has a POS sales report been reconciled into this count? Drives the two extra
+  // columns — the count sheet stays as it was until there's something to show.
+  const soldTotal = items.reduce((s, i) => s + (i.soldAfterCount ?? 0), 0);
+  const anySold = soldTotal > 0;
 
   return (
     <>
@@ -637,12 +678,32 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     <Upload size={15} /> {importing ? "Importing…" : "Import counted sheet"}
                   </button>
                   <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={onImportFile} />
+                  {/* The shop sells through another till, so this file is the
+                      only thing that knows what left the shelf while the team
+                      was counting. Uploaded here, after counting, so the count
+                      can settle each line against it. */}
+                  <button
+                    className="btn-ghost !py-1.5 text-xs"
+                    disabled={salesImporting || items.length === 0}
+                    title={items.length === 0 ? "Count some items first" : "Upload the POS sales report for the count period"}
+                    onClick={() => salesRef.current?.click()}
+                  >
+                    <Receipt size={15} /> {salesImporting ? "Reading…" : "Import sales report"}
+                  </button>
+                  <input ref={salesRef} type="file" accept=".xlsx" hidden onChange={onSalesFile} />
                 </>
               )}
               {posted && <Badge tone="emerald">Posted · stock adjusted</Badge>}
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
               The sheet lists every product with its system stock. Fill the yellow “Counted Qty” column, then import it back.
+              {!posted && (
+                <>
+                  {" "}
+                  Once counting is done, import the POS sales report — anything sold after an item was counted comes off it,
+                  so posting adjusts to what&apos;s really on the shelf.
+                </>
+              )}
             </p>
           </div>
           {msg && (
@@ -807,6 +868,10 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   <th className="px-3 py-2 font-semibold">Place</th>
                   <th className="px-3 py-2 text-center font-semibold">System</th>
                   <th className="px-3 py-2 text-center font-semibold">Counted</th>
+                  {/* Only once a sales report has actually been uploaded — two
+                      empty columns on every count would just be noise. */}
+                  {anySold && <th className="px-3 py-2 text-center font-semibold">Sold after</th>}
+                  {anySold && <th className="px-3 py-2 text-center font-semibold">Final</th>}
                   <th className="px-3 py-2 text-center font-semibold">Variance</th>
                   <th className="px-3 py-2 font-semibold">Counted by</th>
                   {!posted && <th className="px-3 py-2"></th>}
@@ -852,6 +917,16 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                           />
                         )}
                       </td>
+                      {anySold && (
+                        <td className="px-3 py-2 text-center text-slate-500">
+                          {it.soldAfterCount ? `−${it.soldAfterCount}` : "—"}
+                        </td>
+                      )}
+                      {anySold && (
+                        <td className="px-3 py-2 text-center font-bold text-ink-900" title="What's on the shelf now: counted, less what sold after it was counted. This is what posting sets stock to.">
+                          {Math.max(0, (Number(shown) || 0) - (it.soldAfterCount ?? 0))}
+                        </td>
+                      )}
                       <td className={`px-3 py-2 text-center font-semibold ${v === 0 ? "text-slate-400" : v > 0 ? "text-emerald-600" : "text-rose-500"}`}>
                         {v > 0 ? `+${v}` : v}
                       </td>

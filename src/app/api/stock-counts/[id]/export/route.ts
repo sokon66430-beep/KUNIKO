@@ -25,6 +25,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   if (format === "csv" || format === "pdf") {
     const counted = new Map(count.items.map((i) => [i.productId, i.countedQty]));
+    // Units sold after the line was counted, from the POS report imported into
+    // this count. The sheet has to show it: an auditor handed a "Counted 5" for
+    // a shelf now holding 4 will recount and find a discrepancy that was never
+    // real.
+    const soldAfter = new Map(count.items.map((i) => [i.productId, i.soldAfterCount ?? 0]));
+    const anySold = count.items.some((i) => (i.soldAfterCount ?? 0) > 0);
     const placeOf = new Map(
       count.items.map((i) => [
         i.productId,
@@ -44,10 +50,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         systemQty: p.stock,
         countedQty: cq ?? "",
         place: placeOf.get(p.id) || "",
+        sold: cq != null ? soldAfter.get(p.id) || 0 : "",
+        finalQty: cq != null ? Math.max(0, cq - (soldAfter.get(p.id) || 0)) : "",
         variance: cq != null ? cq - p.stock : "",
         cost: p.cost,
         price: p.price,
-        total: cq != null ? Math.round(cq * p.cost * 100) / 100 : "",
+        total: cq != null ? Math.round(Math.max(0, cq - (soldAfter.get(p.id) || 0)) * p.cost * 100) / 100 : "",
       };
     });
     const cols: Col[] = [
@@ -61,6 +69,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       { header: "System Qty", get: (r: any) => r.systemQty, num: true },
       { header: "Counted Qty", get: (r: any) => r.countedQty, num: true },
       { header: "Counted In", get: (r: any) => r.place },
+      ...(anySold
+        ? [
+            { header: "Sold After Count", get: (r: any) => r.sold, num: true },
+            { header: "Final Qty", get: (r: any) => r.finalQty, num: true },
+          ]
+        : []),
       { header: "Variance", get: (r: any) => r.variance, num: true },
       ...(showValue
         ? [

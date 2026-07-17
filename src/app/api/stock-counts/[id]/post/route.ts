@@ -34,14 +34,22 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     let adjusted = 0;
     let netUnits = 0;
     let movedDuringCount = 0; // lines the till touched between counting and posting
+    let soldAfter = 0; // units the POS report says left after they were counted
     for (const it of count.items) {
       const product = db.products.find((p) => p.id === it.productId);
       if (!product) continue;
       const before = product.stock;
       const variance = it.countedQty - it.systemQty;
+      // What the uploaded POS report says walked out after this line was
+      // counted. The shop sells through another till, so the counted number was
+      // true at `countedAt` and is already stale: counted 5 at 10:00 with 1 sold
+      // at 10:00 means the shelf holds 4, and 4 is what stock must end up as.
+      // Zero when no report was uploaded, which just leaves the count as counted.
+      const sold = Math.max(0, it.soldAfterCount ?? 0);
+      soldAfter += sold;
       // Never drive stock negative: a count can only correct to something a
       // shelf could actually hold.
-      const target = Math.max(0, before + variance);
+      const target = Math.max(0, before + variance - sold);
       if (before !== it.systemQty) movedDuringCount++;
       const delta = target - before;
       if (delta !== 0) {
@@ -63,9 +71,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       // measured against the book at counting time rather than at posting.
       detail:
         `${adjusted} item${adjusted === 1 ? "" : "s"} adjusted · net ${netUnits >= 0 ? "+" : ""}${netUnits} units` +
+        (soldAfter > 0 ? ` · ${soldAfter} units sold after counting (from POS report)` : "") +
         (movedDuringCount > 0 ? ` · ${movedDuringCount} still selling while counted` : ""),
     });
-    return { count, adjusted, netUnits, movedDuringCount };
+    return { count, adjusted, netUnits, movedDuringCount, soldAfter };
   });
 
   if ("error" in result) {

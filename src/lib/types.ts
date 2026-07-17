@@ -506,6 +506,15 @@ export type StockCountItem = {
   placeQty?: Partial<Record<CountPlace, number>>; // how much was counted in each place
   countedBy?: string; // which user counted this line
   countedAt?: string;
+  // Units that sold AFTER this line was counted, read from the POS sales report
+  // uploaded into the count. Selling happens in another till, so the shelf keeps
+  // emptying while the audit team works: what they counted was true at
+  // `countedAt` and nowhere near true by the time the count is posted.
+  //
+  // Recorded per line at import, because it can only be worked out while the
+  // report's row times are in hand — an imported sale is stored grouped by day
+  // (stamped noon), so the clock is gone afterwards.
+  soldAfterCount?: number;
 };
 
 export type StockCountStatus = "Open" | "Posted";

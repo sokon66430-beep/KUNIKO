@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { storeInstant, storeToday } from "@/lib/storetime";
-import type { Sale, SaleItem } from "@/lib/types";
+import type { Sale, SaleItem, StockCountItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -388,24 +388,33 @@ export async function POST(req: Request) {
 
   const result = await mutateDB((db) => {
     // -----------------------------------------------------------------------
-    // An unposted count over any of these products makes this file impossible
-    // to apply correctly, so refuse the whole import rather than get it wrong.
+    // A product sitting in an OPEN count is reconciled into that count instead
+    // of having its stock touched here.
     //
-    // The baseline below is the last POSTED count. With a count sitting open,
-    // the baseline is the PREVIOUS one, so every sale from today reads as
-    // "after the count" and gets deducted — including the ones this morning
-    // that the open count has already absorbed into its variance. Posting it
-    // afterwards then applies that variance on top, removing them a second
-    // time. Measured: book 100, 4 sold before the count, 5 after, count posted
-    // late → 89 instead of 93. Silent, and only visible at the next count.
+    // The audit team counts a live shop floor: they wrote down 5 at 10:00 and a
+    // customer bought 1 at 10:00, so the shelf holds 4 — but only this file
+    // knows that, and only while it's being read. An imported sale is stored
+    // grouped by day and stamped noon, so the moment this route returns, the
+    // clock that decides "before or after the count?" is gone for good.
     //
-    // Post the count first and both numbers are right. So: say so, and stop.
+    // So the answer is recorded now, on the line: soldAfterCount. Posting the
+    // count then lands on 4 rather than 5, and the count sheet can show the
+    // audit team the number they'd have got if the shop had stood still.
+    //
+    // Stock is deliberately NOT reduced for these — posting the count applies
+    // the whole correction in one move. Doing both would take the same unit off
+    // twice.
     // -----------------------------------------------------------------------
-    const affected = new Set(toImport.map((m) => m.productId));
-    const blocking = db.stockCounts.filter(
-      (c) => c.status !== "Posted" && c.items.some((it) => affected.has(it.productId)),
-    );
-    if (blocking.length) return { error: "open_count" as const, countNos: blocking.map((c) => c.countNo) };
+    const openLine = new Map<string, StockCountItem>(); // productId → line in an open count
+    for (const c of db.stockCounts) {
+      if (c.status === "Posted") continue;
+      for (const it of c.items) {
+        if (!it.countedAt) continue;
+        const prev = openLine.get(it.productId);
+        // Most recently counted line wins, if the product somehow sits in two.
+        if (!prev || (prev.countedAt || "") < it.countedAt) openLine.set(it.productId, it);
+      }
+    }
 
     // -----------------------------------------------------------------------
     // Stock: take off what sold AFTER the shelf was counted.
@@ -443,8 +452,44 @@ export async function POST(req: Request) {
       }
     }
 
-    const stock = { linesReduced: 0, unitsReduced: 0, beforeCount: 0, neverCounted: 0, sameDayNoTime: 0 };
+    const stock = {
+      linesReduced: 0,
+      unitsReduced: 0,
+      beforeCount: 0,
+      neverCounted: 0,
+      sameDayNoTime: 0,
+      countedNow: 0, // units handed to an open count instead of deducted here
+      countsTouched: new Set<string>(),
+    };
     for (const row of toImport) {
+      // --- In an open count? Reconcile into it, don't touch stock. ---
+      const line = openLine.get(row.productId);
+      if (line) {
+        const at = row.time ? storeInstant(row.day, row.time) : null;
+        if (!at) {
+          // No clock on the row, so it can't be placed either side of the
+          // count. Left for the count to handle as it stands, and reported.
+          stock.sameDayNoTime++;
+          continue;
+        }
+        // Compare to the minute the line was counted, not the second. The report
+        // prints HH:MM while countedAt carries seconds, so a sale at 10:00 and a
+        // count stamped 10:00:37 would read as "before" on a strict compare —
+        // when the shop's own record says they happened in the same minute and
+        // the unit is gone. Counting it as sold matches what's on the shelf.
+        const countMinute = Math.floor(Date.parse(line.countedAt!) / 60000) * 60000;
+        if (at.getTime() >= countMinute) {
+          line.soldAfterCount = (line.soldAfterCount ?? 0) + row.qty;
+          stock.countedNow += row.qty;
+          const owner = db.stockCounts.find((c) => c.items.includes(line));
+          if (owner) stock.countsTouched.add(owner.countNo);
+        } else {
+          // Sold before it was counted — the counted number already excludes it.
+          stock.beforeCount++;
+        }
+        continue;
+      }
+
       const countedAt = lastCountAt.get(row.productId);
       if (!countedAt) {
         // Never counted, so there's no baseline saying what's on the shelf and
@@ -537,18 +582,19 @@ export async function POST(req: Request) {
       entity: file.name || "Excel file",
       detail: `${toImport.length} lines · ${salesCreated} day-sales${
         skippedDuplicates ? ` · skipped ${skippedDuplicates} duplicate transaction(s) already on record` : ""
-      }${stock.unitsReduced ? ` · stock -${stock.unitsReduced} units (sold after counting)` : ""}`,
+      }${stock.unitsReduced ? ` · stock -${stock.unitsReduced} units (sold after counting)` : ""}${
+        stock.countedNow ? ` · ${stock.countedNow} units sold after counting → ${[...stock.countsTouched].join(", ")}` : ""
+      }`,
     });
-    return { matched: toImport.length, salesCreated, totalRows: rows.length, skippedDuplicates, skippedDates, stock };
+    return {
+      matched: toImport.length,
+      salesCreated,
+      totalRows: rows.length,
+      skippedDuplicates,
+      skippedDates,
+      stock: { ...stock, countsTouched: [...stock.countsTouched] },
+    };
   });
 
-  if ("error" in result && result.error === "open_count") {
-    return NextResponse.json(
-      {
-        error: `Post the open stock count first (${result.countNos.join(", ")}), then upload this report. Until it's posted, the app can't tell which of today's sales it already saw — so importing now would take those units off twice.`,
-      },
-      { status: 400 },
-    );
-  }
   return NextResponse.json(result);
 }
