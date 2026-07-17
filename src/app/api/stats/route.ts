@@ -6,7 +6,7 @@ import { canSeeProfit } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
-const VALID: RangeKey[] = ["today", "7d", "30d", "90d"];
+const VALID: RangeKey[] = ["today", "yesterday", "7d", "30d", "90d"];
 
 export async function GET(req: Request) {
   const db = await readDB();

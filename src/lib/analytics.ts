@@ -7,17 +7,32 @@ const startOfDay = (d: Date) => {
   return x;
 };
 
+/** yyyy-mm-dd on the LOCAL calendar — never toISOString(), which is UTC. */
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 function inRange(s: Sale, from: Date, to: Date) {
   const t = +new Date(s.createdAt);
   return t >= +from && t < +to;
 }
 
-export type RangeKey = "today" | "7d" | "30d" | "90d";
+export type RangeKey = "today" | "yesterday" | "7d" | "30d" | "90d";
 
 export function rangeBounds(range: RangeKey): { from: Date; to: Date; days: number } {
   const to = new Date();
   const from = startOfDay(new Date());
   if (range === "today") return { from, to, days: 1 };
+
+  // Yesterday is the only range that ENDS in the past — every other one runs up
+  // to this moment. It stops at midnight today, which `inRange` excludes since
+  // it tests `t < to`, so a sale rung up this morning can't leak into it. A
+  // closed day is the one figure that shouldn't move while you look at it.
+  if (range === "yesterday") {
+    const f = startOfDay(new Date());
+    f.setDate(f.getDate() - 1);
+    return { from: f, to: startOfDay(new Date()), days: 1 };
+  }
+
   const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
   const f = startOfDay(new Date());
   f.setDate(f.getDate() - (days - 1));
@@ -79,17 +94,28 @@ export function buildStats(db: DB, range: RangeKey = "30d") {
   const todayRevenue = sum(todaySales, (s) => s.total);
   const todayProfit = sum(todaySales, (s) => s.profit);
 
-  // Daily revenue/profit series across the range
-  const seriesMap = new Map<string, { revenue: number; profit: number }>();
+  // Daily revenue/profit series across the range.
+  //
+  // Bucketed on the LOCAL calendar date, because that's the day the range was
+  // cut on. This used to key buckets with toISOString() — UTC — while building
+  // them from local midnight, so anywhere east of Greenwich the bucket for
+  // local 16 Jul was labelled 15 Jul, and a sale made that afternoon keyed to
+  // 16 Jul and matched no bucket at all. The money vanished off the chart while
+  // the cards above it still counted it.
+  const seriesMap = new Map<string, { label: string; revenue: number; profit: number }>();
   for (let i = 0; i < days; i++) {
     const d = new Date(from);
     d.setDate(from.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
-    seriesMap.set(key, { revenue: 0, profit: 0 });
+    seriesMap.set(dayKey(d), {
+      // Built from the Date itself. Re-parsing the key would read it back as
+      // UTC midnight and shift the label a day the other way.
+      label: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+      revenue: 0,
+      profit: 0,
+    });
   }
   for (const s of sales) {
-    const key = new Date(s.createdAt).toISOString().slice(0, 10);
-    const cur = seriesMap.get(key);
+    const cur = seriesMap.get(dayKey(new Date(s.createdAt)));
     if (cur) {
       cur.revenue = round2(cur.revenue + s.total);
       cur.profit = round2(cur.profit + s.profit);
@@ -97,7 +123,7 @@ export function buildStats(db: DB, range: RangeKey = "30d") {
   }
   const series = Array.from(seriesMap.entries()).map(([date, v]) => ({
     date,
-    label: new Date(date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+    label: v.label,
     revenue: v.revenue,
     profit: v.profit,
   }));

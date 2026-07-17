@@ -24,6 +24,7 @@ import { canSeeProfit } from "@/lib/access";
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
   { key: "7d", label: "7 days" },
   { key: "30d", label: "30 days" },
   { key: "90d", label: "90 days" },

@@ -32,6 +32,7 @@ import { canSeeProfit } from "@/lib/access";
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
   { key: "7d", label: "7 days" },
   { key: "30d", label: "30 days" },
   { key: "90d", label: "90 days" },
@@ -170,7 +171,7 @@ export default function DashboardPage() {
             <StatCard
               label={`After Discount (${labelFor(range)})`}
               value={usd(data.revenue)}
-              sub={`${data.txCount} transactions`}
+              sub={`${num(data.txCount)} transaction${data.txCount === 1 ? "" : "s"}`}
               icon={<Receipt size={18} />}
               accent="brand"
             />
@@ -332,8 +333,20 @@ export default function DashboardPage() {
   );
 }
 
+// The suffix on each card's label. A Record, not a chain of ternaries: the old
+// chain ended in a bare `: "90d"`, so any range it didn't name got labelled 90d
+// — a card confidently reporting the wrong period. This way a new range is a
+// type error until it's given a name.
+const RANGE_LABEL: Record<RangeKey, string> = {
+  today: "today",
+  yesterday: "yesterday",
+  "7d": "7d",
+  "30d": "30d",
+  "90d": "90d",
+};
+
 function labelFor(range: RangeKey) {
-  return range === "today" ? "today" : range === "7d" ? "7d" : range === "30d" ? "30d" : "90d";
+  return RANGE_LABEL[range];
 }
 
 type RecipeAlerts = {
