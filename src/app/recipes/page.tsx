@@ -427,6 +427,22 @@ function RecipeRow({
   );
 }
 
+/** One figure in the cost/margin row — the app's stat-card language, modal-sized. */
+function Figure({ label, value, tone }: { label: string; value: string; tone?: "emerald" | "rose" }) {
+  return (
+    <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+      <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+      <p
+        className={`mt-1.5 text-[19px] font-extrabold tabular-nums leading-none tracking-[-0.02em] ${
+          tone === "emerald" ? "text-emerald-600" : tone === "rose" ? "text-rose-600" : "text-ink-900"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 // --- Create / edit ----------------------------------------------------------
 
 function RecipeEditor({
@@ -577,6 +593,11 @@ function RecipeEditor({
 
   const linkedProducts = draft.linkedProductIds.map((id) => productById.get(id)).filter(Boolean) as Product[];
   const econ = linkedProducts[0] ? recipeEconomics(preview.total, linkedProducts[0].price) : null;
+  // A recipe with no ingredients — or ingredients nobody has costed — has no
+  // food cost, and "100% margin" would then be a claim that the dish costs
+  // nothing to make. Profit and margin stay blank until there's a real cost
+  // behind them.
+  const costed = preview.total > 0;
 
   const canSave = draft.name.trim().length > 0 && draft.items.length > 0 && !busy;
 
@@ -783,40 +804,42 @@ function RecipeEditor({
           </div>
         </div>
 
-        {/* Economics */}
-        <div className="rounded-xl bg-ink-900 p-4 text-white">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-400">Food cost</p>
-              <p className="mt-1.5 text-[22px] font-extrabold tabular-nums leading-none">{usd(preview.total)}</p>
-            </div>
-            <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-400">Selling price</p>
-              <p className="mt-1.5 text-[22px] font-extrabold tabular-nums leading-none">
-                {econ ? usd(econ.price) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-400">Gross profit</p>
-              <p className="mt-1.5 text-[22px] font-extrabold tabular-nums leading-none text-emerald-400">
-                {econ ? usd(econ.profit) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-400">Margin</p>
-              <p className="mt-1.5 text-[22px] font-extrabold tabular-nums leading-none text-emerald-400">
-                {econ ? pct(econ.margin) : "—"}
-              </p>
-            </div>
+        {/* Cost & margin — the same contained-card language as the rest of the
+            app, not a feature panel shouting in a different colour. */}
+        <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+          <p className="mb-3 text-[13px] font-bold text-ink-900">Cost &amp; margin</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Figure label="Food cost" value={costed ? usd(preview.total) : "—"} />
+            <Figure label="Selling price" value={econ ? usd(econ.price) : "—"} />
+            <Figure
+              label="Gross profit"
+              value={costed && econ ? usd(econ.profit) : "—"}
+              tone={costed && econ ? (econ.profit >= 0 ? "emerald" : "rose") : undefined}
+            />
+            <Figure
+              label="Margin"
+              value={costed && econ ? pct(econ.margin) : "—"}
+              tone={costed && econ ? (econ.margin >= 0 ? "emerald" : "rose") : undefined}
+            />
           </div>
-          {econ && (
-            <p className="mt-3 border-t border-white/10 pt-3 text-[11.5px] text-slate-400">
+
+          {/* Say WHY it's dashes. Showing 100% margin on a recipe with no
+              ingredients would claim the dish costs nothing to make. */}
+          {!costed && (
+            <p className="mt-3 border-t border-slate-200 pt-3 text-[11.5px] text-slate-500">
+              {draft.items.length === 0
+                ? "Add the ingredients and the food cost, profit and margin work themselves out."
+                : "None of these ingredients has a cost yet — set it in Products before the margin means anything."}
+            </p>
+          )}
+          {costed && econ && (
+            <p className="mt-3 border-t border-slate-200 pt-3 text-[11.5px] text-slate-500">
               Margin is figured on the ex-VAT price ({usd(econ.netPrice)}) — the same basis as every other margin in
               Stookii. Food cost is {pct(econ.foodCostPct)} of it.
             </p>
           )}
           {preview.unresolved > 0 && (
-            <p className="mt-3 flex items-center gap-1.5 border-t border-white/10 pt-3 text-[12px] font-medium text-amber-400">
+            <p className="mt-2 flex items-center gap-1.5 text-[12px] font-medium text-amber-600">
               <AlertTriangle size={13} /> {preview.unresolved} ingredient
               {preview.unresolved === 1 ? "" : "s"} couldn&apos;t be costed — the real cost is higher than this.
             </p>

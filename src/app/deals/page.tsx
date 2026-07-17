@@ -590,17 +590,25 @@ function PromotionEditor({
               </div>
             )}
             <div>
-              <label className="label">Priority (1–100)</label>
+              <label className="label">Priority</label>
               <input
                 value={draft.priority}
                 onChange={(e) => set("priority", e.target.value.replace(/[^\d]/g, ""))}
                 inputMode="numeric"
                 className="input font-semibold tabular-nums"
               />
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                1–100. Only matters if another deal covers the same product.
+              </p>
             </div>
           </div>
-          <p className="mt-3 border-t border-slate-200 pt-3 text-[12px] text-slate-500">
-            Highest priority wins when two deals want the same item. On a tie, whichever saves the customer more.
+          {/* "Priority" means nothing on its own — say what it decides, with the
+              case it actually decides it in. */}
+          <p className="mt-3 border-t border-slate-200 pt-3 text-[12px] leading-relaxed text-slate-500">
+            <b className="text-slate-600">What priority does:</b> if two promotions both cover the same item, the higher
+            number wins and the other one doesn&apos;t apply — a customer never gets both unless you turn on
+            &ldquo;Combine promotions&rdquo;. On a tie, whichever saves the customer more. If this is the only deal on
+            these products, priority changes nothing — leave it at 50.
           </p>
         </div>
 
