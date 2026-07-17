@@ -24,7 +24,10 @@ export async function GET(req: Request) {
   };
 
   type Agg = { qty: number; revenue: number; cost: number };
-  const items = new Map<string, Agg & { sku: string; name: string; category: string }>();
+  // productId is carried in the row, not just as the map key: callers need to
+  // get from "this sold the most" back to the product itself (the till's
+  // favourites do exactly that), and matching on name or SKU would be guessing.
+  const items = new Map<string, Agg & { productId: string; sku: string; name: string; category: string }>();
   const cats = new Map<string, Agg & { category: string }>();
   let totalQty = 0;
   let totalRevenue = 0;
@@ -43,7 +46,9 @@ export async function GET(req: Request) {
       totalCost += cost;
       const ie =
         items.get(it.productId) ??
-        items.set(it.productId, { sku: it.sku, name: it.name, category, qty: 0, revenue: 0, cost: 0 }).get(it.productId)!;
+        items
+          .set(it.productId, { productId: it.productId, sku: it.sku, name: it.name, category, qty: 0, revenue: 0, cost: 0 })
+          .get(it.productId)!;
       ie.qty += it.qty;
       ie.revenue += revenue;
       ie.cost += cost;

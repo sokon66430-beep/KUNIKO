@@ -22,6 +22,13 @@ export type Product = {
   // made-to-order drinks…). Unset = fall back to the default POS categories —
   // see lib/pos.ts. Everything else is sold by scanning its barcode.
   showOnPos?: boolean;
+  // Pinned to the front of the till so the things that sell all day are one tap
+  // away instead of a category drill-down.
+  //
+  // Deliberately NOT a master field (see lib/master MASTER_FIELDS): what sells
+  // hardest differs shop to shop, so each store keeps its own favourites and a
+  // master sync leaves them alone.
+  favourite?: boolean;
   // Product photo shown on the POS tile — the stored file name, served by
   // /api/product-image/<name>. Set in Master Data (nothing to do with the
   // supplier-invoice photos).

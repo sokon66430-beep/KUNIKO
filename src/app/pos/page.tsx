@@ -18,6 +18,7 @@ import {
   ScanLine,
   ChevronLeft,
   Sparkles,
+  Star,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
@@ -75,12 +76,17 @@ export default function PosPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products");
   const { data: customers, reload: reloadCustomers } = useFetch<Customer[]>("/api/customers");
   const { data: markdowns } = useFetch<Markdown[]>("/api/markdowns");
+  // What actually sells — used to offer the obvious favourites rather than
+  // making someone hunt for their own best sellers through the categories.
+  const { data: salesReport } = useFetch<{ byItem: { productId: string; qty: number }[] }>("/api/sales-report");
 
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const cartSeq = useRef(0);
   const [promos, setPromos] = useState<PromoApplication[]>([]);
   const promoSeq = useRef(0); // guards against out-of-order preview replies
+  // Favourite stars tapped but not yet confirmed by the server, id → next value.
+  const [favPending, setFavPending] = useState<Record<string, boolean>>({});
   const [customerId, setCustomerId] = useState<string>("");
   const [discount, setDiscount] = useState<string>("");
   const [payment, setPayment] = useState<PaymentMethod>("Cash");
@@ -181,19 +187,27 @@ export default function PosPage() {
   // The till only shows matches while the cashier is actually searching.
   const searching = query.trim().length > 0;
 
+  // The catalogue as the SCREEN should show it: the server's copy with any
+  // just-tapped favourite folded in. Everything below reads this, so a star
+  // can't look on in one list and off in another.
+  const catalog = useMemo(
+    () => (products || []).map((p) => (p.id in favPending ? { ...p, favourite: favPending[p.id] } : p)),
+    [products, favPending],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return (products || []).filter(
+    return catalog.filter(
       (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcode?.includes(q),
     );
-  }, [products, query]);
+  }, [catalog, query]);
 
   // Sell-directly items: the ones flagged "Show on POS" in Master Data (falling
   // back to the default counter categories until the flag is set). Everything
   // else is sold by scanning and stays off the screen. Grouped by category.
   const directSaleGroups = useMemo(() => {
-    const onPos = (products || []).filter((p) => isShownOnPos(p));
+    const onPos = catalog.filter((p) => isShownOnPos(p));
     const byCat = new Map<string, Product[]>();
     for (const p of onPos) {
       const list = byCat.get(p.category) ?? [];
@@ -203,8 +217,46 @@ export default function PosPage() {
     return [...byCat.entries()]
       .map(([category, items]) => ({ category, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => a.category.localeCompare(b.category));
-  }, [products]);
+  }, [catalog]);
   const directSaleCount = directSaleGroups.reduce((s, g) => s + g.items.length, 0);
+
+  // --- Favourites -----------------------------------------------------------
+  // The handful of things that sell all day, pinned to the front of the till so
+  // they're one tap instead of a category drill-down.
+  //
+  // `favPending` is an optimistic overlay: a cashier taps a star between
+  // customers and shouldn't wait on a round-trip, and reloading here means
+  // refetching the whole catalogue. Applied once, at the source, so every list
+  // below (favourites, categories, search) shows the same state.
+  const favourites = useMemo(() => catalog.filter((p) => p.favourite), [catalog]);
+
+  // The best sellers that AREN'T favourites yet — the shortlist worth pinning,
+  // taken from what the till has actually rung up rather than a guess.
+  const favouriteSuggestions = useMemo(() => {
+    const byId = new Map(catalog.map((p) => [p.id, p]));
+    return (salesReport?.byItem || [])
+      .map((row) => byId.get(row.productId))
+      .filter((p): p is Product => !!p && !p.favourite)
+      .slice(0, 6);
+  }, [salesReport, catalog]);
+
+  async function toggleFavourite(p: Product) {
+    const next = !p.favourite;
+    setFavPending((s) => ({ ...s, [p.id]: next }));
+    try {
+      await api(`/api/products/${p.id}`, { method: "PATCH", body: JSON.stringify({ favourite: next }) });
+      setToast(next ? `${p.name} added to favourites` : `${p.name} removed from favourites`);
+      reload();
+    } catch (e: any) {
+      // The write failed, so drop the guess and let the server's answer stand.
+      setFavPending((s) => {
+        const rest = { ...s };
+        delete rest[p.id];
+        return rest;
+      });
+      setToast(e.message);
+    }
+  }
   // Two-step till: pick a category, then the item inside it.
   const openGroup = openCat ? directSaleGroups.find((g) => g.category === openCat) ?? null : null;
 
@@ -603,6 +655,7 @@ export default function PosPage() {
                       addToCart(x);
                       setQuery("");
                     }}
+                    onToggleFavourite={toggleFavourite}
                   />
                 ))}
                 {filtered.length === 0 && (
@@ -633,7 +686,7 @@ export default function PosPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                 {openGroup.items.map((p) => (
-                  <ProductCard key={p.id} p={p} onAdd={addToCart} />
+                  <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
                 ))}
               </div>
             </div>
@@ -647,6 +700,13 @@ export default function PosPage() {
                so) and left the rest of the screen empty. Same tile grid as the
                products themselves, so both steps of the till look alike. */
             <div>
+              <FavouritesSection
+                favourites={favourites}
+                suggestions={favouriteSuggestions}
+                onAdd={addToCart}
+                onToggleFavourite={toggleFavourite}
+              />
+
               <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
                 Sell directly · tap a category{" "}
                 <span className="font-semibold normal-case tracking-normal text-slate-400">
@@ -940,32 +1000,134 @@ export default function PosPage() {
 
 // One tappable product tile — used for search results and for the
 // sell-directly (no barcode) groups.
-function ProductCard({ p, onAdd }: { p: Product; onAdd: (p: Product) => void }) {
-  const out = p.stock <= 0;
+/**
+ * The till's favourites — the things sold all day, one tap from the front.
+ *
+ * When nothing is starred yet, this offers the shop's actual best sellers
+ * instead of an empty box: the till already knows what moves, so asking someone
+ * to go and find their own top items through the categories would be work the
+ * system can do for them.
+ */
+function FavouritesSection({
+  favourites,
+  suggestions,
+  onAdd,
+  onToggleFavourite,
+}: {
+  favourites: Product[];
+  suggestions: Product[];
+  onAdd: (p: Product) => void;
+  onToggleFavourite: (p: Product) => void;
+}) {
+  // Nothing starred and nothing sold yet — say nothing rather than show an
+  // empty box a brand-new store can't act on.
+  if (favourites.length === 0 && suggestions.length === 0) return null;
+
   return (
-    <button
-      onClick={() => onAdd(p)}
-      className="group card flex flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
-    >
-      {p.image && (
-        <div className="mb-2 h-24 w-full overflow-hidden rounded-lg bg-slate-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
+    <div className="mb-5">
+      <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+        <Star size={12} className="text-amber-400" fill="currentColor" /> Favourites
+        {favourites.length > 0 && (
+          <span className="font-semibold normal-case tracking-normal text-slate-400">({favourites.length})</span>
+        )}
+      </p>
+
+      {favourites.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          {favourites.map((p) => (
+            <ProductCard key={p.id} p={p} onAdd={onAdd} onToggleFavourite={onToggleFavourite} />
+          ))}
+        </div>
+      ) : (
+        <div className="card p-4">
+          <p className="text-[13px] font-semibold text-ink-900">Pin what you sell most</p>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-slate-500">
+            Star an item anywhere on this screen and it lives up here, one tap away. These are your best sellers so
+            far — tap to pin one.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {suggestions.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onToggleFavourite(p)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[12.5px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:text-ink-900 hover:ring-amber-300"
+              >
+                <Star size={12} className="text-slate-300" />
+                {p.name}
+              </button>
+            ))}
+          </div>
         </div>
       )}
-      <div className="mb-2 flex items-start justify-between">
-        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{p.sku}</span>
-        {p.stock <= p.reorderLevel && !out && <span className="text-[10px] font-bold text-amber-500">low</span>}
-        {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
-      </div>
-      <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
-      <div className="mt-2 flex items-end justify-between">
-        <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
-        <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-400"}`}>
-          {p.stock} {p.unit}
-        </span>
-      </div>
-    </button>
+    </div>
+  );
+}
+
+function ProductCard({
+  p,
+  onAdd,
+  onToggleFavourite,
+}: {
+  p: Product;
+  onAdd: (p: Product) => void;
+  onToggleFavourite?: (p: Product) => void;
+}) {
+  const out = p.stock <= 0;
+  return (
+    // `relative` so the star can sit on top: the whole tile is one big button
+    // (a cashier taps anywhere to sell), and a button can't legally nest inside
+    // another, so the star is a sibling layered over it.
+    <div className="group relative">
+      <button
+        onClick={() => onAdd(p)}
+        className="card flex h-full w-full flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+      >
+        {p.image && (
+          <div className="mb-2 h-24 w-full overflow-hidden rounded-lg bg-slate-100">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
+          </div>
+        )}
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+            {p.sku}
+          </span>
+          <span className="flex items-center gap-1">
+            {p.stock <= p.reorderLevel && !out && <span className="text-[10px] font-bold text-amber-500">low</span>}
+            {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
+            {/* Leave room for the star so it never covers the low/out flag. */}
+            {onToggleFavourite && <span className="w-5" />}
+          </span>
+        </div>
+        <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
+        <div className="mt-2 flex items-end justify-between">
+          <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
+          <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-500"}`}>
+            {p.stock} {p.unit}
+          </span>
+        </div>
+      </button>
+
+      {onToggleFavourite && (
+        <button
+          type="button"
+          onClick={() => onToggleFavourite(p)}
+          title={p.favourite ? "Remove from favourites" : "Add to favourites"}
+          aria-label={p.favourite ? `Remove ${p.name} from favourites` : `Add ${p.name} to favourites`}
+          aria-pressed={!!p.favourite}
+          // Always visible once starred; otherwise it appears on hover/focus so
+          // the tile stays clean, but never on touch — where there IS no hover,
+          // so it has to be there from the start or it's unreachable.
+          className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg transition ${
+            p.favourite
+              ? "text-amber-400 hover:bg-amber-50 hover:text-amber-500"
+              : "text-slate-300 hover:bg-slate-100 hover:text-amber-400 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0"
+          }`}
+        >
+          <Star size={15} fill={p.favourite ? "currentColor" : "none"} />
+        </button>
+      )}
+    </div>
   );
 }
 

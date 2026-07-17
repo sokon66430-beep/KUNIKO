@@ -14,6 +14,10 @@ const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDay
 // that has never had a supplier linked genuinely lacks that key at runtime,
 // and `in` would wrongly refuse to ever set it for that record.
 const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf", "recipeId", "consumptionUnit"]);
+// Booleans need their own bucket — `value || undefined` in the string branch
+// would turn `false` into undefined, and Number(false) is 0 in the numeric one,
+// so a flag sent through either would never store what was asked for.
+const BOOLEAN_FIELDS = new Set(["favourite"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const actor = await currentActor();
@@ -84,6 +88,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (key === "id") continue;
       if (NUMERIC.has(key)) {
         (product as any)[key] = Math.max(0, Number(value) || 0);
+      } else if (BOOLEAN_FIELDS.has(key)) {
+        // Store `true`, drop the key when false — an absent flag reads the same
+        // as off and keeps the store file from filling with `false`s.
+        (product as any)[key] = value ? true : undefined;
       } else if (STRING_FIELDS.has(key)) {
         (product as any)[key] = value || undefined;
       }
