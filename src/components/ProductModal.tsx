@@ -10,14 +10,18 @@ import { defaultShowOnPos } from "@/lib/pos";
 import { normalizeUnit, unitDimension } from "@/lib/units";
 import { baseUnitName } from "@/lib/sellingUnits";
 
-// What a convenience store actually stacks. Free text underneath — a shop that
-// says "Tray" isn't wrong — but these are one tap.
+// What a convenience store actually stacks. A fixed list rather than a text box
+// so "Case" and "case" can't become two different things, with the sizes a shop
+// usually means pre-filled. "Custom…" keeps the door open for a shop that says
+// "Tray" — the spec asks for unlimited packaging levels, not four.
 const UNIT_PRESETS: { name: string; conversion: number }[] = [
   { name: "Pack", conversion: 6 },
   { name: "Box", conversion: 12 },
   { name: "Carton", conversion: 24 },
   { name: "Case", conversion: 24 },
 ];
+const CUSTOM = "__custom";
+const PRESET_NAMES = UNIT_PRESETS.map((p) => p.name);
 
 /**
  * The packaging levels above the base unit.
@@ -40,14 +44,17 @@ function SellingUnitsEditor({
   const update = (index: number, patch: Partial<SellingUnit>) =>
     onChange(units.map((u, i) => (i === index ? { ...u, ...patch } : u)));
 
-  function add(preset?: { name: string; conversion: number }) {
-    const name = preset?.name || "";
+  function add() {
+    // Start on the first packaging that isn't taken, at the size it usually
+    // means — the row lands filled in and correct, and the dropdown is there to
+    // change it. Falls back to a blank custom row once the presets are used up.
+    const preset = UNIT_PRESETS.find((p) => !units.some((u) => u.name === p.name));
     const conversion = preset?.conversion || 0;
     onChange([
       ...units,
       {
         id: `su${Date.now()}${units.length}`,
-        name,
+        name: preset?.name || "",
         conversion,
         // Seed the price from the base so it's a sane starting point, not $0 —
         // a shop can then discount the multipack, which is the usual reason to
@@ -67,23 +74,63 @@ function SellingUnitsEditor({
         </p>
       </div>
       <p className="mb-3 text-[11.5px] text-slate-500">
-        1 {baseName} = 1. Add a pack or a case and give it its own barcode; scanning it sells that whole packaging and
-        takes the right number of {baseName.toLowerCase()}s off the shelf.
+        Add a pack or a case and give it its own barcode; scanning it sells that whole packaging and takes the right
+        number of {baseName.toLowerCase()}s off the shelf.
       </p>
+
+      {/* The base level, shown but not editable. It IS this product's own unit,
+          price and barcode from the fields above — an editable row here would
+          let the same thing carry two prices. Listing it keeps the table honest:
+          Unit = 1, Pack = 6, Case = 24. */}
+      <div className="mb-2 flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-slate-100 text-[10px] font-black text-slate-500">
+          1
+        </span>
+        <span className="flex-1 text-[13px] font-semibold text-ink-900">{baseName}</span>
+        <span className="text-[12px] tabular-nums text-slate-500">${basePrice.toFixed(2)}</span>
+        <span className="text-[11px] text-slate-400">set above · always 1</span>
+      </div>
 
       {units.length > 0 && (
         <div className="mb-3 space-y-2">
           {units.map((u, i) => (
             <div key={u.id} className="rounded-lg bg-white p-2.5 ring-1 ring-slate-200">
               <div className="flex flex-wrap items-end gap-2">
-                <div className="min-w-[6rem] flex-1">
+                <div className="min-w-[7rem] flex-1">
                   <label className="label !mb-1 !text-[10px]">Unit name</label>
-                  <input
-                    value={u.name}
-                    onChange={(e) => update(i, { name: e.target.value })}
-                    placeholder="Case"
-                    className="input !py-1.5 text-[13px]"
+                  <Select
+                    value={PRESET_NAMES.includes(u.name) ? u.name : CUSTOM}
+                    onChange={(v) => {
+                      if (v === CUSTOM) {
+                        update(i, { name: "" });
+                        return;
+                      }
+                      // Picking a name fills in the size it usually means — but
+                      // only when nothing's been typed yet, so choosing "Case"
+                      // never silently rewrites a 30 someone entered on purpose.
+                      const preset = UNIT_PRESETS.find((p) => p.name === v)!;
+                      const conversion = u.conversion || preset.conversion;
+                      update(i, {
+                        name: v,
+                        conversion,
+                        price: u.price || Math.round(basePrice * conversion * 100) / 100,
+                      });
+                    }}
+                    options={[
+                      ...UNIT_PRESETS.filter(
+                        (p) => p.name === u.name || !units.some((x) => x.name === p.name),
+                      ).map((p) => ({ value: p.name, label: p.name, description: `usually ${p.conversion}` })),
+                      { value: CUSTOM, label: "Custom…", description: "any other packaging" },
+                    ]}
                   />
+                  {!PRESET_NAMES.includes(u.name) && (
+                    <input
+                      value={u.name}
+                      onChange={(e) => update(i, { name: e.target.value })}
+                      placeholder="Tray, Bundle…"
+                      className="input !mt-1.5 !py-1.5 text-[13px]"
+                    />
+                  )}
                 </div>
                 <div className="w-24">
                   <label className="label !mb-1 !text-[10px]">= how many</label>
@@ -170,25 +217,13 @@ function SellingUnitsEditor({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1.5">
-        {UNIT_PRESETS.filter((p) => !units.some((u) => u.name.toLowerCase() === p.name.toLowerCase())).map((p) => (
-          <button
-            key={p.name}
-            type="button"
-            onClick={() => add(p)}
-            className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:text-ink-900 hover:ring-slate-300"
-          >
-            + {p.name} ({p.conversion})
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => add()}
-          className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 ring-1 ring-slate-200 transition hover:ring-brand-300"
-        >
-          + Custom
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={add}
+        className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 ring-1 ring-slate-200 transition hover:ring-brand-300"
+      >
+        + Add packaging level
+      </button>
     </div>
   );
 }
