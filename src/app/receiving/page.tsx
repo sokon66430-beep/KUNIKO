@@ -17,6 +17,7 @@ import {
   Clock,
   ShieldCheck,
   Search,
+  X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
@@ -763,6 +764,10 @@ function ReceiveModal({
     return m;
   }, [po]);
   const [now, setNow] = useState<Record<string, number>>(initial);
+  // What's typed in each line's "Add" box, before it's banked into the total.
+  // Kept as a string so the field can be empty or mid-type without React
+  // fighting the cursor.
+  const [addBox, setAddBox] = useState<Record<string, string>>({});
   const [scan, setScan] = useState("");
   // "Received by" is always the signed-in user — recorded automatically, not editable.
   const { data: session } = useFetch<{ user?: { name?: string } }>("/api/auth/session");
@@ -792,6 +797,26 @@ function ReceiveModal({
   useEffect(() => {
     scanRef.current?.focus();
   }, []);
+
+  /**
+   * Bank the typed amount onto the line's running total.
+   *
+   * ADDS — never replaces. The same item routinely arrives as several boxes, and
+   * each one is its own entry: scan a box, type what's in it, scan the next,
+   * type that. Replacing would silently drop everything counted before it.
+   *
+   * `backToScan` is false on blur — clicking straight into another line's box
+   * shouldn't yank focus back to the scanner.
+   */
+  function applyAdd(productId: string, backToScan = true) {
+    const raw = addBox[productId];
+    const n = Math.floor(Number(raw) || 0);
+    if (n > 0) {
+      setNow((p) => ({ ...p, [productId]: (p[productId] || 0) + n }));
+    }
+    setAddBox((p) => ({ ...p, [productId]: "" }));
+    if (n > 0 && backToScan) scanRef.current?.focus();
+  }
 
   function bump(productId: string, name: string) {
     setNow((p) => ({ ...p, [productId]: (p[productId] || 0) + 1 }));
@@ -980,6 +1005,7 @@ function ReceiveModal({
               <th className="px-3 py-2 font-semibold">Product</th>
               <th className="px-3 py-2 text-center font-semibold">Ordered</th>
               <th className="px-3 py-2 text-center font-semibold">Prev.</th>
+              <th className="px-3 py-2 text-center font-semibold">Add</th>
               <th className="px-3 py-2 text-center font-semibold">Receiving</th>
             </tr>
           </thead>
@@ -1006,27 +1032,61 @@ function ReceiveModal({
                   </td>
                   <td className="px-3 py-2 text-center text-slate-600">{it.qtyOrdered}</td>
                   <td className="px-3 py-2 text-center text-slate-400">{it.qtyReceived}</td>
+                  {/* Type an amount and press Enter — it ADDS to the running
+                      total and the box clears itself, ready for the next entry.
+                      It never replaces what's already counted: the same item
+                      often arrives as several boxes, and each one is its own
+                      entry. */}
                   <td className="px-3 py-2">
                     <input
                       type="number"
-                      min={0}
+                      min={1}
+                      inputMode="numeric"
+                      placeholder="+"
                       ref={(el) => {
                         qtyRefs.current[it.productId] = el;
                       }}
-                      value={receivingNow}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) =>
-                        setNow((p) => ({ ...p, [it.productId]: Math.max(0, Number(e.target.value) || 0) }))
-                      }
+                      value={addBox[it.productId] ?? ""}
+                      onChange={(e) => setAddBox((p) => ({ ...p, [it.productId]: e.target.value }))}
                       onKeyDown={(e) => {
-                        // Enter confirms this amount and returns to the scan box for the next item.
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          scanRef.current?.focus();
+                          applyAdd(it.productId);
                         }
                       }}
-                      className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      // Don't strand a typed number: leaving the box banks it
+                      // rather than quietly dropping it.
+                      onBlur={() => applyAdd(it.productId, false)}
+                      className="mx-auto block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none placeholder:text-slate-300 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                     />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span
+                        className={`min-w-[2rem] text-center text-[15px] font-bold tabular-nums ${
+                          receivingNow > 0 ? "text-ink-900" : "text-slate-300"
+                        }`}
+                      >
+                        {receivingNow}
+                      </span>
+                      {/* Additive entry has no undo of its own — a mistyped 240
+                          would otherwise be stuck. This resets the line to 0 so
+                          it can be counted again. */}
+                      {receivingNow > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNow((p) => ({ ...p, [it.productId]: 0 }));
+                            setAddBox((p) => ({ ...p, [it.productId]: "" }));
+                          }}
+                          title="Clear this line and count it again"
+                          aria-label={`Clear ${it.name}`}
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
