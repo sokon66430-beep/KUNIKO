@@ -21,7 +21,6 @@ import {
   Package,
   PackageCheck,
   ChefHat,
-  Tag,
   TrendingDown,
 } from "lucide-react";
 import { useFetch, useAccess } from "@/lib/client";
@@ -139,15 +138,15 @@ export default function DashboardPage() {
           {/* Headline cards.
 
               They read as one statement about the money: what came in today,
-              what was given away, what the customer actually paid, what it
-              would have been at full price, and what's left. Low Stock isn't
-              part of that story and has its own section below, with the actual
-              items — a bare count up here only asked you to scroll.
+              what was given away, what the customer actually paid, and what's
+              left. Low Stock isn't part of that story and has its own section
+              below, with the actual items — a bare count up here only asked you
+              to scroll.
 
               The column count follows the card count: Profit is hidden from
-              roles that can't see it, and a 5-column grid holding four cards
+              roles that can't see it, and a 4-column grid holding three cards
               leaves a gap that reads as something failed to load. */}
-          <div className={`grid grid-cols-2 gap-4 ${showProfit ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+          <div className={`grid grid-cols-2 gap-4 ${showProfit ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
             <StatCard
               label={SALES_LABEL[range]}
               value={usd(data.revenue)}
@@ -174,13 +173,6 @@ export default function DashboardPage() {
               sub={`${num(data.txCount)} transaction${data.txCount === 1 ? "" : "s"}`}
               icon={<Receipt size={18} />}
               accent="brand"
-            />
-            <StatCard
-              label="Revenue"
-              value={usd(data.grossRevenue)}
-              sub="at full price, before discount"
-              icon={<Tag size={18} />}
-              accent="violet"
             />
             {showProfit && (
               <StatCard
