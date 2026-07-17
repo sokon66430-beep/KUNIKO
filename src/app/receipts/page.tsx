@@ -1,0 +1,621 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  History,
+  PackageCheck,
+  Clock,
+  Camera,
+  FileSpreadsheet,
+  FileType2,
+  Pencil,
+  ShieldCheck,
+  Truck,
+  ArrowRight,
+} from "lucide-react";
+import { useFetch, api } from "@/lib/client";
+import { InvoiceCamera } from "@/components/InvoiceCamera";
+import { PdfViewer } from "@/components/PdfViewer";
+import { DatePicker } from "@/components/DatePicker";
+import type { GoodsReceipt } from "@/lib/types";
+import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState, Modal } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
+import { num, dateTime } from "@/lib/format";
+
+/**
+ * Receipt history — split out of /receiving.
+ *
+ * The two jobs shared one page and one scroll: a store with many open POs had
+ * to scroll past every one of them to reach the receipts. Worse, the single
+ * page fetched BOTH lists, so opening an old receipt meant downloading every
+ * purchase order first. Each page now loads only what it shows.
+ */
+export default function ReceiptsPage() {
+  const { data: grns, loading, error, reload: reloadGrns } = useFetch<GoodsReceipt[]>("/api/goods-receipts");
+  const [editing, setEditing] = useState<GoodsReceipt | null>(null);
+  const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
+  const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "grn">("date-desc");
+  // Filter the receipt history to a date range (inclusive) so the team can track
+  // and adjust stock for a period. Empty = all dates.
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [invoiceCamGrn, setInvoiceCamGrn] = useState<string | null>(null);
+
+  const sortedGrns = useMemo(() => {
+    const l = (grns || []).filter((g) => {
+      const day = (g.createdAt || "").slice(0, 10);
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    });
+    if (sortBy === "date-asc") return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+    if (sortBy === "grn") return l.sort((a, b) => a.grnNo.localeCompare(b.grnNo));
+    return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [grns, sortBy, from, to]);
+
+  // Query string for the export links so Excel/PDF match the on-screen range.
+  const rangeQs = [from && `from=${from}`, to && `to=${to}`].filter(Boolean).join("&");
+  const setToday = () => {
+    const now = new Date();
+    const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    setFrom(d);
+    setTo(d);
+  };
+
+  const all = grns || [];
+  const pendingApprovals = all.filter((g) => g.status === "PendingApproval").length;
+  // A receipt with no invoice (or a rejected one) is incomplete — the goods are
+  // in, but the paperwork backing them isn't.
+  const incomplete = all.filter((g) => !g.invoice || g.invoice.status === "Rejected").length;
+  const unitsReceived = all.reduce((s, g) => s + g.items.reduce((t, i) => t + i.qtyReceived, 0), 0);
+
+  async function attachInvoiceToGrn(grnId: string, pages: string[]) {
+    try {
+      await api(`/api/goods-receipts/${grnId}/invoice`, {
+        method: "POST",
+        body: JSON.stringify({ invoices: pages }),
+      });
+      reloadGrns();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
+  // Open a receipt's PDF inside the app (so it can be viewed and printed here).
+  async function openPdf(g: GoodsReceipt) {
+    setPdfLoading(g.id);
+    try {
+      const res = await fetch(`/api/goods-receipts/${g.id}/export?format=pdf`);
+      const blob = await res.blob();
+      setPdfView({ url: URL.createObjectURL(blob), title: g.grnNo });
+    } catch {
+      alert("Could not open the PDF.");
+    } finally {
+      setPdfLoading(null);
+    }
+  }
+  function closePdf() {
+    if (pdfView) URL.revokeObjectURL(pdfView.url);
+    setPdfView(null);
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Receipt History"
+        subtitle="Every delivery logged — with its invoice, its paperwork and what it put on the shelf"
+        actions={
+          <Link href="/receiving" className="btn-ghost">
+            <Truck size={16} /> Receive a delivery <ArrowRight size={15} />
+          </Link>
+        }
+      />
+
+      {error && <ErrorBox message={error} />}
+
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Receipts Logged" value={num(all.length)} icon={<PackageCheck size={18} />} accent="emerald" />
+        <StatCard label="Units Received" value={num(unitsReceived)} icon={<History size={18} />} accent="brand" />
+        <StatCard
+          label="Awaiting Approval"
+          value={num(pendingApprovals)}
+          sub={pendingApprovals ? "stock unchanged until approved" : undefined}
+          icon={<ShieldCheck size={18} />}
+          accent="amber"
+        />
+        <StatCard
+          label="Invoice Missing"
+          value={num(incomplete)}
+          sub={incomplete ? "goods in, paperwork not" : undefined}
+          icon={<FileType2 size={18} />}
+          accent={incomplete ? "rose" : "emerald"}
+        />
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+          <History size={16} /> Recent Receipts
+          {all.length > 0 && <span className="font-semibold normal-case text-slate-400">({num(sortedGrns.length)})</span>}
+        </h2>
+        {all.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Date range — track/adjust stock for a period */}
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <span>From</span>
+              <DatePicker value={from} max={to || undefined} onChange={setFrom} />
+              <span>To</span>
+              <DatePicker value={to} min={from || undefined} onChange={setTo} />
+              <button
+                type="button"
+                onClick={setToday}
+                className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-200"
+              >
+                Today
+              </button>
+              {(from || to) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFrom("");
+                    setTo("");
+                  }}
+                  className="rounded-lg px-2 py-1 text-slate-400 hover:text-rose-500"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              Sort by
+              <SearchSelect
+                className="w-44"
+                value={sortBy}
+                onChange={(v) => setSortBy(v as any)}
+                options={[
+                  { value: "date-desc", label: "Date · newest first" },
+                  { value: "date-asc", label: "Date · oldest first" },
+                  { value: "grn", label: "Receipt number" },
+                ]}
+              />
+            </div>
+            <a
+              href={`/api/reports/goods-receipts/export${rangeQs ? `?${rangeQs}` : ""}`}
+              className="btn-ghost !py-1.5 text-xs"
+            >
+              <FileSpreadsheet size={15} /> Export Excel
+            </a>
+            <a
+              href={`/api/reports/goods-receipts/export?format=pdf${rangeQs ? `&${rangeQs}` : ""}`}
+              className="btn-ghost !py-1.5 text-xs"
+            >
+              <FileType2 size={15} /> PDF
+            </a>
+          </div>
+        )}
+      </div>
+
+      {pendingApprovals > 0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <Clock size={16} className="shrink-0" />
+          <span>
+            <b>{pendingApprovals}</b> receipt edit{pendingApprovals === 1 ? "" : "s"} waiting for a manager to approve —
+            stock hasn&apos;t changed yet.
+          </span>
+        </div>
+      )}
+
+      <Card className="p-0">
+        {loading ? (
+          <Spinner label="Loading receipts…" />
+        ) : all.length === 0 ? (
+          <EmptyState
+            icon={<PackageCheck size={19} />}
+            title="No receipts yet"
+            hint="Receive a delivery against a purchase order and it's logged here, with its invoice and everything it put on the shelf."
+            action={
+              <Link href="/receiving" className="btn-primary">
+                <Truck size={16} /> Receive a delivery
+              </Link>
+            }
+          />
+        ) : sortedGrns.length === 0 ? (
+          <EmptyState title="No receipts in this date range" hint="Adjust the From / To dates or Clear the filter." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-4 py-3 font-semibold">Receipt</th>
+                  <th className="px-4 py-3 font-semibold">PO / Supplier</th>
+                  <th className="px-4 py-3 text-center font-semibold">Items</th>
+                  <th className="px-4 py-3 text-center font-semibold">Units</th>
+                  <th className="px-4 py-3 font-semibold">Received by</th>
+                  <th className="px-4 py-3 text-right font-semibold"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedGrns.map((g) => {
+                  const pending = g.status === "PendingApproval";
+                  return (
+                    <tr key={g.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-ink-800">{g.grnNo}</p>
+                        <p className="text-xs text-slate-400">{dateTime(g.createdAt)}</p>
+                        {pending && (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            <Clock size={11} /> Edit pending approval
+                          </span>
+                        )}
+                        {!g.invoice ? (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                            <FileType2 size={11} /> Incomplete — invoice missing
+                          </span>
+                        ) : g.invoice.status === "Rejected" ? (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                            <FileType2 size={11} /> Invoice rejected — re-scan
+                          </span>
+                        ) : (
+                          <span
+                            className={`mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+                              g.invoice.status === "Approved"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            <FileType2 size={11} /> Invoice{" "}
+                            {g.invoice.status === "Approved" ? "approved" : "pending review"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-slate-700">{g.poNo}</p>
+                        <p className="text-xs text-slate-400">{g.supplier}</p>
+                      </td>
+                      <td className="px-4 py-3 text-center text-slate-600">{g.items.length}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-emerald-600">
+                        +{g.items.reduce((s, i) => s + i.qtyReceived, 0)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{g.receivedBy}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {(!g.invoice || g.invoice.status === "Rejected") && (
+                            <button
+                              onClick={() => setInvoiceCamGrn(g.id)}
+                              title="Scan the supplier invoice to complete this receipt"
+                              className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
+                            >
+                              <Camera size={14} /> Scan invoice
+                            </button>
+                          )}
+                          <a
+                            href={`/api/goods-receipts/${g.id}/export`}
+                            title="Download this receipt as Excel"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
+                          >
+                            <FileSpreadsheet size={14} /> Excel
+                          </a>
+                          <button
+                            onClick={() => openPdf(g)}
+                            disabled={pdfLoading === g.id}
+                            title="View this receipt as PDF (with print)"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <FileType2 size={14} /> {pdfLoading === g.id ? "Opening…" : "PDF"}
+                          </button>
+                          {pending ? (
+                            <button
+                              onClick={() => setReviewing(g)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                            >
+                              <ShieldCheck size={14} /> Review &amp; approve
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setEditing(g)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              <Pencil size={14} /> Edit
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Invoice camera opened from a receipt row — completes an incomplete receipt. */}
+      <InvoiceCamera
+        open={!!invoiceCamGrn}
+        onClose={() => setInvoiceCamGrn(null)}
+        onCapture={(pages) => attachInvoiceToGrn(invoiceCamGrn!, pages)}
+      />
+
+      {editing && (
+        <EditReceiptModal
+          grn={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
+            reloadGrns();
+          }}
+        />
+      )}
+
+      {reviewing && (
+        <ApproveModal
+          grn={reviewing}
+          onClose={() => setReviewing(null)}
+          onDone={() => {
+            setReviewing(null);
+            reloadGrns();
+          }}
+        />
+      )}
+
+      {pdfView && (
+        <PdfViewer url={pdfView.url} title={pdfView.title} heading={`Receipt ${pdfView.title}`} onClose={closePdf} />
+      )}
+    </div>
+  );
+}
+
+// Request a correction to a submitted receipt. Stock does NOT change here — it
+// waits for a manager to approve.
+function EditReceiptModal({
+  grn,
+  onClose,
+  onDone,
+}: {
+  grn: GoodsReceipt;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [qty, setQty] = useState<Record<string, number>>(() =>
+    Object.fromEntries(grn.items.map((i) => [i.productId, i.qtyReceived])),
+  );
+  // The person requesting the correction is always the signed-in user.
+  const { data: session } = useFetch<{ user?: { name?: string } }>("/api/auth/session");
+  const requestedBy = session?.user?.name || "—";
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const changed = grn.items.some((i) => (Number(qty[i.productId]) || 0) !== i.qtyReceived);
+
+  async function submit() {
+    const items = grn.items.map((i) => ({
+      productId: i.productId,
+      qtyReceived: Math.max(0, Number(qty[i.productId]) || 0),
+    }));
+    setBusy(true);
+    try {
+      await api(`/api/goods-receipts/${grn.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ items, requestedBy, note }),
+      });
+      onDone();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Edit receipt · ${grn.grnNo}`}
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={busy || !changed} onClick={submit}>
+            <ShieldCheck size={16} /> {busy ? "Submitting…" : "Submit for approval"}
+          </button>
+        </>
+      }
+    >
+      <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <Clock size={15} className="mt-0.5 shrink-0" />
+        <span>Corrections don&apos;t change stock right away — a Manager or Assistant Manager must approve first.</span>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-semibold">Product</th>
+              <th className="px-3 py-2 text-center font-semibold">Received</th>
+              <th className="px-3 py-2 text-center font-semibold">Correct to</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grn.items.map((it) => {
+              const v = Number(qty[it.productId]) || 0;
+              const diff = v - it.qtyReceived;
+              return (
+                <tr key={it.productId} className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-2">
+                    <p className="font-semibold text-ink-800">{it.name}</p>
+                    <p className="text-xs text-slate-400">{it.sku}</p>
+                  </td>
+                  <td className="px-3 py-2 text-center text-slate-400">{it.qtyReceived}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={v}
+                        onChange={(e) =>
+                          setQty((p) => ({ ...p, [it.productId]: Math.max(0, Number(e.target.value) || 0) }))
+                        }
+                        className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                      />
+                      {diff !== 0 && (
+                        <span className={`text-xs font-semibold ${diff > 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                          {diff > 0 ? `+${diff}` : diff}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label flex items-center gap-1.5">
+            <ShieldCheck size={13} /> Requested by
+          </label>
+          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-ink-800">
+            {requestedBy}
+          </div>
+        </div>
+        <div>
+          <label className="label">Reason (optional)</label>
+          <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. miscount on delivery" />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Manager review: shows the requested change and applies it once a valid
+// approval code is entered/scanned.
+function ApproveModal({
+  grn,
+  onClose,
+  onDone,
+}: {
+  grn: GoodsReceipt;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const pe = grn.pendingEdit;
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [err, setErr] = useState("");
+
+  const rows = grn.items.map((li) => {
+    const req = pe?.items.find((x) => x.productId === li.productId);
+    return { name: li.name, sku: li.sku, from: li.qtyReceived, to: req ? req.qtyReceived : li.qtyReceived };
+  });
+
+  async function decide(decision: "approve" | "reject") {
+    if (!code.trim()) {
+      setErr("Enter or scan your approval code");
+      return;
+    }
+    setBusy(decision);
+    setErr("");
+    try {
+      await api(`/api/goods-receipts/${grn.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ code, decision }),
+      });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Approve edit · ${grn.grnNo}`}
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Close
+          </button>
+          <button
+            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+            disabled={busy !== null}
+            onClick={() => decide("reject")}
+          >
+            {busy === "reject" ? "Rejecting…" : "Reject"}
+          </button>
+          <button className="btn-primary" disabled={busy !== null} onClick={() => decide("approve")}>
+            <ShieldCheck size={16} /> {busy === "approve" ? "Approving…" : "Approve"}
+          </button>
+        </>
+      }
+    >
+      <p className="mb-3 text-sm text-slate-500">
+        Requested by <b className="text-ink-700">{pe?.requestedBy || "—"}</b>
+        {pe?.note ? <> · “{pe.note}”</> : null}. Approving updates stock to the new quantities.
+      </p>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-semibold">Product</th>
+              <th className="px-3 py-2 text-center font-semibold">Now</th>
+              <th className="px-3 py-2 text-center font-semibold">Requested</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const diff = r.to - r.from;
+              return (
+                <tr key={r.sku} className="border-b border-slate-50 last:border-0">
+                  <td className="px-3 py-2">
+                    <p className="font-semibold text-ink-800">{r.name}</p>
+                    <p className="text-xs text-slate-400">{r.sku}</p>
+                  </td>
+                  <td className="px-3 py-2 text-center text-slate-400">{r.from}</td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`font-semibold ${diff > 0 ? "text-emerald-600" : diff < 0 ? "text-rose-500" : "text-slate-600"}`}>
+                      {r.to}
+                      {diff !== 0 && <span className="ml-1 text-xs">({diff > 0 ? `+${diff}` : diff})</span>}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4">
+        <label className="label flex items-center gap-1.5">
+          <ShieldCheck size={13} /> Manager approval code
+        </label>
+        <input
+          className="input tracking-widest"
+          type="password"
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              decide("approve");
+            }
+          }}
+          placeholder="Scan badge or type code"
+        />
+        <p className="mt-1 text-xs text-slate-400">
+          Only a Manager or Assistant Manager code can approve. Set these in Store Settings.
+        </p>
+        {err && <p className="mt-2 text-sm font-medium text-rose-600">{err}</p>}
+      </div>
+    </Modal>
+  );
+}

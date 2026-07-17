@@ -76,6 +76,7 @@ const PROCUREMENT = {
     { href: "/suppliers", label: "Suppliers", icon: Truck },
     { href: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList },
     { href: "/receiving", label: "Receiving", icon: PackageCheck },
+    { href: "/receipts", label: "Receipt History", icon: History },
     { href: "/audit", label: "Audit Trail", icon: History },
   ],
 };

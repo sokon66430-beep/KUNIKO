@@ -21,6 +21,7 @@ const CREW_DENIED = [
   "/purchase-orders",
   "/purchase-requests",
   "/receiving",
+  "/receipts",
   "/invoices",
   "/products",
   "/suppliers",
@@ -65,6 +66,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/suppliers", label: "Suppliers" },
   { href: "/purchase-orders", label: "Purchase Orders" },
   { href: "/receiving", label: "Receiving" },
+  { href: "/receipts", label: "Receipt History" },
   { href: "/audit", label: "Audit Trail" },
   { href: "/invoices", label: "Invoices" },
   { href: "/stores", label: "Stores & Employees" },
@@ -91,6 +93,22 @@ function matches(pathname: string, base: string): boolean {
 // `denied` overrides the baseline for this specific role — pass the owner's
 // live rolePermissions[role] (e.g. from the session API) where available;
 // omit it (as middleware does) to fall back to the static baseline.
+/**
+ * Pages carved out of an existing page: split → original.
+ *
+ * A role denied the ORIGINAL is denied the split-off one too. This matters
+ * because per-role permissions are SAVED against the href: a brand-new href has
+ * no saved entry, so an owner's existing settings couldn't possibly mention it,
+ * and everyone they'd already shut out of the original would silently get the
+ * new page. Splitting a screen must never hand out access nobody granted.
+ *
+ * Once an owner sets the new page explicitly on /permissions, their own choice
+ * is in `denied` and wins on its own.
+ */
+const SPLIT_FROM: Record<string, string> = {
+  "/receipts": "/receiving", // receipt history was the lower half of Receiving
+};
+
 export function canAccessPage(role: Role, pathname: string, denied?: string[]): boolean {
   if (role === "owner") return true;
   // Management (CEO / Board) may open every screen — the write-block (middleware
@@ -98,7 +116,15 @@ export function canAccessPage(role: Role, pathname: string, denied?: string[]): 
   if (role === "management") return true;
   if (OWNER_ONLY.some((p) => matches(pathname, p))) return false;
   const list = denied ?? DEFAULT_ROLE_DENIED[role];
-  if (list && list.some((p) => matches(pathname, p))) return false;
+  if (!list) return true;
+  if (list.some((p) => matches(pathname, p))) return false;
+  // Inherit the parent page's denial, unless this page has been decided on its
+  // own (i.e. the owner has saved a list that names it).
+  for (const [split, origin] of Object.entries(SPLIT_FROM)) {
+    if (matches(pathname, split) && !list.includes(split) && list.some((p) => matches(origin, p))) {
+      return false;
+    }
+  }
   return true; // all departments see every other function
 }
 
