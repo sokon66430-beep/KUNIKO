@@ -30,17 +30,30 @@ import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
+import { baseUnitName, defaultUnitOf, findByBarcode, type ResolvedUnit } from "@/lib/sellingUnits";
 
 // A discounted line and a full-price line for the SAME product can sit in one
 // sale (the customer grabbed one reduced loaf and one fresh), so the markdown
-// is part of the line — and part of its cart key.
-type CartLine = { product: Product; qty: number; seq: number; markdown?: Markdown };
+// is part of the line — and part of its cart key. So is the packaging: a can
+// and a case of the same drink are two lines, priced differently.
+//
+// `qty` here counts the UNIT the line is sold in — 2 means two cases. The base
+// quantity is only worked out when the sale is sent, which keeps the +/- buttons
+// meaning what the cashier expects: one more case, not one more can.
+type CartLine = { product: Product; qty: number; seq: number; markdown?: Markdown; unit: ResolvedUnit };
 
-function lineKey(product: Product, markdown?: Markdown): string {
-  return markdown ? `${product.id}::${markdown.code}` : product.id;
+function lineKey(product: Product, markdown?: Markdown, unit?: ResolvedUnit): string {
+  const u = unit && !unit.isBase ? `::${unit.id}` : "";
+  return markdown ? `${product.id}::${markdown.code}${u}` : `${product.id}${u}`;
 }
+/** What one of whatever this line sells costs. */
 function linePrice(l: CartLine): number {
-  return l.markdown ? l.markdown.price : l.product.price;
+  if (l.markdown) return l.markdown.price * l.unit.conversion;
+  return l.unit.price;
+}
+/** How many base units this line takes off the shelf. */
+function lineBaseQty(l: CartLine): number {
+  return l.qty * l.unit.conversion;
 }
 
 type GeneratedKhqr = {
@@ -204,7 +217,9 @@ export default function PosPage() {
   // rules living in the till is a second copy that can drift from the one that
   // actually charges the customer.
   const basketKey = JSON.stringify(
-    [...lines].sort((a, b) => a.product.id.localeCompare(b.product.id)).map((l) => [l.product.id, l.qty, l.markdown?.code]),
+    [...lines]
+      .sort((a, b) => a.product.id.localeCompare(b.product.id))
+      .map((l) => [l.product.id, l.qty, l.markdown?.code, l.unit.id]),
   );
   useEffect(() => {
     if (lines.length === 0) {
@@ -218,7 +233,13 @@ export default function PosPage() {
     api<{ applications: PromoApplication[] }>("/api/promotions/preview", {
       method: "POST",
       body: JSON.stringify({
-        items: lines.map((l) => ({ productId: l.product.id, qty: l.qty, markdownCode: l.markdown?.code })),
+        // Promotions count BASE units: a "buy 2 get 1 free" on cans has to see
+        // a case as the 24 cans it is, not as one item.
+        items: lines.map((l) => ({
+          productId: l.product.id,
+          qty: lineBaseQty(l),
+          markdownCode: l.markdown?.code,
+        })),
       }),
     })
       .then((r) => {
@@ -247,13 +268,16 @@ export default function PosPage() {
 
   // Overselling is allowed: items can be rung up past the on-hand count, which
   // simply lets stock go negative (-1, -2, …). No quantity cap here.
-  function addToCart(product: Product, markdown?: Markdown) {
-    const key = lineKey(product, markdown);
+  // `unit` omitted = whatever the product's default packaging is (the base unit
+  // unless someone set a pack as default), which is what tapping a tile means.
+  function addToCart(product: Product, markdown?: Markdown, unit?: ResolvedUnit) {
+    const u = unit || defaultUnitOf(product);
+    const key = lineKey(product, markdown, u);
     setCart((prev) => {
       const existing = prev[key];
       const qty = (existing?.qty || 0) + 1;
       cartSeq.current += 1; // bump so the just-scanned line floats to the top
-      return { ...prev, [key]: { product, qty, seq: cartSeq.current, markdown } };
+      return { ...prev, [key]: { product, qty, seq: cartSeq.current, markdown, unit: u } };
     });
   }
 
@@ -315,12 +339,16 @@ export default function PosPage() {
       return true;
     }
 
-    const prod = productsRef.current.find(
-      (p) => p.barcode === q || p.sku.toLowerCase() === q.toLowerCase(),
+    // A pack/case barcode resolves to the product AND the packaging it was on,
+    // so scanning a case rings up a case — the cashier never picks the unit.
+    const hit = findByBarcode(productsRef.current, q);
+    if (!hit) return false;
+    addToCart(hit.product, undefined, hit.unit);
+    setToast(
+      hit.unit.isBase
+        ? `Added ${hit.product.name}`
+        : `Added ${hit.product.name} — 1 ${hit.unit.name} (${hit.unit.conversion} ${baseUnitName(hit.product)})`,
     );
-    if (!prod) return false;
-    addToCart(prod);
-    setToast(`Added ${prod.name}`);
     return true;
   }
 
@@ -364,8 +392,16 @@ export default function PosPage() {
       method: "POST",
       body: JSON.stringify({
         // The markdown CODE goes up, not its price — the server re-reads the
-        // label and re-checks it's still live before discounting anything.
-        items: lines.map((l) => ({ productId: l.product.id, qty: l.qty, markdownCode: l.markdown?.code })),
+        // label and re-checks it's still live before discounting anything. Same
+        // for packaging: the unit ID goes up, and the server re-reads its
+        // conversion and price rather than trusting the base qty we send.
+        items: lines.map((l) => ({
+          productId: l.product.id,
+          qty: lineBaseQty(l),
+          markdownCode: l.markdown?.code,
+          unitId: l.unit.isBase ? undefined : l.unit.id,
+          unitQty: l.unit.isBase ? undefined : l.qty,
+        })),
         customerId: customerId || null,
         // ONLY the cashier's typed discount. The promotion part of `discountNum`
         // is the server's own to work out — sending it back would have it
@@ -649,9 +685,19 @@ export default function PosPage() {
               ) : (
                 <div className="space-y-3">
                   {lines.map((l) => (
-                    <div key={lineKey(l.product, l.markdown)} className="flex items-center gap-2">
+                    <div key={lineKey(l.product, l.markdown, l.unit)} className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink-800">{l.product.name}</p>
+                        {/* The packaging badge sits OUTSIDE the truncating name:
+                            "Case" is the one word the cashier must see, and a
+                            long product name would otherwise cut it off. */}
+                        <p className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold text-ink-800">{l.product.name}</span>
+                          {!l.unit.isBase && (
+                            <span className="shrink-0 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">
+                              {l.unit.name}
+                            </span>
+                          )}
+                        </p>
                         {l.markdown ? (
                           <p className="flex items-center gap-1.5 text-xs">
                             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
@@ -661,12 +707,18 @@ export default function PosPage() {
                             <span className="text-slate-400 line-through">{usd(l.markdown.originalPrice)}</span>
                           </p>
                         ) : (
-                          <p className="text-xs text-slate-400">{usd(l.product.price)} each</p>
+                          <p className="text-xs text-slate-400">
+                            {usd(linePrice(l))} each
+                            {/* Say what a case actually takes off the shelf — the
+                                cashier is counting cases, stock counts cans. */}
+                            {!l.unit.isBase &&
+                              ` · ${lineBaseQty(l)} ${baseUnitName(l.product)}${lineBaseQty(l) === 1 ? "" : "s"}`}
+                          </p>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setQty(lineKey(l.product, l.markdown), l.qty - 1)}
+                          onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), l.qty - 1)}
                           aria-label="Decrease quantity"
                           className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
@@ -674,7 +726,7 @@ export default function PosPage() {
                         </button>
                         <span className="w-7 text-center text-sm font-bold tabular-nums">{l.qty}</span>
                         <button
-                          onClick={() => setQty(lineKey(l.product, l.markdown), l.qty + 1)}
+                          onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), l.qty + 1)}
                           aria-label="Increase quantity"
                           className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
@@ -685,7 +737,7 @@ export default function PosPage() {
                         {usd(linePrice(l) * l.qty)}
                       </span>
                       <button
-                        onClick={() => setQty(lineKey(l.product, l.markdown), 0)}
+                        onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), 0)}
                         aria-label="Remove item"
                         className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:bg-rose-100"
                       >
@@ -931,11 +983,21 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
           </div>
           <div className="space-y-1 border-t border-dashed border-slate-200 pt-2 text-sm">
             {sale.items.map((it) => (
-              <div key={`${it.productId}-${it.markdownCode || "full"}`} className="flex justify-between gap-2">
+              <div
+                key={`${it.productId}-${it.markdownCode || "full"}-${it.unitId || "base"}`}
+                className="flex justify-between gap-2"
+              >
+                {/* A case reads as "2× Case", not "48× Coca Cola" — the customer
+                    bought two things off the shelf, whatever stock counts. */}
                 <span className="min-w-0 truncate text-slate-600">
-                  {it.qty}× {it.name}
+                  {it.unitName ? `${it.unitQty}× ${it.name} ${it.unitName}` : `${it.qty}× ${it.name}`}
                   {it.markdownPercent != null && (
                     <span className="ml-1 font-bold text-amber-600">-{it.markdownPercent}%</span>
+                  )}
+                  {it.unitName && (
+                    <span className="block text-[11px] text-slate-400">
+                      {it.conversion} {it.name.length > 18 ? "per" : `per ${it.unitName.toLowerCase()}`} · {it.qty} total
+                    </span>
                   )}
                 </span>
                 <span className="shrink-0 font-semibold text-ink-800">{usd(it.price * it.qty)}</span>

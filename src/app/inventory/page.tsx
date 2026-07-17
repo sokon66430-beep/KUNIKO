@@ -23,6 +23,8 @@ import { confirmDialog } from "@/components/confirm";
 import { SearchSelect } from "@/components/SearchSelect";
 import { ProductModal, EMPTY_PRODUCT as EMPTY } from "@/components/ProductModal";
 import { usd, num, gpPercent } from "@/lib/format";
+import { baseUnitName, describeBreakdown, sellableUnits, toBaseQty, unitsOf } from "@/lib/sellingUnits";
+import { Select } from "@/components/Select";
 
 export const dynamic = "force-dynamic";
 
@@ -256,7 +258,17 @@ export default function InventoryPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-ink-900">{p.stock}</span>
+                    {/* The balance is always the base count. The packaging
+                        breakdown underneath is for the human counting the
+                        shelf, who thinks in cases. */}
+                    <span className="text-right">
+                      <span className="block font-bold text-ink-900">{p.stock}</span>
+                      {describeBreakdown(p.stock, unitsOf(p)) && (
+                        <span className="block text-[11px] text-slate-400">
+                          {describeBreakdown(p.stock, unitsOf(p))}
+                        </span>
+                      )}
+                    </span>
                     {status === "out" && <Badge tone="rose">Out</Badge>}
                     {status === "low" && <Badge tone="amber">Low</Badge>}
                     {status === "ok" && <Badge tone="emerald">In stock</Badge>}
@@ -326,6 +338,15 @@ function RestockModal({
   onConfirm: (p: Product, qty: number) => void;
 }) {
   const [qty, setQty] = useState(product.reorderLevel || 12);
+  // Deliveries arrive in cases, not cans. Counting in the packaging the pallet
+  // actually came in — and letting the system do the ×24 — is what stops a
+  // mis-typed multiplication becoming a stock error nobody can trace.
+  const units = sellableUnits(product);
+  const [unitId, setUnitId] = useState(units[0].id);
+  const unit = units.find((u) => u.id === unitId) || units[0];
+  const added = toBaseQty(unit, Number(qty) || 0);
+  const base = baseUnitName(product);
+
   return (
     <Modal
       open
@@ -336,20 +357,52 @@ function RestockModal({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" disabled={busy} onClick={() => onConfirm(product, Number(qty) || 0)}>
-            {busy ? "Saving…" : `Add ${qty} ${product.unit}`}
+          <button className="btn-primary" disabled={busy} onClick={() => onConfirm(product, added)}>
+            {busy ? "Saving…" : `Add ${added} ${base.toLowerCase()}${added === 1 ? "" : "s"}`}
           </button>
         </>
       }
     >
       <p className="mb-3 text-sm text-slate-500">
-        Current stock: <span className="font-bold text-ink-800">{product.stock} {product.unit}</span> · reorder at{" "}
-        {product.reorderLevel}
+        Current stock:{" "}
+        <span className="font-bold text-ink-800">
+          {product.stock} {base.toLowerCase()}
+          {product.stock === 1 ? "" : "s"}
+        </span>
+        {describeBreakdown(product.stock, unitsOf(product)) && ` (${describeBreakdown(product.stock, unitsOf(product))})`}{" "}
+        · reorder at {product.reorderLevel}
       </p>
-      <label className="label">Quantity to add</label>
-      <input className="input" type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="label">Quantity received</label>
+          <input className="input" type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />
+        </div>
+        {units.length > 1 && (
+          <div className="w-40">
+            <label className="label">Received as</label>
+            <Select
+              value={unitId}
+              onChange={setUnitId}
+              options={units.map((u) => ({
+                value: u.id,
+                label: u.name,
+                description: u.isBase ? "single" : `${u.conversion} ${base.toLowerCase()}s each`,
+              }))}
+            />
+          </div>
+        )}
+      </div>
       <p className="mt-2 text-sm text-slate-500">
-        New stock will be <span className="font-bold text-emerald-600">{product.stock + (Number(qty) || 0)} {product.unit}</span>
+        {!unit.isBase && (
+          <>
+            {qty} × {unit.name} = <span className="font-semibold text-ink-800">{added}</span> {base.toLowerCase()}s ·{" "}
+          </>
+        )}
+        New stock will be{" "}
+        <span className="font-bold text-emerald-600">
+          {product.stock + added} {base.toLowerCase()}
+          {product.stock + added === 1 ? "" : "s"}
+        </span>
       </p>
     </Modal>
   );

@@ -56,6 +56,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   // would drop the saved per-role access, which is keyed on the href).
   { href: "/deals", label: "Promotions" },
   { href: "/promotion-reports", label: "Promotion Reports" },
+  { href: "/unit-sales", label: "Selling Unit Reports" },
   { href: "/purchase-requests", label: "Purchase Requests" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },

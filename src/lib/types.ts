@@ -42,10 +42,31 @@ export type Product = {
   // recipes are written in (e.g. g). Display only — conversion works off the
   // units themselves, so this is a default for the recipe form, not a rule.
   consumptionUnit?: string;
-  // How many pieces are in one pack / one box. Needed before a recipe (or a
-  // future pack/case sale) can convert "1 pack" into pieces.
+  // How many pieces are in one pack / one box, for recipe conversion. Selling
+  // units (below) take precedence when set — see lib/sellingUnits packSizesOf,
+  // which exists so a "Pack" can't mean 6 at the till and 10 in a recipe.
   packSize?: number;
   boxSize?: number;
+
+  // --- Selling units -------------------------------------------------------
+  // The packagings ABOVE the base unit that this product can be sold in — a
+  // 6-pack, a case. The base level is deliberately NOT in here: it IS this
+  // product (`unit`/`price`/`barcode`/`stock`), and copying it into a row would
+  // give the price two homes to drift between. See lib/sellingUnits.
+  sellingUnits?: SellingUnit[];
+};
+
+// One packaging level above the base unit. `conversion` is how many base units
+// it holds — the only number that touches stock. Everything else is about how
+// the scan is priced and labelled.
+export type SellingUnit = {
+  id: string;
+  name: string; // "Pack", "Case", "Carton"
+  conversion: number; // base units in one of these — always 2 or more
+  price: number; // USD for one of these (NOT per base unit)
+  barcode?: string; // its own barcode; scanning it sells this level
+  isDefault?: boolean; // what tapping the product at the till sells
+  active?: boolean; // undefined = active
 };
 
 export type ProductLocation = { gondola: string; shelf: string };
@@ -85,9 +106,23 @@ export type SaleItem = {
   productId: string;
   sku: string;
   name: string;
+  // ALWAYS in base units — 2 cases of 24 is qty 48. One meaning of "quantity"
+  // across stock, costing, promotions, recipes and every report; the packaging
+  // it was sold in is recorded below rather than changing what qty counts.
   qty: number;
-  price: number; // unit sell price at time of sale (the markdown price when discounted)
+  price: number; // sell price PER BASE UNIT at time of sale (markdown price when discounted)
   cost: number; // unit cost at time of sale
+
+  // --- How it was sold (see lib/sellingUnits) ------------------------------
+  // Set when the line was rung up on a packaging bigger than the base unit.
+  // `price` above is already this packaging's price divided down, so the money
+  // works with no special case; these say what the customer actually handed
+  // over so the receipt can read "2 × Case" instead of "48 × $0.4375".
+  unitId?: string;
+  unitName?: string; // "Case"
+  unitQty?: number; // 2 — how many cases
+  unitPrice?: number; // 10.50 — the price of ONE case
+  conversion?: number; // 24 — base units per case
   // Set when the line was rung up from a markdown label rather than the shelf
   // barcode. `price` above is already the discounted one — these record what it
   // was discounted FROM, so reports can separate promo sales from full price.

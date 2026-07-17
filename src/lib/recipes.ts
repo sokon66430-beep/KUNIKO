@@ -1,5 +1,6 @@
 import type { Product, Recipe, RecipeItem } from "./types";
 import { convert, conversionProblem, formatQty, normalizeUnit } from "./units";
+import { packSizesOf } from "./sellingUnits";
 import { gpPercent, VAT_RATE } from "./format";
 
 // ---------------------------------------------------------------------------
@@ -62,7 +63,7 @@ export function recipeCosting(recipe: Pick<Recipe, "items">, products: Product[]
       return { item, qtyInStockUnit: null, cost: null, problem: "this ingredient no longer exists in Products" };
     }
     const stockUnit = stockUnitOf(product);
-    const sizes = { packSize: product.packSize, boxSize: product.boxSize };
+    const sizes = packSizesOf(product);
     const qty = convert(item.quantity, item.unit, stockUnit, sizes);
     if (qty == null) {
       return {
@@ -159,7 +160,7 @@ export function consumptionPlan(recipe: Recipe, products: Product[], multiplier 
       continue;
     }
     const stockUnit = stockUnitOf(product);
-    const sizes = { packSize: product.packSize, boxSize: product.boxSize };
+    const sizes = packSizesOf(product);
     const qtyUsed = round4(item.quantity * times);
     const qtyDeducted = convert(qtyUsed, item.unit, stockUnit, sizes);
     if (qtyDeducted == null) {
@@ -299,10 +300,7 @@ export function validateRecipeInput(body: unknown, products: Product[]): Validat
     if (!unit) return { ok: false, error: `Pick a unit for ${product.name}.` };
 
     const stockUnit = stockUnitOf(product);
-    const problem = conversionProblem(unit, stockUnit, {
-      packSize: product.packSize,
-      boxSize: product.boxSize,
-    });
+    const problem = conversionProblem(unit, stockUnit, packSizesOf(product));
     if (problem) {
       return {
         ok: false,

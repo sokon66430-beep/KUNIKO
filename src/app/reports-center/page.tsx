@@ -15,9 +15,10 @@ import {
   FileDown,
   ChefHat,
   Sparkles,
+  Boxes,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
-import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount, Recipe, Promotion } from "@/lib/types";
+import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount, Recipe, Promotion, Product } from "@/lib/types";
 import { PageHeader, Card } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
 import { num } from "@/lib/format";
@@ -52,6 +53,7 @@ export default function ReportsCenterPage() {
   const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
   const { data: recipes } = useFetch<Recipe[]>("/api/recipes");
   const { data: promotions } = useFetch<Promotion[]>("/api/promotions");
+  const { data: products } = useFetch<Product[]>("/api/products");
 
   // Receiving report can be narrowed to one supplier.
   const [grnSupplier, setGrnSupplier] = useState("All");
@@ -146,6 +148,14 @@ export default function ReportsCenterPage() {
       desc: "How each deal performed — times used, items given free, discount cost and sales generated.",
       stat: promotions ? `${num(promotions.length)} promotions` : undefined,
       open: "/promotion-reports",
+    },
+    {
+      icon: Boxes,
+      accent: "violet",
+      title: "Selling Units",
+      desc: "What sold in each packaging — cases, packs and singles — and what the shelf holds in each.",
+      stat: products ? `${num(products.filter((p) => (p.sellingUnits || []).length).length)} with packaging` : undefined,
+      open: "/unit-sales",
     },
     {
       icon: ClipboardCheck,

@@ -8,6 +8,7 @@ import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
 import { consumptionPlan, recipeCosting, recipeFor } from "@/lib/recipes";
 import { applyPromotions, DEFAULT_PROMOTION_SETTINGS } from "@/lib/promotions";
+import { unitById, toBaseQty, type ResolvedUnit } from "@/lib/sellingUnits";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const rawItems: { productId: string; qty: number; markdownCode?: string }[] = body?.items || [];
+  // `qty` is in BASE units. `unitId` + `unitQty` say the line was rung up on a
+  // bigger packaging; the server re-reads that packaging rather than trusting
+  // the numbers, so a tampered request can't buy a case at a can's price.
+  const rawItems: { productId: string; qty: number; markdownCode?: string; unitId?: string; unitQty?: number }[] =
+    body?.items || [];
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
   }
@@ -50,13 +55,27 @@ export async function POST(req: Request) {
     for (const raw of rawItems) {
       const product = db.products.find((p) => p.id === raw.productId);
       if (!product) return { error: `Unknown product ${raw.productId}` };
-      const qty = Math.max(1, Math.floor(Number(raw.qty) || 1));
+      let qty = Math.max(1, Math.floor(Number(raw.qty) || 1));
+
+      // A packaging line ("2 cases") is re-resolved here: the conversion and the
+      // price come from the product's own record, and the base quantity is
+      // recomputed rather than believed. `price` stays PER BASE UNIT so the rest
+      // of this route — stock, cost, VAT, promotions — needs no special case.
+      let unit: ResolvedUnit | undefined;
+      let unitQty: number | undefined;
+      if (raw.unitId && raw.unitId !== "base") {
+        unit = unitById(product, raw.unitId);
+        if (!unit) return { error: `${product.name} has no packaging "${raw.unitId}".` };
+        if (!unit.active) return { error: `${product.name} is no longer sold by the ${unit.name}.` };
+        unitQty = Math.max(1, Math.floor(Number(raw.unitQty) || 1));
+        qty = toBaseQty(unit, unitQty);
+      }
 
       // A discounted line names its markdown label; the PRICE is taken from the
       // stored label, never from the client, and only if the label is still
       // live and belongs to this product. Anything else falls back to full
       // price rather than trusting what was sent.
-      let price = product.price;
+      let price = unit ? unit.price / unit.conversion : product.price;
       let markdownCode: string | undefined;
       let markdownPercent: number | undefined;
       let fullPrice: number | undefined;
@@ -99,6 +118,11 @@ export async function POST(req: Request) {
         fullPrice,
         recipeId: recipe?.id,
         recipeName: recipe?.name,
+        unitId: unit?.id,
+        unitName: unit?.name,
+        unitQty,
+        unitPrice: unit?.price,
+        conversion: unit?.conversion,
       });
     }
 

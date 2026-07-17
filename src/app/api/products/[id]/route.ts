@@ -3,6 +3,7 @@ import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { resolveSupplier, supplierNotInSystem } from "@/lib/supplierLink";
+import { validateSellingUnits } from "@/lib/sellingUnits";
 import type { ProductLocation } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       product.gondola = locs[0]?.gondola || undefined;
       product.shelf = locs[0]?.shelf || undefined;
       delete body.locations;
+    }
+
+    // Packaging levels are validated as a set (barcodes must not collide with
+    // anything else in the catalogue), so they can't go through the plain
+    // field loop below.
+    if ("sellingUnits" in body) {
+      const parsed = validateSellingUnits(body.sellingUnits, product.id, db.products);
+      if (!parsed.ok) return { error: parsed.error };
+      product.sellingUnits = parsed.value.length ? parsed.value : undefined;
+      delete body.sellingUnits;
     }
 
     const prevStock = product.stock;

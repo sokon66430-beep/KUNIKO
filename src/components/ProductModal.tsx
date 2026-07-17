@@ -1,13 +1,197 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Check, Truck, Tag, Sparkles, Upload, Image as ImageIcon } from "lucide-react";
-import type { Product, Supplier } from "@/lib/types";
+import { Check, Truck, Tag, Sparkles, Upload, Image as ImageIcon, X } from "lucide-react";
+import type { Product, Supplier, SellingUnit } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { itemIdPrefix } from "@/lib/itemId";
 import { defaultShowOnPos } from "@/lib/pos";
 import { normalizeUnit, unitDimension } from "@/lib/units";
+import { baseUnitName } from "@/lib/sellingUnits";
+
+// What a convenience store actually stacks. Free text underneath — a shop that
+// says "Tray" isn't wrong — but these are one tap.
+const UNIT_PRESETS: { name: string; conversion: number }[] = [
+  { name: "Pack", conversion: 6 },
+  { name: "Box", conversion: 12 },
+  { name: "Carton", conversion: 24 },
+  { name: "Case", conversion: 24 },
+];
+
+/**
+ * The packaging levels above the base unit.
+ *
+ * The base level is deliberately not editable here — it IS the product's own
+ * unit/price/barcode above. Showing it as a row would invite someone to give the
+ * same product two prices for the same thing.
+ */
+function SellingUnitsEditor({
+  units,
+  baseName,
+  basePrice,
+  onChange,
+}: {
+  units: SellingUnit[];
+  baseName: string;
+  basePrice: number;
+  onChange: (units: SellingUnit[]) => void;
+}) {
+  const update = (index: number, patch: Partial<SellingUnit>) =>
+    onChange(units.map((u, i) => (i === index ? { ...u, ...patch } : u)));
+
+  function add(preset?: { name: string; conversion: number }) {
+    const name = preset?.name || "";
+    const conversion = preset?.conversion || 0;
+    onChange([
+      ...units,
+      {
+        id: `su${Date.now()}${units.length}`,
+        name,
+        conversion,
+        // Seed the price from the base so it's a sane starting point, not $0 —
+        // a shop can then discount the multipack, which is the usual reason to
+        // have one.
+        price: conversion > 0 ? Math.round(basePrice * conversion * 100) / 100 : 0,
+        active: true,
+      },
+    ]);
+  }
+
+  return (
+    <div className="col-span-2 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-sm font-bold text-ink-900">Selling units</p>
+        <p className="text-[11px] text-slate-400">
+          Stock always counts in {baseName.toLowerCase()}s — these only change how it&apos;s scanned and priced.
+        </p>
+      </div>
+      <p className="mb-3 text-[11.5px] text-slate-500">
+        1 {baseName} = 1. Add a pack or a case and give it its own barcode; scanning it sells that whole packaging and
+        takes the right number of {baseName.toLowerCase()}s off the shelf.
+      </p>
+
+      {units.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {units.map((u, i) => (
+            <div key={u.id} className="rounded-lg bg-white p-2.5 ring-1 ring-slate-200">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[6rem] flex-1">
+                  <label className="label !mb-1 !text-[10px]">Unit name</label>
+                  <input
+                    value={u.name}
+                    onChange={(e) => update(i, { name: e.target.value })}
+                    placeholder="Case"
+                    className="input !py-1.5 text-[13px]"
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="label !mb-1 !text-[10px]">= how many</label>
+                  <input
+                    value={u.conversion || ""}
+                    onChange={(e) => update(i, { conversion: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+                    inputMode="numeric"
+                    placeholder="24"
+                    className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="label !mb-1 !text-[10px]">Price</label>
+                  <input
+                    value={u.price || ""}
+                    onChange={(e) => update(i, { price: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
+                    inputMode="decimal"
+                    placeholder="10.50"
+                    className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
+                  />
+                </div>
+                <div className="min-w-[8rem] flex-1">
+                  <label className="label !mb-1 !text-[10px]">Barcode</label>
+                  <input
+                    value={u.barcode || ""}
+                    onChange={(e) => update(i, { barcode: e.target.value.trim() })}
+                    placeholder="scan or type"
+                    className="input !py-1.5 font-mono text-[12px]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onChange(units.filter((_, x) => x !== i))}
+                  className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-2">
+                <label className="flex cursor-pointer items-center gap-1.5 text-[11.5px] font-medium text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={!!u.isDefault}
+                    onChange={(e) =>
+                      // Only one level can be the default, so picking this one
+                      // clears the others rather than saving an invalid set.
+                      onChange(units.map((x, xi) => ({ ...x, isDefault: xi === i ? e.target.checked : false })))
+                    }
+                    className="h-3.5 w-3.5 accent-brand-600"
+                  />
+                  Default at the till
+                </label>
+                <label className="flex cursor-pointer items-center gap-1.5 text-[11.5px] font-medium text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={u.active !== false}
+                    onChange={(e) => update(i, { active: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-brand-600"
+                  />
+                  Active
+                </label>
+                {u.conversion > 1 && u.price > 0 && (
+                  <span className="text-[11.5px] text-slate-400">
+                    1 {u.name || "unit"} = {u.conversion} {baseName.toLowerCase()}s · $
+                    {(u.price / u.conversion).toFixed(3)} each
+                    {basePrice > 0 && (
+                      <span
+                        className={
+                          u.price / u.conversion <= basePrice ? " font-semibold text-emerald-600" : " font-semibold text-amber-600"
+                        }
+                      >
+                        {" "}
+                        {u.price / u.conversion <= basePrice
+                          ? `· ${Math.round((1 - u.price / u.conversion / basePrice) * 100)}% cheaper than singles`
+                          : "· dearer than singles"}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-1.5">
+        {UNIT_PRESETS.filter((p) => !units.some((u) => u.name.toLowerCase() === p.name.toLowerCase())).map((p) => (
+          <button
+            key={p.name}
+            type="button"
+            onClick={() => add(p)}
+            className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:text-ink-900 hover:ring-slate-300"
+          >
+            + {p.name} ({p.conversion})
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => add()}
+          className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 ring-1 ring-slate-200 transition hover:ring-brand-300"
+        >
+          + Custom
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export const EMPTY_PRODUCT: Partial<Product> = {
   name: "",
@@ -453,6 +637,13 @@ export function ProductModal({
             className="h-5 w-5 shrink-0 accent-brand-600"
           />
         </label>
+
+        <SellingUnitsEditor
+          units={form.sellingUnits || []}
+          baseName={baseUnitName({ unit: form.unit || "" })}
+          basePrice={priceN}
+          onChange={(units) => set("sellingUnits", units.length ? units : undefined)}
+        />
 
         <div className="col-span-2 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
           <div>
