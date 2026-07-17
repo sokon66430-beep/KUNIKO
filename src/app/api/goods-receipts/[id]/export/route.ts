@@ -5,6 +5,8 @@ import { respondReport, type ReportData } from "@/lib/reportExport";
 
 export const dynamic = "force-dynamic";
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 function ddmmyyyy(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -23,8 +25,21 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const prodById = new Map(db.products.map((p) => [p.id, p]));
   const rows = grn.items.map((it) => {
     const p = prodById.get(it.productId);
-    const cost = p?.cost ?? 0;
-    return { sku: it.sku, barcode: p?.barcode || "", name: it.name, cost, qty: it.qtyReceived, lineCost: cost * it.qtyReceived };
+    // The cost AS RECEIVED. Falling back to the product's current cost only for
+    // receipts raised before the snapshot existed — otherwise a document from
+    // last month would re-price itself the day someone changes a cost.
+    const cost = round2(it.cost ?? p?.cost ?? 0);
+    // Round the unit cost FIRST, then multiply. The printed cost was already
+    // 2dp while the line total came off the raw figure, so $0.51 × 5 printed as
+    // $2.53 and the page couldn't be checked by hand.
+    return {
+      sku: it.sku,
+      barcode: p?.barcode || "",
+      name: it.name,
+      cost,
+      qty: it.qtyReceived,
+      lineCost: round2(cost * it.qtyReceived),
+    };
   });
 
   const format = new URL(req.url).searchParams.get("format") || "xlsx";

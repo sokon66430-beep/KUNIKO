@@ -50,20 +50,38 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (po.status === "Cancelled") return { error: "cancelled" as const };
 
     const grnItems: GRNItem[] = [];
+    // Lines where more arrived than was ordered — recorded, then reported to the
+    // audit trail so a genuine mis-scan is still traceable after the fact.
+    const overReceipts: string[] = [];
     for (const line of lines) {
       const qty = Math.max(0, Number(line.qtyReceived) || 0);
       if (qty === 0) continue;
       const poLine = po.items.find((i) => i.productId === line.productId);
       if (!poLine) continue;
-      // Cap to the outstanding quantity so a mis-scan / typo (e.g. 1000 for a
-      // 10-unit line) can't over-receive and silently inflate stock.
-      const remaining = Math.max(0, poLine.qtyOrdered - poLine.qtyReceived);
-      const applied = Math.min(qty, remaining);
-      if (applied === 0) continue;
+
+      // Record what ACTUALLY arrived — including more than was ordered.
+      //
+      // This used to cap at the outstanding quantity, to stop a mis-scan
+      // inflating stock. The cap did real damage instead: a supplier delivering
+      // 24 against an order of 5 had 19 units silently dropped. Stock rose by 5,
+      // the receipt said 5, and the other 19 were on the shelf but existed
+      // nowhere in the system — the kind of gap that only turns up at a stock
+      // count, with nothing to explain it.
+      //
+      // A receipt is a record of what came off the truck, not a re-statement of
+      // the order. The mis-scan case is answered where it belongs: the receiver
+      // sees "over N" in red on the line before confirming, and an over-receipt
+      // is written to the audit trail below.
+      const applied = qty;
+      const overBy = Math.max(0, poLine.qtyReceived + applied - poLine.qtyOrdered);
       poLine.qtyReceived += applied;
 
       const product = db.products.find((p) => p.id === line.productId);
       if (product) product.stock += applied; // stock updates on every scan
+
+      if (overBy > 0) {
+        overReceipts.push(`${poLine.name} +${overBy} over the ${poLine.qtyOrdered} ordered`);
+      }
 
       grnItems.push({
         productId: poLine.productId,
@@ -71,6 +89,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         name: poLine.name,
         qtyOrdered: poLine.qtyOrdered,
         qtyReceived: applied,
+        // The unit cost AS RECEIVED. Without it the receipt has no cost of its
+        // own and its documents read the product's price of the day they're
+        // opened — so last month's receipt quietly changes when a cost does.
+        cost: poLine.cost,
       });
     }
 
@@ -108,6 +130,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       entity: grn.grnNo,
       detail: `${po.poNo} · +${grnItems.reduce((s, i) => s + i.qtyReceived, 0)} units`,
     });
+
+    // An over-delivery is legitimate but worth a trail — it's also what a
+    // mis-scan looks like, and this is how one gets found later.
+    if (overReceipts.length) {
+      logAudit(db, {
+        actor: grn.receivedBy,
+        action: "Over-received",
+        entityType: "GRN",
+        entity: grn.grnNo,
+        detail: `${po.poNo} · more arrived than ordered — ${overReceipts.join(", ")}`,
+      });
+    }
     return { grn, po };
   });
 

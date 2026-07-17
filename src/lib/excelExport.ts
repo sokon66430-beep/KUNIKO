@@ -559,7 +559,12 @@ export function buildGRNReportWorkbook(
   const lineRows = grns.flatMap((g) =>
     g.items.map((it) => {
       const p = prodById.get(it.productId);
-      const cost = p?.cost ?? 0;
+      // The cost AS RECEIVED (see GRNItem.cost) — a receipt must not re-price
+      // itself when the product's cost changes later. Older receipts have no
+      // snapshot, so they fall back to the product's current cost.
+      // Rounded BEFORE multiplying, so the printed cost × qty is the printed
+      // line total and the sheet reconciles by hand.
+      const cost = round2(it.cost ?? p?.cost ?? 0);
       return {
         date: ddmmyyyy(g.createdAt),
         time: hhmm(g.createdAt),

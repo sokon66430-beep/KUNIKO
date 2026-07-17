@@ -423,7 +423,14 @@ export type GRNItem = {
   sku: string;
   name: string;
   qtyOrdered: number;
+  // What ACTUALLY came off the truck — can exceed qtyOrdered when a supplier
+  // over-delivers. Never capped to the order: see the receive route.
   qtyReceived: number;
+  // Unit cost at the moment of receipt. A frozen snapshot, like a PO line's —
+  // a receipt is a historical document and must not re-price itself when the
+  // product's cost changes later. Absent on receipts made before this existed;
+  // those fall back to the product's current cost.
+  cost?: number;
 };
 
 export type GRNStatus = "Posted" | "PendingApproval";
