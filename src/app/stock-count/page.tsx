@@ -72,6 +72,55 @@ export default function StockCountPage() {
     }
   }
 
+  const [salesImporting, setSalesImporting] = useState(false);
+  const [salesMsg, setSalesMsg] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  const salesRef = useRef<HTMLInputElement>(null);
+
+  // The POS sales report for the count period.
+  //
+  // Goes through the same importer the POS page uses — one reader, one set of
+  // rules, and the day's takings land in the sales reports as usual. What's
+  // different is what it does with a product sitting in an OPEN count: rather
+  // than touch stock, it records how much of that product sold after the line
+  // was counted. That's the only moment it's knowable — an imported sale is
+  // stored grouped by day, so the row's clock is gone once this returns.
+  //
+  // It settles every open count in one pass, which is the point of it living
+  // out here: the shop is counted by several people at once.
+  async function onSalesFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSalesImporting(true);
+    setSalesMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/sales/import", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Could not read the sales report");
+      const s = data.stock || {};
+      const parts: string[] = [];
+      if (s.countedNow) {
+        parts.push(
+          `${num(s.countedNow)} units sold after counting — off the Final column of ${(s.countsTouched || []).join(", ")}`,
+        );
+      }
+      if (s.beforeCount) parts.push(`${num(s.beforeCount)} lines sold before counting (already in the count)`);
+      if (s.unitsReduced) parts.push(`${num(s.unitsReduced)} units taken straight off stock (not in any open count)`);
+      if (s.sameDayNoTime) parts.push(`${num(s.sameDayNoTime)} lines had no time — left alone`);
+      setSalesMsg({
+        tone: s.sameDayNoTime ? "warn" : "ok",
+        text: parts.length ? parts.join(" · ") : "Read, but nothing in it affects the open counts.",
+      });
+      reload();
+    } catch (err: any) {
+      setSalesMsg({ tone: "warn", text: err.message });
+    } finally {
+      setSalesImporting(false);
+      if (salesRef.current) salesRef.current.value = "";
+    }
+  }
+
   async function newCount() {
     setCreating(true);
     try {
@@ -180,6 +229,24 @@ export default function StockCountPage() {
                 ]}
               />
             </div>
+            {/* The POS sales report belongs out here, not inside one count.
+                A store is counted by several people at once, each with their own
+                count open — one upload has to settle all of them, and a button
+                sitting inside SC-100002 reads like it only touches SC-100002.
+                (It never did: the importer walks every open count.) */}
+            {openCount > 0 && (
+              <>
+                <button
+                  className="btn-ghost !py-2 text-sm"
+                  disabled={salesImporting}
+                  onClick={() => salesRef.current?.click()}
+                  title="Upload the POS sales report — anything sold after an item was counted comes off it, across every open count"
+                >
+                  <Receipt size={16} /> {salesImporting ? "Reading…" : "Import sales report"}
+                </button>
+                <input ref={salesRef} type="file" accept=".xlsx" hidden onChange={onSalesFile} />
+              </>
+            )}
             <a
               href="/api/stock-counts/combined/export?format=xlsx"
               className="btn-ghost !py-2 text-sm"
@@ -196,6 +263,25 @@ export default function StockCountPage() {
               <FileType2 size={16} /> {pdfLoading === "combined" ? "Opening…" : "Combined PDF"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* What the sales report did, spelled out. The count sheets are what the
+          audit team signs, so "which of my numbers just moved, and why" can't be
+          a toast that vanishes. */}
+      {salesMsg && (
+        <div
+          className={`mb-3 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-xs ${
+            salesMsg.tone === "warn"
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-brand-200 bg-brand-50 text-brand-800"
+          }`}
+        >
+          <Receipt size={14} className="mt-0.5 shrink-0" />
+          <span className="flex-1">{salesMsg.text}</span>
+          <button onClick={() => setSalesMsg(null)} className="shrink-0 font-semibold opacity-60 hover:opacity-100">
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -378,7 +464,6 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [salesImporting, setSalesImporting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -390,7 +475,6 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [countValue, setCountValue] = useState("");
   const [alreadyCounted, setAlreadyCounted] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
-  const salesRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -546,40 +630,6 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
     reload();
   }
 
-  // The POS sales report for the count period. Goes through the same importer
-  // the POS page uses — one reader, one set of rules, and the day's takings land
-  // in the sales reports as usual. What's different is what it does with a
-  // product that's sitting in this open count: instead of touching stock, it
-  // records how much of it sold after the line was counted, which is the only
-  // moment that's knowable (an imported sale is stored by day, so the clock is
-  // gone afterwards).
-  async function onSalesFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSalesImporting(true);
-    setMsg(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/sales/import", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Could not read the sales report");
-      const s = data.stock || {};
-      const parts: string[] = [];
-      if (s.countedNow) parts.push(`${s.countedNow} units sold after counting — taken off the Final column`);
-      if (s.beforeCount) parts.push(`${s.beforeCount} line${s.beforeCount === 1 ? "" : "s"} sold before counting (already in the count)`);
-      if (s.sameDayNoTime) parts.push(`${s.sameDayNoTime} line${s.sameDayNoTime === 1 ? "" : "s"} had no time — left alone`);
-      if (data.matched === 0) parts.push("nothing new — already on record");
-      setMsg(`Sales report read: ${parts.join(" · ") || "no lines affected this count"}`);
-      reload();
-    } catch (err: any) {
-      setMsg(err.message);
-    } finally {
-      setSalesImporting(false);
-      if (salesRef.current) salesRef.current.value = "";
-    }
-  }
-
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -678,19 +728,6 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     <Upload size={15} /> {importing ? "Importing…" : "Import counted sheet"}
                   </button>
                   <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={onImportFile} />
-                  {/* The shop sells through another till, so this file is the
-                      only thing that knows what left the shelf while the team
-                      was counting. Uploaded here, after counting, so the count
-                      can settle each line against it. */}
-                  <button
-                    className="btn-ghost !py-1.5 text-xs"
-                    disabled={salesImporting || items.length === 0}
-                    title={items.length === 0 ? "Count some items first" : "Upload the POS sales report for the count period"}
-                    onClick={() => salesRef.current?.click()}
-                  >
-                    <Receipt size={15} /> {salesImporting ? "Reading…" : "Import sales report"}
-                  </button>
-                  <input ref={salesRef} type="file" accept=".xlsx" hidden onChange={onSalesFile} />
                 </>
               )}
               {posted && <Badge tone="emerald">Posted · stock adjusted</Badge>}
