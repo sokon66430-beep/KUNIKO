@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { postLedger, setStockTo } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -51,9 +52,31 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       // shelf could actually hold.
       const target = Math.max(0, before + variance - sold);
       if (before !== it.systemQty) movedDuringCount++;
+      // Two ledger lines, because they answer different questions: the sales
+      // are units customers took (SALES_IMPORT — same type they'd have been if
+      // the product hadn't been mid-count when the report arrived), the
+      // adjustment is what the count itself discovered. One merged line would
+      // read as shrinkage that was really sales.
+      if (sold > 0) {
+        postLedger(db, product, {
+          type: "SALES_IMPORT",
+          qty: -sold,
+          by: count.countedBy,
+          ref: count.countNo,
+          note: "sold after counting (POS report)",
+          clampAtZero: true,
+        });
+      }
+      if (product.stock !== target) {
+        setStockTo(db, product, target, {
+          type: "STOCK_ADJUSTMENT",
+          by: count.countedBy,
+          ref: count.countNo,
+          note: `counted ${it.countedQty} vs book ${it.systemQty}`,
+        });
+      }
       const delta = target - before;
       if (delta !== 0) {
-        product.stock = target;
         adjusted++;
         netUnits += delta;
       }

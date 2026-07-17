@@ -42,6 +42,12 @@ function backfill(db: DB): DB {
   if (db.meta.nextMarkdown == null) db.meta.nextMarkdown = 1;
   if (db.meta.nextRecipe == null) db.meta.nextRecipe = 100001;
   if (db.meta.nextMovement == null) db.meta.nextMovement = 1;
+  // Inventory ledger + historical purchases (migration feature) — stores
+  // created before them get empty books, not a crash.
+  if (!db.ledger) db.ledger = [];
+  if (db.meta.nextLedger == null) db.meta.nextLedger = 1;
+  if (!db.historicalPurchases) db.historicalPurchases = [];
+  if (db.meta.nextHistorical == null) db.meta.nextHistorical = 1;
   if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
   if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;
   // Deals don't combine or stack until the owner says so — see lib/promotions.

@@ -16,9 +16,10 @@ import {
   Upload,
   FileSpreadsheet,
   FileType2,
+  ClipboardCheck,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
-import type { Product, Supplier } from "@/lib/types";
+import type { Product, Supplier , StockCount } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -31,6 +32,9 @@ export const dynamic = "force-dynamic";
 
 export default function InventoryPage() {
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products");
+  // For the accuracy card and last-count date only — the counts themselves
+  // live on /stock-count.
+  const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
   const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
@@ -108,6 +112,25 @@ export default function InventoryPage() {
 
   const lowStock = (products || []).filter((p) => p.stock <= p.reorderLevel).length;
   const invValue = (products || []).reduce((s, p) => s + p.cost * p.stock, 0);
+  // Inventory-health figures (migration dashboard). Zero/negative are split
+  // out: a zero might be sold-through, a NEGATIVE is always a bookkeeping
+  // wound — more sold than the book ever had — and the next count heals it.
+  const totalUnits = (products || []).reduce((s, p) => s + Math.max(0, p.stock), 0);
+  const zeroStock = (products || []).filter((p) => p.stock === 0).length;
+  const negativeStock = (products || []).filter((p) => p.stock < 0).length;
+  // Accuracy from the last POSTED count: how much of what the book claimed was
+  // really on the shelf. 100 × (1 − Σ|counted − book| / Σ book).
+  const lastPosted = (counts || []).filter((c) => c.status === "Posted").sort((a, b) => (b.postedAt || "").localeCompare(a.postedAt || ""))[0];
+  const accuracy = (() => {
+    if (!lastPosted) return null;
+    let absVar = 0, book = 0;
+    for (const it of lastPosted.items) {
+      absVar += Math.abs(it.countedQty - it.systemQty);
+      book += Math.abs(it.systemQty);
+    }
+    if (book === 0) return null;
+    return Math.max(0, Math.round((1 - absVar / book) * 1000) / 10);
+  })();
 
   async function saveProduct(p: Partial<Product>) {
     setBusy(true);
@@ -197,10 +220,38 @@ export default function InventoryPage() {
       )}
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Products" value={num(products?.length || 0)} icon={<Package size={18} />} accent="brand" />
-        <StatCard label="Low / Out of Stock" value={num(lowStock)} icon={<AlertTriangle size={18} />} accent="amber" />
+        <StatCard label="Total Stock" value={num(totalUnits)} sub={`${num(products?.length || 0)} products`} icon={<Package size={18} />} accent="brand" />
         <StatCard label="Stock Value (cost)" value={usd(invValue)} icon={<DollarSign size={18} />} accent="emerald" />
+        <StatCard label="Low Stock" value={num(lowStock)} sub="at or under reorder level" icon={<AlertTriangle size={18} />} accent="amber" />
+        <StatCard
+          label="Zero / Negative"
+          value={`${num(zeroStock)} · ${num(negativeStock)}`}
+          sub={negativeStock > 0 ? "negative stock needs a count" : "no negative stock"}
+          icon={<AlertTriangle size={18} />}
+          accent={negativeStock > 0 ? "rose" : "violet"}
+        />
+        <StatCard
+          label="Inventory Accuracy"
+          value={accuracy != null ? `${accuracy}%` : "—"}
+          sub={lastPosted ? `from ${lastPosted.countNo}` : "no posted count yet"}
+          icon={<ClipboardCheck size={18} />}
+          accent={accuracy == null ? "brand" : accuracy >= 97 ? "emerald" : accuracy >= 90 ? "amber" : "rose"}
+        />
+        <StatCard
+          label="Last Stock Count"
+          value={lastPosted?.postedAt ? new Date(lastPosted.postedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"}
+          sub={lastPosted ? `${num(lastPosted.items.length)} items counted` : "count the store to start"}
+          icon={<ClipboardCheck size={18} />}
+          accent="brand"
+        />
         <StatCard label="Categories" value={num(categories.length - 1)} icon={<Package size={18} />} accent="violet" />
+        <StatCard
+          label="Ledger"
+          value={<a href="/inventory-ledger" className="text-brand-600 hover:underline">View</a>}
+          sub="every movement on record"
+          icon={<Package size={18} />}
+          accent="brand"
+        />
       </div>
 
       <Card className="p-0">

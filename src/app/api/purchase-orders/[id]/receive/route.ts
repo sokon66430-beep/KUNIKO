@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { DATA_DIR } from "@/lib/system";
 import { poStatus } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
+import { postLedger } from "@/lib/ledger";
 import type { GoodsReceipt, GRNItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!po) return { error: "not_found" as const };
     if (po.status === "Cancelled") return { error: "cancelled" as const };
 
+    const receivedBy = body.receivedBy?.trim() || "Receiving Desk";
     const grnItems: GRNItem[] = [];
     // Lines where more arrived than was ordered — recorded, then reported to the
     // audit trail so a genuine mis-scan is still traceable after the fact.
@@ -77,7 +79,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       poLine.qtyReceived += applied;
 
       const product = db.products.find((p) => p.id === line.productId);
-      if (product) product.stock += applied; // stock updates on every scan
+      // Through the ledger, not a bare += — every movement leaves a line.
+      if (product) postLedger(db, product, { type: "RECEIVING", qty: applied, by: receivedBy, ref: po.poNo });
 
       if (overBy > 0) {
         overReceipts.push(`${poLine.name} +${overBy} over the ${poLine.qtyOrdered} ordered`);
@@ -101,7 +104,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     po.status = poStatus(po);
 
     const n = db.meta.nextGRN++;
-    const receivedBy = body.receivedBy?.trim() || "Receiving Desk";
+
     const grn: GoodsReceipt = {
       id: `grn${n}`,
       grnNo: `GRN-${n}`,

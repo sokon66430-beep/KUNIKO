@@ -213,6 +213,67 @@ export type Recipe = {
 // direct sale of the item itself. Today that's recipe consumption; the shape is
 // deliberately open so batch production can post to the same ledger later.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Inventory ledger
+//
+// The permanent record of every stock movement: what moved, why, and the
+// balance after. Stock is still HELD on the product (product.stock — every
+// screen reads it), but it is only ever CHANGED through postLedger() in
+// lib/ledger.ts, which writes the entry and the new balance in one move. A
+// stock figure with no ledger line explaining it is a bug.
+//
+// Types with inventory impact — each one moves stock when it's written:
+//   OPENING_BALANCE  the audit team's first physical count (migration start)
+//   RECEIVING        goods in from a supplier (GRN)
+//   SALE             rung up on this app's own POS
+//   SALES_IMPORT     the external POS's daily report
+//   STOCK_ADJUSTMENT a stock count's variance, or a manual restock/correction
+//   WRITE_OFF        damaged / expired / lost (and its cancellation, reversed)
+//
+// HISTORICAL_PURCHASE deliberately does NOT exist here: old Stock-In reports
+// are purchase history for analysis only and live in db.historicalPurchases,
+// where they cannot touch stock by construction.
+// ---------------------------------------------------------------------------
+export type LedgerEntryType =
+  | "OPENING_BALANCE"
+  | "RECEIVING"
+  | "SALE"
+  | "SALES_IMPORT"
+  | "STOCK_ADJUSTMENT"
+  | "WRITE_OFF";
+
+export type LedgerEntry = {
+  id: string; // LG-000001
+  at: string; // ISO date + time
+  type: LedgerEntryType;
+  productId: string;
+  sku: string;
+  name: string;
+  barcode?: string;
+  qty: number; // signed: +in / −out
+  balance: number; // product.stock AFTER this entry
+  ref?: string; // the document behind it: GRN no, count no, file name, invoice…
+  by: string; // who caused it
+  note?: string;
+};
+
+// Old supplier purchase history imported from the pre-Stookii "Stock In
+// Report". Reporting/analysis ONLY — by design there is no code path from
+// these rows to product.stock (see the ledger note above).
+export type HistoricalPurchase = {
+  id: string;
+  productId?: string; // linked when the barcode/code matched the master
+  barcode?: string;
+  sku?: string;
+  name: string;
+  supplier?: string;
+  qty: number;
+  cost?: number; // unit cost if the report carried one
+  date?: string; // yyyy-mm-dd if the report carried one
+  importedAt: string;
+  file: string;
+};
+
 export type StockMovementType = "Recipe Consumption";
 
 export type StockMovement = {
@@ -611,6 +672,8 @@ export type DB = {
   writeOffs: WriteOff[];
   recipes: Recipe[];
   stockMovements: StockMovement[];
+  ledger: LedgerEntry[];
+  historicalPurchases: HistoricalPurchase[];
   promotions: Promotion[];
   promotionUsages: PromotionUsage[];
   auditLog: AuditEvent[];
@@ -624,6 +687,8 @@ export type DB = {
     nextMarkdown: number;
     nextRecipe: number;
     nextMovement: number;
+    nextLedger: number;
+    nextHistorical: number;
     nextPromotion: number;
     nextPromotionUsage: number;
     nextAudit: number;

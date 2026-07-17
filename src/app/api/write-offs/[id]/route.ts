@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { postLedger } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +22,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const newQty = Number(body.quantity);
       if (!Number.isFinite(newQty) || newQty <= 0) return { error: "Quantity must be greater than 0" as const };
       const delta = newQty - wo.quantity; // extra units to remove from stock
-      if (product) {
-        product.stock = Math.max(0, product.stock - delta); // never blocked by stock
+      if (product && delta !== 0) {
+        postLedger(db, product, { type: "WRITE_OFF", qty: -delta, by: who, ref: wo.woNo, clampAtZero: true, note: "write-off corrected" });
       }
       wo.quantity = newQty;
     }
@@ -52,7 +53,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     const [removed] = db.writeOffs.splice(idx, 1);
     const product = db.products.find((p) => p.id === removed.productId);
     // A cancelled write-off already gave its stock back — don't restore twice.
-    if (product && (removed.status || "Active") !== "Cancelled") product.stock += removed.quantity;
+    if (product && (removed.status || "Active") !== "Cancelled") {
+      postLedger(db, product, { type: "WRITE_OFF", qty: removed.quantity, by: who, ref: removed.woNo, note: "write-off deleted — stock restored" });
+    }
     logAudit(db, { actor: who, action: "Deleted", entityType: "WriteOff", entity: removed.woNo, detail: "stock restored" });
     return true;
   });

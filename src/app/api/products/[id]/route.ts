@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { setStockTo } from "@/lib/ledger";
 import { resolveSupplier, supplierNotInSystem } from "@/lib/supplierLink";
 import { validateSellingUnits } from "@/lib/sellingUnits";
 import type { ProductLocation } from "@/lib/types";
@@ -97,6 +98,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     const changedKeys = Object.keys(body).filter((k) => k !== "id");
+    // Any stock change through this route is a manual adjustment and gets a
+    // ledger line. The field loop above already applied the new value, so
+    // rewind and re-apply through the ledger to keep it the single door.
+    if (product.stock !== prevStock) {
+      const target = product.stock;
+      product.stock = prevStock;
+      setStockTo(db, product, target, { type: "STOCK_ADJUSTMENT", by: actor, note: "manual edit" });
+    }
     if (changedKeys.length === 1 && changedKeys[0] === "stock") {
       // Inventory "Restock" button — a manual stock adjustment.
       const delta = product.stock - prevStock;

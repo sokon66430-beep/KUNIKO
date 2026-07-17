@@ -4,6 +4,7 @@ import ExcelJS from "exceljs";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { storeInstant, storeToday } from "@/lib/storetime";
+import { postLedger } from "@/lib/ledger";
 import type { Sale, SaleItem, StockCountItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -451,8 +452,18 @@ export async function POST(req: Request) {
         if (!prev || it.countedAt > prev) lastCountAt.set(it.productId, it.countedAt);
       }
     }
+    // An OPENING BALANCE is a baseline too — it IS a physical count, imported.
+    // Without this, a freshly migrated store (opening posted, no stock count
+    // yet) would have every sale skipped as "never counted" and stock would
+    // sit at the opening figure forever.
+    for (const l of db.ledger) {
+      if (l.type !== "OPENING_BALANCE") continue;
+      const prev = lastCountAt.get(l.productId);
+      if (!prev || l.at > prev) lastCountAt.set(l.productId, l.at);
+    }
 
     const stock = {
+      deduct: new Map<string, number>(),
       linesReduced: 0,
       unitsReduced: 0,
       beforeCount: 0,
@@ -522,11 +533,15 @@ export async function POST(req: Request) {
         stock.beforeCount++;
         continue;
       }
-      const product = db.products.find((p) => p.id === row.productId);
-      if (!product) continue;
-      product.stock = Math.round((product.stock - row.qty) * 1e6) / 1e6;
+      stock.deduct.set(row.productId, (stock.deduct.get(row.productId) || 0) + row.qty);
       stock.linesReduced++;
       stock.unitsReduced += row.qty;
+    }
+    // One ledger line per product per file — the ref ties it to the upload.
+    for (const [pid, qty] of stock.deduct) {
+      const product = db.products.find((p) => p.id === pid);
+      if (!product) continue;
+      postLedger(db, product, { type: "SALES_IMPORT", qty: -qty, by: actor, ref: file.name || "POS report" });
     }
 
     // Group the new rows per day; remember which source invoices each day covers
@@ -592,7 +607,7 @@ export async function POST(req: Request) {
       totalRows: rows.length,
       skippedDuplicates,
       skippedDates,
-      stock: { ...stock, countsTouched: [...stock.countsTouched] },
+      stock: { ...stock, deduct: undefined, countsTouched: [...stock.countsTouched] },
     };
   });
 

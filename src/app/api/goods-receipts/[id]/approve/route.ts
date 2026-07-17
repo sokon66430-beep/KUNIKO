@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { poStatus } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
+import { postLedger } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -59,8 +60,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (delta !== 0) {
         const product = db.products.find((p) => p.id === e.productId);
         // Stock follows the correction exactly — including downwards. Flooring
-        // at zero would hide a correction the count needs to reflect.
-        if (product) product.stock = Math.round((product.stock + delta) * 1e6) / 1e6;
+        // at zero would hide a correction the count needs to reflect. Through
+        // the ledger so the receipt edit is a movement on the record.
+        if (product) postLedger(db, product, { type: "RECEIVING", qty: delta, by: who, ref: grn.grnNo, note: "receipt corrected" });
         changes.push(`${li.name}: ${current}→${newQty}`);
       }
       li.qtyReceived = newQty;

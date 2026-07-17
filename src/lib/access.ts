@@ -7,7 +7,16 @@ import type { Role } from "./auth";
 // owner-only — everything else is configurable by the owner on /permissions.
 // Edge-safe (type-only import) so the sidebar and middleware can share it.
 
-const OWNER_ONLY = ["/all-stores", "/permissions", "/master-data"];
+const OWNER_ONLY = [
+  "/all-stores",
+  "/permissions",
+  "/master-data",
+  // Migration surfaces: opening inventory rewrites stock wholesale, purchase
+  // history is company-level data, and the ledger is the book behind both.
+  "/opening-inventory",
+  "/historical-purchases",
+  "/inventory-ledger",
+];
 
 // Baseline used until the owner customizes access on /permissions (and as the
 // floor middleware enforces, since it can't read the live per-store config —

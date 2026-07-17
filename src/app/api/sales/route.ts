@@ -4,6 +4,7 @@ import type { Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { profitFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
+import { postLedger } from "@/lib/ledger";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
 import { consumptionPlan, recipeCosting, recipeFor } from "@/lib/recipes";
@@ -173,7 +174,7 @@ export async function POST(req: Request) {
       const product = db.products.find((p) => p.id === it.productId)!;
       const recipe = recipeByItem.get(index);
       if (!recipe) {
-        product.stock -= it.qty;
+        postLedger(db, product, { type: "SALE", qty: -it.qty, by: actor, ref: invoiceNo });
         continue;
       }
 
@@ -183,7 +184,9 @@ export async function POST(req: Request) {
         // Never blocked and never floored at zero: the bowl has been served, so
         // the beef is gone whatever the system thought it had. Letting stock go
         // negative is what makes the shortage visible instead of hiding it.
-        ingredient.stock = Math.round((ingredient.stock - d.qtyDeducted) * 1e6) / 1e6;
+        // (Also in stockMovements below with the full recipe context — that is
+        // the recipe ledger; this is the stock ledger.)
+        postLedger(db, ingredient, { type: "SALE", qty: -d.qtyDeducted, by: actor, ref: invoiceNo, note: `recipe: ${recipe.name}` });
 
         const seq = db.meta.nextMovement++;
         const movement: StockMovement = {

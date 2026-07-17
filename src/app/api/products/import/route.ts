@@ -3,6 +3,7 @@ import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { setStockTo } from "@/lib/ledger";
 import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -214,7 +215,9 @@ export async function POST(req: Request) {
         if (row.unit) target.unit = row.unit;
         if (row.cost) target.cost = num(row.cost);
         if (row.price) target.price = num(row.price);
-        if (row.stock) target.stock = num(row.stock);
+        if (row.stock && num(row.stock) !== target.stock) {
+          setStockTo(db, target, num(row.stock), { type: "STOCK_ADJUSTMENT", by: actor, ref: file.name || "Excel import", note: "product import" });
+        }
         if (row.reorderLevel) target.reorderLevel = num(row.reorderLevel);
         if (row.trackStock) target.trackStock = row.trackStock.toLowerCase() === "yes";
         if (row.gondola) target.gondola = row.gondola;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { postLedger } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // Approve: the write-off is cancelled and the stock goes back.
     const product = db.products.find((p) => p.id === wo.productId);
-    if (product) product.stock += wo.quantity;
+    if (product) {
+      postLedger(db, product, { type: "WRITE_OFF", qty: wo.quantity, by: approverName, ref: wo.woNo, note: "write-off cancelled — stock returned" });
+    }
     wo.status = "Cancelled";
     wo.cancelledBy = approverName;
     wo.cancelledAt = new Date().toISOString();

@@ -36,6 +36,7 @@ import {
   TicketPercent,
   ReceiptText,
   ShieldCheck,
+  BookOpen,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -196,6 +197,9 @@ export default function Sidebar() {
     items: [
       { href: "/all-stores", label: "All Stores", icon: LayoutGrid },
       { href: "/master-data", label: "Master Data", icon: Boxes },
+      { href: "/opening-inventory", label: "Opening Inventory", icon: PackageCheck },
+      { href: "/historical-purchases", label: "Purchase History", icon: History },
+      { href: "/inventory-ledger", label: "Inventory Ledger", icon: BookOpen },
       { href: "/permissions", label: "Permissions", icon: ShieldCheck },
       { href: "/stores", label: "Stores & Employees", icon: Building2 },
       { href: "/settings", label: "Store Settings", icon: Settings },

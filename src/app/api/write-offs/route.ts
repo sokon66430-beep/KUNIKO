@@ -3,6 +3,7 @@ import { matchesBarcode } from "@/lib/barcodes";
 import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { postLedger } from "@/lib/ledger";
 import { measureType } from "@/lib/writeoff";
 import type { WriteOff } from "@/lib/types";
 
@@ -47,9 +48,9 @@ export async function POST(req: Request) {
     );
     if (!product) return { error: "not_found" as const };
 
-    // Stock is reduced but NOT capped — a write-off is always allowed regardless
-    // of what stock shows.
-    product.stock = Math.max(0, product.stock - qty);
+    // A write-off is always allowed regardless of what stock shows; the
+    // ledger clamps at zero and records what actually came off.
+    postLedger(db, product, { type: "WRITE_OFF", qty: -qty, by: who, clampAtZero: true, note: reason });
 
     // Unit can be chosen on the form (kg / g / L / ml / pcs); default to the
     // product's own unit.
