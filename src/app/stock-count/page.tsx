@@ -707,41 +707,54 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
         <Spinner label="Loading count…" />
       ) : (
         <>
-          {/* Full-store count via Excel — the primary way to count everything */}
-          <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="mb-2 text-xs font-semibold text-ink-700">
-              Full store count · {num(products?.length || 0)} products
-              <span className="ml-2 font-normal text-slate-500">
-                {items.length} counted so far
-              </span>
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <a href={`/api/stock-counts/${id}/export`} className="btn-ghost !py-1.5 text-xs">
-                <FileSpreadsheet size={15} /> Download count sheet (all products)
+          {/* Count sheet toolbar.
+              One slim row — identity on the left, three short actions on the
+              right — instead of the old grey box of three long wrapping
+              buttons over a paragraph. The how-to lives in tooltips: the team
+              reads it once, then it's noise in front of every count. */}
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-brand-600 ring-1 ring-slate-200">
+              <FileSpreadsheet size={16} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-bold text-ink-800">Count sheet</p>
+              {/* "counted" not "products counted" — the modal is narrow and the
+                  longer phrase truncates mid-word next to three buttons. */}
+              <p className="truncate text-[11px] text-slate-500">
+                {num(items.length)} of {num(products?.length || 0)} counted
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <a
+                href={`/api/stock-counts/${id}/export`}
+                className="btn-ghost !px-3 !py-1.5 text-xs"
+                title="Download the count sheet — every product with its system stock. Fill the yellow “Counted Qty” column."
+              >
+                <FileSpreadsheet size={14} /> Excel
               </a>
-              <button className="btn-ghost !py-1.5 text-xs" disabled={pdfLoading} onClick={openPdf}>
-                <FileType2 size={15} /> {pdfLoading ? "Opening…" : "View / Print PDF"}
+              <button
+                className="btn-ghost !px-3 !py-1.5 text-xs"
+                disabled={pdfLoading}
+                onClick={openPdf}
+                title="View or print the count sheet as a PDF"
+              >
+                <FileType2 size={14} /> {pdfLoading ? "Opening…" : "PDF"}
               </button>
               {!posted && (
                 <>
-                  <button className="btn-ghost !py-1.5 text-xs" disabled={importing} onClick={() => fileRef.current?.click()}>
-                    <Upload size={15} /> {importing ? "Importing…" : "Import counted sheet"}
+                  <button
+                    className="btn-ghost !px-3 !py-1.5 text-xs"
+                    disabled={importing}
+                    onClick={() => fileRef.current?.click()}
+                    title="Import the filled count sheet — counted quantities land in the list below"
+                  >
+                    <Upload size={14} /> {importing ? "Importing…" : "Import"}
                   </button>
                   <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={onImportFile} />
                 </>
               )}
               {posted && <Badge tone="emerald">Posted · stock adjusted</Badge>}
             </div>
-            <p className="mt-2 text-[11px] text-slate-400">
-              The sheet lists every product with its system stock. Fill the yellow “Counted Qty” column, then import it back.
-              {!posted && (
-                <>
-                  {" "}
-                  Once counting is done, import the POS sales report — anything sold after an item was counted comes off it,
-                  so posting adjusts to what&apos;s really on the shelf.
-                </>
-              )}
-            </p>
           </div>
           {msg && (
             <div className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">{msg}</div>
