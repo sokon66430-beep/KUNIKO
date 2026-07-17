@@ -33,6 +33,22 @@ export function storeTimeHHMM(now: Date = new Date()): string {
   }).format(now);
 }
 
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A yyyy-mm-dd store date as "16 Jul".
+ *
+ * Read straight off the string rather than through `new Date(iso)`, which reads
+ * a bare date as UTC midnight and then prints it in the VIEWER's timezone —
+ * west of Greenwich that shows the day before, so a label's last selling day
+ * would read a day early on a laptop set to New York.
+ */
+export function shortDay(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${Number(m[3])} ${MONTHS_SHORT[Number(m[2]) - 1]}`;
+}
+
 /** "HH:MM" — anything else (including 24:00 and 9:5) is not a time. */
 export function isValidTime(value: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(value.trim());

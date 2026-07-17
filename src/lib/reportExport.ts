@@ -9,6 +9,7 @@ import {
   buildSalesReportWorkbook,
 } from "./excelExport";
 import { parseQuery, filterPOs, filterPRs, filterGRNs, filterNote, type ReportQuery } from "./reportFilter";
+import { markdownReportRows } from "./markdownReport";
 
 // A single column definition drives all three output formats (CSV, Excel, PDF).
 export type Col = {
@@ -306,7 +307,8 @@ export type ReportKey =
   | "purchase-orders"
   | "purchase-requests"
   | "goods-receipts"
-  | "stock-counts";
+  | "stock-counts"
+  | "markdowns";
 
 export function getReportData(key: ReportKey, db: DB, q: ReportQuery, showProfit = true): ReportData {
   const biz = db.meta.business?.name || "Stookii";
@@ -455,6 +457,36 @@ export function getReportData(key: ReportKey, db: DB, q: ReportQuery, showProfit
             get: (c) => sum(c.items, (i: any) => i.countedQty - i.systemQty),
             num: true,
           },
+        ],
+      };
+    }
+
+    case "markdowns": {
+      // Filtered on the LAST SELLING DAY, not the day the label was made: this
+      // report answers "what did we clear in July", and a label made in June to
+      // run through July belongs to July.
+      const rows = markdownReportRows(db.markdowns, db.sales).filter(
+        (r) => (!q.from || r.endDate >= q.from) && (!q.to || r.endDate <= q.to) && (!q.status || r.status === q.status),
+      );
+      return {
+        title: "Mark Down Report",
+        filename: "Mark-Down-Report",
+        subtitle,
+        rows,
+        cols: [
+          { header: "Label", get: (r) => r.code },
+          { header: "Product", get: (r) => r.name, width: 2 },
+          { header: "Item ID", get: (r) => r.sku },
+          { header: "Status", get: (r) => r.status },
+          { header: "Cut", get: (r) => `${r.percent}%` },
+          { header: "Was", get: (r) => r.originalPrice, money: true },
+          { header: "Cut To", get: (r) => r.price, money: true },
+          { header: "From", get: (r) => ddmmyyyy(r.startDate) },
+          { header: "Last Day", get: (r) => ddmmyyyy(r.endDate) },
+          { header: "Sold", get: (r) => r.qtySold, num: true },
+          { header: "Revenue", get: (r) => r.revenue, money: true },
+          { header: "Discount Given", get: (r) => r.discountGiven, money: true, width: 1.3 },
+          ...(showProfit ? [{ header: "Profit", get: (r: any) => r.profit, money: true }] : []),
         ],
       };
     }

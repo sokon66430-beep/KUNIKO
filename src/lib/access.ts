@@ -51,6 +51,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/write-offs", label: "Write-Off" },
   { href: "/price-labels", label: "Price Labels" },
   { href: "/promotions", label: "Mark Down" },
+  { href: "/markdown-reports", label: "Mark Down Reports" },
   { href: "/recipes", label: "Recipes" },
   { href: "/recipe-reports", label: "Recipe Reports" },
   // URL is /deals: /promotions was kept by the Mark Down page (renaming it
@@ -107,6 +108,7 @@ function matches(pathname: string, base: string): boolean {
  */
 const SPLIT_FROM: Record<string, string> = {
   "/receipts": "/receiving", // receipt history was the lower half of Receiving
+  "/markdown-reports": "/promotions", // finished labels used to sit on the Mark Down list
 };
 
 export function canAccessPage(role: Role, pathname: string, denied?: string[]): boolean {

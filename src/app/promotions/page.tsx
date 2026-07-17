@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { matchesBarcode, barcodeIncludes } from "@/lib/barcodes";
 import { Tag, Plus, Minus, Printer, ScanLine, Camera, Ban, TicketPercent, CalendarClock, CircleSlash } from "lucide-react";
 import JsBarcode from "jsbarcode";
@@ -12,6 +13,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { confirmDialog } from "@/components/confirm";
 import { usd, rielShelfPrice } from "@/lib/format";
 import { MARKDOWN_PERCENTS, markdownStatus, storeToday, daysLeft, type MarkdownStatus } from "@/lib/markdowns";
+import { shortDay } from "@/lib/storetime";
 import { canMarkDown } from "@/lib/access";
 
 const STATUS_TONE: Record<MarkdownStatus, "emerald" | "brand" | "slate" | "rose"> = {
@@ -20,15 +22,6 @@ const STATUS_TONE: Record<MarkdownStatus, "emerald" | "brand" | "slate" | "rose"
   Expired: "slate",
   Cancelled: "rose",
 };
-
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-// "2026-07-16" → "16 Jul". Built from the string, not a Date, so the label never
-// shifts a day when the device's timezone differs from the store's.
-function shortDay(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  return `${Number(m[3])} ${MONTHS_SHORT[Number(m[2]) - 1]}`;
-}
 
 // The printed sticker — the shelf price label's layout on the same 470 × 250
 // design grid and the same 4.7 × 2.5cm stock, so it sits on the shelf looking
@@ -223,13 +216,22 @@ export default function PromotionsPage() {
     return map;
   }, [markdowns, today]);
 
+  // Only labels still in play. A label that has finished, or been pulled early,
+  // is history: its barcode is dead, there's nothing to print and nothing to
+  // stop, so it can only pad the list staff have to read. It isn't deleted —
+  // it moves to the Mark Down report, which is what that page is for.
   const rows = useMemo(() => {
-    // Live labels first — those are the ones staff act on.
+    // Running now first — those are the ones staff act on.
     const rank: Record<MarkdownStatus, number> = { Active: 0, Scheduled: 1, Expired: 2, Cancelled: 3 };
-    return [...(markdowns || [])].sort((a, b) => {
-      const d = rank[markdownStatus(a, today)] - rank[markdownStatus(b, today)];
-      return d !== 0 ? d : +new Date(b.createdAt) - +new Date(a.createdAt);
-    });
+    return [...(markdowns || [])]
+      .filter((m) => {
+        const s = markdownStatus(m, today);
+        return s === "Active" || s === "Scheduled";
+      })
+      .sort((a, b) => {
+        const d = rank[markdownStatus(a, today)] - rank[markdownStatus(b, today)];
+        return d !== 0 ? d : +new Date(b.createdAt) - +new Date(a.createdAt);
+      });
   }, [markdowns, today]);
 
   // A single label picked from the list (clicking a row). Only honoured while
@@ -248,13 +250,8 @@ export default function PromotionsPage() {
   const setQtyFor = (code: string, n: number) => setQtyByCode((m) => ({ ...m, [code]: clampQty(n) }));
   const totalLabels = sheetLabels.reduce((s, m) => s + qtyOf(m.code), 0);
 
-  // A dead label still shows so you can see what it said, but there's nothing to
-  // print — the barcode won't scan. Batches are always freshly live.
-  const printable =
-    batch.length > 0 ||
-    (preview
-      ? markdownStatus(preview, today) === "Active" || markdownStatus(preview, today) === "Scheduled"
-      : false);
+  // The list only holds live labels now, so anything you can pick is printable.
+  const printable = batch.length > 0 || !!preview;
 
   const stats = useMemo(() => {
     const list = markdowns || [];
@@ -263,7 +260,13 @@ export default function PromotionsPage() {
       active: active.length,
       scheduled: list.filter((m) => markdownStatus(m, today) === "Scheduled").length,
       endingToday: active.filter((m) => m.endDate === today).length,
-      expired: list.filter((m) => markdownStatus(m, today) === "Expired").length,
+      // Expired AND pulled early. Both are done with, and both are exactly what
+      // moved off this list into the report — so counting only expired ones here
+      // would leave a number that doesn't match either list.
+      finished: list.filter((m) => {
+        const s = markdownStatus(m, today);
+        return s === "Expired" || s === "Cancelled";
+      }).length,
     };
   }, [markdowns, today]);
 
@@ -432,7 +435,7 @@ export default function PromotionsPage() {
         <StatCard label="Running now" value={stats.active} icon={<TicketPercent size={18} />} accent="emerald" />
         <StatCard label="Starts later" value={stats.scheduled} icon={<CalendarClock size={18} />} accent="brand" />
         <StatCard label="Last day today" value={stats.endingToday} icon={<Tag size={18} />} accent="amber" />
-        <StatCard label="Finished" value={stats.expired} icon={<CircleSlash size={18} />} accent="violet" />
+        <StatCard label="Finished" value={stats.finished} sub="in the report" icon={<CircleSlash size={18} />} accent="violet" />
       </div>
 
       <Card>
@@ -553,10 +556,26 @@ export default function PromotionsPage() {
         ) : error ? (
           <ErrorBox message={error} />
         ) : rows.length === 0 ? (
-          <EmptyState
-            title="Nothing marked down yet"
-            hint="Set the discount and dates above, then scan or search each item to reduce — each is discounted on the spot and gets its own barcode."
-          />
+          // An empty list means one of two different things, and telling a shop
+          // "nothing marked down yet" when they ran twenty labels last week
+          // reads as lost data rather than a finished job.
+          stats.finished > 0 ? (
+            <EmptyState
+              title="No label running right now"
+              hint={`${stats.finished} ${stats.finished === 1 ? "label has" : "labels have"} finished or been pulled. Scan an item above to reduce it, or look back at what the discounts cleared.`}
+              icon={<CircleSlash size={18} />}
+              action={
+                <Link href="/markdown-reports" className="btn-ghost !py-2 text-sm">
+                  Mark Down report
+                </Link>
+              }
+            />
+          ) : (
+            <EmptyState
+              title="Nothing marked down yet"
+              hint="Set the discount and dates above, then scan or search each item to reduce — each is discounted on the spot and gets its own barcode."
+            />
+          )
         ) : (
           <div className="space-y-2">
             {rows.map((m) => {
@@ -606,28 +625,21 @@ export default function PromotionsPage() {
                         ? left === 0
                           ? "Last day today"
                           : `${left} day${left === 1 ? "" : "s"} left`
-                        : status === "Scheduled"
-                          ? "Not started"
-                          : status === "Expired"
-                            ? "Barcode dead"
-                            : "Pulled early"}
+                        : "Not started"}
                     </p>
                   </div>
 
                   <div className="flex w-full items-center gap-2 sm:w-auto">
-                    {/* No reprinting a dead label — that sticker can't scan. */}
-                    {(status === "Active" || status === "Scheduled") && (
-                      <button
-                        className="btn-ghost !py-2 flex-1 text-xs sm:flex-none"
-                        onClick={() => {
-                          setBatch([]);
-                          setPreviewCode(m.code);
-                        }}
-                      >
-                        <Printer size={14} /> Labels
-                      </button>
-                    )}
-                    {mayDiscount && (status === "Active" || status === "Scheduled") && (
+                    <button
+                      className="btn-ghost !py-2 flex-1 text-xs sm:flex-none"
+                      onClick={() => {
+                        setBatch([]);
+                        setPreviewCode(m.code);
+                      }}
+                    >
+                      <Printer size={14} /> Labels
+                    </button>
+                    {mayDiscount && (
                       <button
                         onClick={() => stop(m)}
                         aria-label={`Stop the ${m.percent}% label on ${m.name}`}
@@ -730,12 +742,6 @@ export default function PromotionsPage() {
               {sheetItems} item{sheetItems === 1 ? "" : "s"} discounted · {totalLabels} sticker
               {totalLabels === 1 ? "" : "s"} — set how many of each above.
             </p>
-          ) : preview && markdownStatus(preview, today) === "Expired" ? (
-            <p className="mt-3 text-xs text-slate-400">
-              This label has expired — the barcode no longer scans, so there's nothing to print.
-            </p>
-          ) : preview && markdownStatus(preview, today) === "Cancelled" ? (
-            <p className="mt-3 text-xs text-slate-400">This label was stopped early — the barcode no longer scans.</p>
           ) : (
             <p className="mt-3 text-xs text-slate-400">
               One per reduced item — the rest of the shelf keeps selling at full price.

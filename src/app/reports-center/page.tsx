@@ -16,9 +16,21 @@ import {
   ChefHat,
   Sparkles,
   Boxes,
+  TicketPercent,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
-import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount, Recipe, Promotion, Product } from "@/lib/types";
+import type {
+  Sale,
+  PurchaseOrder,
+  PurchaseRequest,
+  GoodsReceipt,
+  WriteOff,
+  StockCount,
+  Recipe,
+  Promotion,
+  Product,
+  Markdown,
+} from "@/lib/types";
 import { PageHeader, Card } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
 import { num } from "@/lib/format";
@@ -53,6 +65,7 @@ export default function ReportsCenterPage() {
   const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
   const { data: recipes } = useFetch<Recipe[]>("/api/recipes");
   const { data: promotions } = useFetch<Promotion[]>("/api/promotions");
+  const { data: markdowns } = useFetch<Markdown[]>("/api/markdowns");
   const { data: products } = useFetch<Product[]>("/api/products");
 
   // Receiving report can be narrowed to one supplier.
@@ -148,6 +161,15 @@ export default function ReportsCenterPage() {
       desc: "How each deal performed — times used, items given free, discount cost and sales generated.",
       stat: promotions ? `${num(promotions.length)} promotions` : undefined,
       open: "/promotion-reports",
+    },
+    {
+      icon: TicketPercent,
+      accent: "amber",
+      title: "Mark Downs",
+      desc: "Every reduced-to-clear label — what it shifted, what the discount cost, and which never sold.",
+      stat: markdowns ? `${num(markdowns.length)} labels` : undefined,
+      open: "/markdown-reports",
+      exports: exportsFor("/api/reports/markdowns/export"),
     },
     {
       icon: Boxes,
