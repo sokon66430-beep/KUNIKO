@@ -36,6 +36,7 @@ import {
   TicketPercent,
   ReceiptText,
   ShieldCheck,
+  ChefHat,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -52,6 +53,7 @@ const OPERATIONS = {
     { href: "/inventory", label: "Inventory", icon: Package },
     { href: "/stock-count", label: "Stock Count", icon: ClipboardCheck },
     { href: "/write-offs", label: "Write-Off", icon: PackageX },
+    { href: "/recipes", label: "Recipes", icon: ChefHat },
     { href: "/price-labels", label: "Price Labels", icon: Tag },
     // URL stays /promotions: the saved per-role permissions key off the href, so
     // renaming the route would silently reset who can open this page.

@@ -13,9 +13,10 @@ import {
   FileSpreadsheet,
   FileType2,
   FileDown,
+  ChefHat,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
-import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount } from "@/lib/types";
+import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount, Recipe } from "@/lib/types";
 import { PageHeader, Card } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
 import { num } from "@/lib/format";
@@ -48,6 +49,7 @@ export default function ReportsCenterPage() {
   const { data: grns } = useFetch<GoodsReceipt[]>("/api/goods-receipts");
   const { data: wos } = useFetch<WriteOff[]>("/api/write-offs");
   const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
+  const { data: recipes } = useFetch<Recipe[]>("/api/recipes");
 
   // Receiving report can be narrowed to one supplier.
   const [grnSupplier, setGrnSupplier] = useState("All");
@@ -126,6 +128,14 @@ export default function ReportsCenterPage() {
       stat: wos ? `${num(wos.length)} records` : undefined,
       open: "/write-off-reports",
       exports: exportsFor("/api/write-offs/export"),
+    },
+    {
+      icon: ChefHat,
+      accent: "violet",
+      title: "Recipes",
+      desc: "Ingredients the kitchen consumed, bowls sold per recipe, and food cost vs margin.",
+      stat: recipes ? `${num(recipes.length)} recipes` : undefined,
+      open: "/recipe-reports",
     },
     {
       icon: ClipboardCheck,

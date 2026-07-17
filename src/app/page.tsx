@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Package,
   PackageCheck,
+  ChefHat,
 } from "lucide-react";
 import { useFetch, useRole } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
@@ -293,6 +294,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Inventory value footer */}
+          <RecipeInventoryStatus />
+
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <MiniStat label="Items Sold" value={num(data.itemsSold)} />
             <MiniStat label="Avg Ticket" value={usd(data.avgTicket)} />
@@ -307,6 +310,78 @@ export default function DashboardPage() {
 
 function labelFor(range: RangeKey) {
   return range === "today" ? "today" : range === "7d" ? "7d" : range === "30d" ? "30d" : "90d";
+}
+
+type RecipeAlerts = {
+  recipeCount: number;
+  negative: number;
+  low: number;
+  items: {
+    id: string;
+    name: string;
+    sku: string;
+    stock: number;
+    unit: string;
+    reorderLevel: number;
+    level: "negative" | "low";
+    usedBy: string[];
+  }[];
+};
+
+// Ingredients an active recipe needs that stock can't cover. A negative figure
+// isn't a system error — it's a bowl that was served out of stock the system
+// didn't know it had, which is exactly what needs looking at.
+function RecipeInventoryStatus() {
+  const { data } = useFetch<RecipeAlerts>("/api/recipe-alerts");
+
+  // Nothing to say until the store actually uses recipes — no empty widget
+  // taking up the dashboard for everyone else.
+  if (!data || data.recipeCount === 0) return null;
+
+  return (
+    <Card>
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-base font-bold text-ink-900">Recipe Inventory Status</h3>
+        <Badge tone={data.negative ? "rose" : data.low ? "amber" : "emerald"}>
+          {data.negative ? `${data.negative} below zero` : data.low ? `${data.low} low` : "All healthy"}
+        </Badge>
+      </div>
+      {data.items.length === 0 ? (
+        <div className="flex flex-col items-center gap-2.5 py-8 text-center">
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+            <PackageCheck size={18} />
+          </div>
+          <p className="text-sm font-medium text-slate-500">Every ingredient is covered</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {data.items.map((it) => (
+            <div key={it.id} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
+              <div
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                  it.level === "negative" ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"
+                }`}
+              >
+                <ChefHat size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-ink-800">{it.name}</p>
+                <p className="truncate text-xs text-slate-400">{it.usedBy.join(", ")}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className={`text-sm font-bold ${it.level === "negative" ? "text-rose-600" : "text-amber-600"}`}>
+                  {it.stock} {it.unit}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  {it.level === "negative" ? "negative stock" : `min ${it.reorderLevel}`}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 function Legend({ color, label }: { color: string; label: string }) {

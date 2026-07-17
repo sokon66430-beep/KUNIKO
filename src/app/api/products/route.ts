@@ -51,6 +51,13 @@ export async function POST(req: Request) {
       barcode: body.barcode?.trim() || undefined,
       gondola: body.gondola?.trim() || undefined,
       shelf: body.shelf?.trim() || undefined,
+      // Recipe wiring — how many pieces a pack/box holds, so a recipe line
+      // written in packs can be converted, and the recipe this product is made
+      // from when it's a made-to-order item.
+      packSize: Math.max(0, Number(body.packSize) || 0) || undefined,
+      boxSize: Math.max(0, Number(body.boxSize) || 0) || undefined,
+      consumptionUnit: body.consumptionUnit?.trim() || undefined,
+      recipeId: body.recipeId?.trim() || undefined,
     };
     db.products.push(product);
     logAudit(db, { actor, action: "Created", entityType: "Product", entity: product.name, detail: product.barcode || product.sku });

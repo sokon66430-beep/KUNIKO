@@ -31,6 +31,21 @@ export type Product = {
   // A product can sit in several places; every registered spot is kept here so
   // the stock count sheet lists them all. `gondola`/`shelf` mirror the latest.
   locations?: ProductLocation[];
+
+  // --- Recipes -------------------------------------------------------------
+  // Set on a SELLABLE product that is made to order (Spicy Noodle Beef). When
+  // it sells, the linked recipe's ingredients come off stock instead of this
+  // product's own count — see lib/recipes.ts.
+  recipeId?: string;
+  // Set on an INGREDIENT bought in one unit and consumed in another. `unit`
+  // stays what stock is counted in (the purchase unit, e.g. kg); this is what
+  // recipes are written in (e.g. g). Display only — conversion works off the
+  // units themselves, so this is a default for the recipe form, not a rule.
+  consumptionUnit?: string;
+  // How many pieces are in one pack / one box. Needed before a recipe (or a
+  // future pack/case sale) can convert "1 pack" into pieces.
+  packSize?: number;
+  boxSize?: number;
 };
 
 export type ProductLocation = { gondola: string; shelf: string };
@@ -79,6 +94,11 @@ export type SaleItem = {
   markdownCode?: string;
   markdownPercent?: number;
   fullPrice?: number;
+  // Set when this line was made to order from a recipe. `cost` above is then the
+  // recipe's ingredient cost, not the product's own cost field. Snapshotted so a
+  // later re-link doesn't rewrite what history says was cooked.
+  recipeId?: string;
+  recipeName?: string;
 };
 
 // A temporary price cut on ONE product, sold under its own generated barcode.
@@ -103,6 +123,77 @@ export type Markdown = {
   createdBy?: string;
   cancelledAt?: string; // pulled early; kept (not deleted) so past sales resolve
   cancelledBy?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Recipes — what a made-to-order product is built from
+//
+// A recipe turns one sale of "Spicy Noodle Beef" into the ingredients it
+// actually consumed, so the cook sells a bowl and the noodles, beef and soup
+// base come off stock by themselves. See lib/recipes.ts for the rules.
+// ---------------------------------------------------------------------------
+
+// One ingredient line. The ingredient IS an ordinary product — that's what
+// makes its stock, cost and purchasing work with no special cases. Only the
+// product ID is authoritative: sku/name are a copy kept for display so the
+// recipe list doesn't need the whole catalog, and are refreshed on save.
+export type RecipeItem = {
+  productId: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit: string; // the unit the COOK uses (g, ml, pcs…), converted at deduction
+};
+
+export type RecipeStatus = "Active" | "Inactive";
+
+export type Recipe = {
+  id: string;
+  code: string; // RCP-100001
+  name: string;
+  nameKh?: string;
+  description?: string;
+  image?: string; // stored file name, served by /api/product-image/<name>
+  status: RecipeStatus; // Inactive = kept on file but never deducted
+  items: RecipeItem[];
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  updatedAt?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Stock movements — an audit trail of stock leaving for a reason other than a
+// direct sale of the item itself. Today that's recipe consumption; the shape is
+// deliberately open so batch production can post to the same ledger later.
+// ---------------------------------------------------------------------------
+export type StockMovementType = "Recipe Consumption";
+
+export type StockMovement = {
+  id: string;
+  type: StockMovementType;
+  at: string; // ISO — date + time
+  actor: string; // who rang up the sale
+
+  // What was sold that caused this
+  saleId?: string;
+  invoiceNo?: string;
+  recipeId?: string;
+  recipeName?: string;
+  soldProductId?: string;
+  soldProductName?: string;
+  soldQty?: number;
+
+  // The ingredient that moved
+  productId: string;
+  sku: string;
+  name: string;
+  qtyUsed: number; // as the recipe writes it, e.g. 400
+  unit: string; // …in this unit, e.g. "g"
+  qtyDeducted: number; // what actually left stock, e.g. 0.4
+  stockUnit: string; // …in the product's own unit, e.g. "kg"
+  stockAfter: number; // on-hand after this movement (may be negative)
+  cost?: number; // value consumed (USD) at the time
 };
 
 export type PaymentMethod = "Cash" | "KHQR" | "Card" | "ABA" | "Wing";
@@ -332,7 +423,8 @@ export type AuditEntityType =
   | "Count"
   | "WriteOff"
   | "Sale"
-  | "Markdown";
+  | "Markdown"
+  | "Recipe";
 
 export type AuditEvent = {
   id: string;
@@ -355,6 +447,8 @@ export type DB = {
   goodsReceipts: GoodsReceipt[];
   stockCounts: StockCount[];
   writeOffs: WriteOff[];
+  recipes: Recipe[];
+  stockMovements: StockMovement[];
   auditLog: AuditEvent[];
   meta: {
     nextInvoice: number;
@@ -364,6 +458,8 @@ export type DB = {
     nextStockCount: number;
     nextWriteOff: number;
     nextMarkdown: number;
+    nextRecipe: number;
+    nextMovement: number;
     nextAudit: number;
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().

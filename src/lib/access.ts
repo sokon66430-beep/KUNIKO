@@ -50,6 +50,8 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/write-offs", label: "Write-Off" },
   { href: "/price-labels", label: "Price Labels" },
   { href: "/promotions", label: "Mark Down" },
+  { href: "/recipes", label: "Recipes" },
+  { href: "/recipe-reports", label: "Recipe Reports" },
   { href: "/purchase-requests", label: "Purchase Requests" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },
@@ -139,6 +141,21 @@ export function canSeeProfit(role: Role): boolean {
 // decision, so it stays with store leadership and above — crew print and stick
 // the labels, but don't decide the discount.
 export function canMarkDown(role: Role): boolean {
+  return (
+    role === "owner" ||
+    role === "store_manager" ||
+    role === "asst_store_manager" ||
+    role === "area_manager" ||
+    role === "ops_manager" ||
+    role === "manager" ||
+    role === "operations"
+  );
+}
+
+// Who may write a recipe. Changing what goes in a bowl changes food cost and
+// what comes off stock on every future sale, so it sits with store leadership
+// and above — crew cook to the recipe, they don't rewrite it.
+export function canManageRecipes(role: Role): boolean {
   return (
     role === "owner" ||
     role === "store_manager" ||

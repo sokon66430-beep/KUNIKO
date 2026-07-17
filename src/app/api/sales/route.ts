@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
-import type { Sale, SaleItem } from "@/lib/types";
+import type { Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { canSeeProfit } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
+import { consumptionPlan, recipeCosting, recipeFor } from "@/lib/recipes";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +38,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
   }
 
+  const actor = await currentActor();
+
   const result = await mutateDB((db) => {
     const items: SaleItem[] = [];
+    // Which recipe (if any) each item is made from, kept alongside `items` so
+    // the stock pass below doesn't have to resolve the link a second time.
+    const recipeByItem = new Map<number, Recipe>();
     const today = storeToday();
     for (const raw of rawItems) {
       const product = db.products.find((p) => p.id === raw.productId);
@@ -66,6 +72,17 @@ export async function POST(req: Request) {
         fullPrice = m.originalPrice;
       }
 
+      // A made-to-order product costs what its ingredients cost, not whatever
+      // sits in its own cost field — that field is a guess for anything the
+      // kitchen assembles. Costing live off the recipe is what makes the profit
+      // on a bowl of noodles mean something.
+      const recipe = recipeFor(product, db.recipes);
+      let cost = product.cost;
+      if (recipe) {
+        recipeByItem.set(items.length, recipe);
+        cost = recipeCosting(recipe, db.products).total;
+      }
+
       // Overselling is allowed: a sale always goes through even at zero/low
       // stock, and on-hand is allowed to go negative (-1, -2, …) so the count
       // reflects what's owed. Restocking/stock-count brings it back to true.
@@ -75,10 +92,12 @@ export async function POST(req: Request) {
         name: product.name,
         qty,
         price,
-        cost: product.cost,
+        cost,
         markdownCode,
         markdownPercent,
         fullPrice,
+        recipeId: recipe?.id,
+        recipeName: recipe?.name,
       });
     }
 
@@ -92,10 +111,89 @@ export async function POST(req: Request) {
     const tax = round2(total - subtotal); // VAT already contained in the price
     const profit = round2(total - cost);
 
-    // Commit stock changes
-    for (const it of items) {
+    // The invoice number is allocated before stock moves so each recipe
+    // consumption can name the sale that caused it.
+    const invoiceNo = `INV-${db.meta.nextInvoice}`;
+    const saleId = `s${db.meta.nextInvoice}`;
+    const now = new Date().toISOString();
+
+    // Commit stock changes.
+    //
+    // A product made to order has no stock of its own to take — what it costs
+    // the store is the ingredients. So a recipe-backed line deducts the recipe
+    // and leaves the product's own count alone; everything else comes straight
+    // off the shelf as before.
+    const shortages: string[] = [];
+    for (const [index, it] of items.entries()) {
       const product = db.products.find((p) => p.id === it.productId)!;
-      product.stock -= it.qty;
+      const recipe = recipeByItem.get(index);
+      if (!recipe) {
+        product.stock -= it.qty;
+        continue;
+      }
+
+      const { deductions, problems } = consumptionPlan(recipe, db.products, it.qty);
+      for (const d of deductions) {
+        const ingredient = db.products.find((p) => p.id === d.productId)!;
+        // Never blocked and never floored at zero: the bowl has been served, so
+        // the beef is gone whatever the system thought it had. Letting stock go
+        // negative is what makes the shortage visible instead of hiding it.
+        ingredient.stock = Math.round((ingredient.stock - d.qtyDeducted) * 1e6) / 1e6;
+
+        const seq = db.meta.nextMovement++;
+        const movement: StockMovement = {
+          id: `mv${seq}`,
+          type: "Recipe Consumption",
+          at: now,
+          actor,
+          saleId,
+          invoiceNo,
+          recipeId: recipe.id,
+          recipeName: recipe.name,
+          soldProductId: product.id,
+          soldProductName: product.name,
+          soldQty: it.qty,
+          productId: ingredient.id,
+          sku: ingredient.sku,
+          name: ingredient.name,
+          qtyUsed: d.qtyUsed,
+          unit: d.unit,
+          qtyDeducted: d.qtyDeducted,
+          stockUnit: d.stockUnit,
+          stockAfter: ingredient.stock,
+          cost: d.cost,
+        };
+        db.stockMovements.push(movement);
+
+        if (ingredient.stock < 0) {
+          shortages.push(`${ingredient.name} ${ingredient.stock} ${d.stockUnit}`);
+        }
+      }
+
+      // An ingredient we couldn't deduct is a data problem, not a sale problem.
+      // The sale stands; the audit trail carries the reason so someone can fix
+      // the recipe rather than discover the gap at the next stock count.
+      for (const p of problems) {
+        logAudit(db, {
+          actor,
+          action: "Recipe warning",
+          entityType: "Recipe",
+          entity: `${recipe.code} · ${recipe.name}`,
+          detail: `${invoiceNo}: ${p.message}`,
+          at: now,
+        });
+      }
+    }
+
+    if (shortages.length) {
+      logAudit(db, {
+        actor,
+        action: "Negative stock",
+        entityType: "Stock",
+        entity: invoiceNo,
+        detail: `Ingredients now below zero — ${shortages.join(", ")}`,
+        at: now,
+      });
     }
 
     let customerId: string | null = null;
@@ -124,9 +222,8 @@ export async function POST(req: Request) {
       change = round2(Math.max(0, tendered - total));
     }
 
-    const invoiceNo = `INV-${db.meta.nextInvoice}`;
     const sale: Sale = {
-      id: `s${db.meta.nextInvoice}`,
+      id: saleId,
       invoiceNo,
       items,
       customerId,
@@ -141,7 +238,7 @@ export async function POST(req: Request) {
       paymentRef: body.paymentRef || undefined,
       tendered,
       change,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     };
     db.meta.nextInvoice += 1;
     db.sales.push(sale);

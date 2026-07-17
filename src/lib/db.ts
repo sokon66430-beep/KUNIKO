@@ -28,6 +28,8 @@ function backfill(db: DB): DB {
   if (!db.stockCounts) db.stockCounts = [];
   if (!db.writeOffs) db.writeOffs = [];
   if (!db.markdowns) db.markdowns = [];
+  if (!db.recipes) db.recipes = [];
+  if (!db.stockMovements) db.stockMovements = [];
   if (!db.auditLog) db.auditLog = [];
   if (db.meta.nextPR == null) db.meta.nextPR = 100002;
   if (db.meta.nextPO == null) db.meta.nextPO = 100021;
@@ -35,6 +37,8 @@ function backfill(db: DB): DB {
   if (db.meta.nextStockCount == null) db.meta.nextStockCount = 100001;
   if (db.meta.nextWriteOff == null) db.meta.nextWriteOff = 100001;
   if (db.meta.nextMarkdown == null) db.meta.nextMarkdown = 1;
+  if (db.meta.nextRecipe == null) db.meta.nextRecipe = 100001;
+  if (db.meta.nextMovement == null) db.meta.nextMovement = 1;
   if (db.meta.nextAudit == null) db.meta.nextAudit = 1;
   // Every product carries a ranking on its price label; default everything to "A".
   for (const p of db.products || []) {

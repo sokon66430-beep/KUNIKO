@@ -7,12 +7,12 @@ import type { ProductLocation } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays"]);
+const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays", "packSize", "boxSize"]);
 // Explicit allow-list rather than `key in product` — optional fields like
 // supplierCode are dropped by JSON.stringify when undefined, so a product
 // that has never had a supplier linked genuinely lacks that key at runtime,
 // and `in` would wrongly refuse to ever set it for that record.
-const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf"]);
+const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf", "recipeId", "consumptionUnit"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const actor = await currentActor();

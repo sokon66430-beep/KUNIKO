@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { itemIdPrefix } from "@/lib/itemId";
 import { defaultShowOnPos } from "@/lib/pos";
+import { normalizeUnit, unitDimension } from "@/lib/units";
 
 export const EMPTY_PRODUCT: Partial<Product> = {
   name: "",
@@ -320,7 +321,38 @@ export function ProductModal({
         <div>
           <label className="label">Unit</label>
           <input className="input" value={form.unit || ""} onChange={(e) => set("unit", e.target.value)} />
+          <p className="mt-1 text-[11px] text-slate-400">
+            {unitDimension(form.unit)
+              ? `Stock is counted in ${normalizeUnit(form.unit)} — recipes convert to it automatically.`
+              : "Recipes can't use this product until its unit is one of: g, kg, ml, L, pcs, unit, pack, box."}
+          </p>
         </div>
+        {/* Pack/box only convert for products counted in pieces — a "pack" of a
+            product measured in kg has no meaning, so we don't ask. */}
+        {unitDimension(form.unit) === "count" && (
+          <>
+            <div>
+              <label className="label">Pieces per pack</label>
+              <input
+                className="input"
+                inputMode="numeric"
+                value={form.packSize ?? ""}
+                onChange={(e) => set("packSize", Number(e.target.value.replace(/[^\d]/g, "")) || undefined)}
+                placeholder="e.g. 10"
+              />
+            </div>
+            <div>
+              <label className="label">Pieces per box</label>
+              <input
+                className="input"
+                inputMode="numeric"
+                value={form.boxSize ?? ""}
+                onChange={(e) => set("boxSize", Number(e.target.value.replace(/[^\d]/g, "")) || undefined)}
+                placeholder="e.g. 24"
+              />
+            </div>
+          </>
+        )}
         <div>
           <label className="label">Product group (A01–A05)</label>
           <input
