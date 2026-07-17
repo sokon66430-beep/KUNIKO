@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { readMasterPromotions, propagatePromotionsToStores, promotionRunsIn } from "@/lib/master";
-import { readSystem } from "@/lib/system";
+import { readMasterPromotions, propagatePromotionsToStores, promotionRunsIn, parseStoreIds } from "@/lib/master";
 
 export const dynamic = "force-dynamic";
 
-// POST /api/master/promotions/sync?storeId=  — push the master promotions into
-// every store, or just the one named (owner-only).
+// POST /api/master/promotions/sync?storeIds=a,b  — push the master promotions
+// into the named stores, or every store when none are named (owner-only).
 //
 // Deal edits already mirror automatically on save; this re-syncs on demand.
 //
@@ -17,19 +16,14 @@ export async function POST(req: Request) {
   const s = await getSession();
   if (!s || s.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
 
-  const storeId = new URL(req.url).searchParams.get("storeId") || undefined;
-  const sys = await readSystem();
-  // Checked before the push: an unknown id syncs NOTHING, and reporting that as
-  // success would look like it worked.
-  const target = storeId ? sys.stores.find((st) => st.id === storeId) : undefined;
-  if (storeId && !target) return NextResponse.json({ error: "No such store." }, { status: 400 });
+  const target = await parseStoreIds(req.url);
+  if (!target.ok) return NextResponse.json({ error: target.error }, { status: 400 });
 
-  await propagatePromotionsToStores(storeId);
+  await propagatePromotionsToStores(target.ids);
   const master = await readMasterPromotions();
-  const touched = target ? [target] : sys.stores;
   return NextResponse.json({
     promotions: master.items.length,
-    stores: touched.map((st) => ({
+    stores: target.stores.map((st) => ({
       store: st.name,
       promotions: master.items.filter((p) => promotionRunsIn(p, st.id)).length,
     })),

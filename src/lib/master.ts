@@ -133,29 +133,33 @@ export async function mutateMasterSuppliers<T>(mutator: (suppliers: Supplier[]) 
   return next;
 }
 
-// Upsert every master supplier into every store's list (by code). Products keep
-// their supplier NAME as text, so a store never loses a reference. Store-only
-// suppliers (not in the master) are left in place — a delete is handled
-// separately via removeSupplierFromStores so nothing vanishes by surprise.
 /**
  * Which stores a push should touch.
  *
- * Every propagate below takes an optional `storeId`. Left out — which is what
- * every save does — it means all of them, so a normal edit still reaches the
- * whole chain. Naming one is the repair case: a single shop's copy looks wrong
- * and you'd rather not rewrite the others to fix it.
+ * Every propagate below takes an optional list. Left out — which is what every
+ * save does — it means all of them, so a normal edit still reaches the whole
+ * chain. Naming some is the repair case: a shop or two look wrong and you'd
+ * rather not rewrite the rest to fix them.
  *
- * An id that matches nothing yields an EMPTY list, not every store. A typo'd id
- * quietly rewriting all three shops is the opposite of what was asked for.
+ * An EMPTY list means all stores, not none: "sync to nothing" isn't a thing
+ * anyone wants a button for, and the callers treat no-selection as "everywhere".
+ * Ids that match nothing yield an empty list rather than falling back to every
+ * store — a typo quietly rewriting all three shops is the opposite of the ask —
+ * so the routes reject unknown ids before they get here.
  */
-async function targetStores(storeId?: string) {
+async function targetStores(storeIds?: string[]) {
   const sys = await readSystem();
-  return storeId ? sys.stores.filter((s) => s.id === storeId) : sys.stores;
+  return storeIds && storeIds.length ? sys.stores.filter((s) => storeIds.includes(s.id)) : sys.stores;
 }
 
-export async function propagateSuppliersToStores(storeId?: string): Promise<void> {
+// Upsert every master supplier into each targeted store's list (by code).
+// Products keep their supplier NAME as text, so a store never loses a
+// reference. Store-only suppliers (not in the master) are left in place — a
+// delete is handled separately via removeSupplierFromStores so nothing vanishes
+// by surprise.
+export async function propagateSuppliersToStores(storeIds?: string[]): Promise<void> {
   const master = await readMasterSuppliers();
-  for (const store of await targetStores(storeId)) {
+  for (const store of await targetStores(storeIds)) {
     await mutateDB((db) => {
       const byCode = new Map((db.suppliers || []).map((s) => [s.code, s]));
       for (const m of master) byCode.set(m.code, { ...m });
@@ -508,9 +512,9 @@ export async function mutateMasterPromotions<T>(mutator: (m: MasterPromotions) =
  * recipes first — so by the time anything mirrors, the master already holds
  * them. Without that, this would be a silent delete.
  */
-export async function propagateRecipesToStores(storeId?: string): Promise<void> {
+export async function propagateRecipesToStores(storeIds?: string[]): Promise<void> {
   const master = await readMasterRecipes();
-  for (const store of await targetStores(storeId)) {
+  for (const store of await targetStores(storeIds)) {
     await mutateDB((db) => {
       db.recipes = master.items.map((r) => ({ ...r, items: r.items.map((i) => ({ ...i })) }));
       db.meta.nextRecipe = master.next;
@@ -535,9 +539,9 @@ export function promotionRunsIn(p: Promotion, storeId: string): boolean {
   return !p.storeIds || p.storeIds.length === 0 || p.storeIds.includes(storeId);
 }
 
-export async function propagatePromotionsToStores(storeId?: string): Promise<void> {
+export async function propagatePromotionsToStores(storeIds?: string[]): Promise<void> {
   const master = await readMasterPromotions();
-  for (const store of await targetStores(storeId)) {
+  for (const store of await targetStores(storeIds)) {
     await mutateDB((db) => {
       db.promotions = master.items
         .filter((p) => promotionRunsIn(p, store.id))
@@ -546,4 +550,39 @@ export async function propagatePromotionsToStores(storeId?: string): Promise<voi
       return true;
     }, store.id);
   }
+}
+
+/**
+ * Read a `?storeIds=a,b` query into a validated target.
+ *
+ * Shared because four sync routes need the identical answer, and they must
+ * agree: a bad id has to be a visible error everywhere, not a push to nothing
+ * on one route and a push to everything on another.
+ *
+ * Returns `ids: undefined` for "no selection" — which every propagate reads as
+ * all stores. `stores` is the resolved list the push will actually touch, so a
+ * route can report back exactly which shops changed rather than re-deriving it
+ * (and matching on names, which aren't unique).
+ */
+export async function parseStoreIds(
+  url: string,
+): Promise<{ ok: true; ids?: string[]; stores: { id: string; name: string }[] } | { ok: false; error: string }> {
+  const raw = new URL(url).searchParams.get("storeIds");
+  const sys = await readSystem();
+  const picked = [...new Set((raw || "").split(",").map((s) => s.trim()).filter(Boolean))];
+  if (!picked.length) return { ok: true, ids: undefined, stores: sys.stores.map((s) => ({ id: s.id, name: s.name })) };
+
+  const unknown = picked.filter((id) => !sys.stores.some((s) => s.id === id));
+  // An unknown id syncs NOTHING, and reporting that as success would look like
+  // it worked. Say so instead.
+  if (unknown.length) return { ok: false, error: `No such store: ${unknown.join(", ")}.` };
+
+  // Every store named IS every store — drop the list so the push means "all",
+  // and a shop added later isn't quietly left out of a repeat of this sync.
+  const all = sys.stores.every((s) => picked.includes(s.id));
+  return {
+    ok: true,
+    ids: all ? undefined : picked,
+    stores: sys.stores.filter((s) => all || picked.includes(s.id)).map((s) => ({ id: s.id, name: s.name })),
+  };
 }

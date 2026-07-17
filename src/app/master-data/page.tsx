@@ -24,7 +24,7 @@ import type { Product, Supplier } from "@/lib/types";
 import RecipesManager from "@/components/RecipesManager";
 import PromotionsManager from "@/components/PromotionsManager";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
-import { Select } from "@/components/Select";
+import { MultiSelect } from "@/components/Select";
 import { confirmDialog } from "@/components/confirm";
 import { ProductModal, EMPTY_PRODUCT as EMPTY } from "@/components/ProductModal";
 import { SupplierModal, EMPTY_SUPPLIER } from "@/components/SupplierModal";
@@ -44,20 +44,21 @@ export default function MasterDataPage() {
   const { data: stores } = useFetch<{ id: string; name: string }[]>("/api/stores");
   const [tab, setTab] = useState<"products" | "suppliers" | "recipes" | "promotions">("products");
 
-  // Where a Sync pushes to. "all" is the normal case; naming one store is the
-  // repair — its copy looks wrong and rewriting the others to fix it would be a
-  // bigger move than the problem.
-  const [syncStoreId, setSyncStoreId] = useState("all");
-  const syncQuery = syncStoreId === "all" ? "" : `?storeId=${encodeURIComponent(syncStoreId)}`;
+  // Where a Sync pushes to. Empty = every store, which is the normal case;
+  // ticking a few is the repair — their copies look wrong and rewriting the
+  // rest to fix them would be a bigger move than the problem.
+  const [syncStoreIds, setSyncStoreIds] = useState<string[]>([]);
+  const syncQuery = syncStoreIds.length ? `?storeIds=${syncStoreIds.map(encodeURIComponent).join(",")}` : "";
+  const syncTargets = syncStoreIds.length
+    ? (stores || []).filter((s) => syncStoreIds.includes(s.id))
+    : stores || [];
   const storePicker = (
-    <div className="w-44">
-      <Select
-        value={syncStoreId}
-        onChange={setSyncStoreId}
-        options={[
-          { value: "all", label: "All stores" },
-          ...(stores || []).map((s) => ({ value: s.id, label: s.name })),
-        ]}
+    <div className="w-52">
+      <MultiSelect
+        values={syncStoreIds}
+        onChange={setSyncStoreIds}
+        allLabel="All stores"
+        options={(stores || []).map((s) => ({ value: s.id, label: s.name }))}
       />
     </div>
   );
@@ -244,16 +245,16 @@ export default function MasterDataPage() {
   }
 
   async function sync() {
-    // The dialog has to name the ACTUAL target. This one removes store products
-    // that aren't in the master, so "all stores" on a run that touches one shop
-    // would be asking for consent to the wrong thing.
-    const target = stores?.find((s) => s.id === syncStoreId);
-    const where = target ? target.name : "every store";
+    // The dialog has to name the ACTUAL targets. This sync REMOVES store
+    // products that aren't in the master, so "all stores" on a run that touches
+    // two of three would be asking for consent to the wrong thing.
+    const some = syncStoreIds.length > 0;
+    const where = some ? syncTargets.map((s) => s.name).join(" and ") : "every store";
     if (
       !(await confirmDialog({
-        title: target ? `Sync master to ${target.name}` : "Sync master to all stores",
-        message: `Make ${where} an exact mirror of the master: master info (name, barcode, category, cost, selling price, supplier) is pushed${target ? ` to ${target.name}` : " to all stores"}; new products are added (stock 0). ${target ? "It keeps" : "Each store keeps"} its own reorder level, stock and shelf location. Products ${target ? "it has" : "a store has"} that are NOT in the master are removed — except any that still hold stock, which are kept and reported.`,
-        confirmText: target ? `Sync to ${target.name}` : "Sync to stores",
+        title: some ? `Sync master to ${syncTargets.length} store${syncTargets.length === 1 ? "" : "s"}` : "Sync master to all stores",
+        message: `Make ${where} an exact mirror of the master: master info (name, barcode, category, cost, selling price, supplier) is pushed to ${where}; new products are added (stock 0). Each keeps its own reorder level, stock and shelf location. Products a store has that are NOT in the master are removed — except any that still hold stock, which are kept and reported.`,
+        confirmText: some ? `Sync to ${where}` : "Sync to stores",
         tone: "brand",
       }))
     )
