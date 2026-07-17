@@ -5,6 +5,7 @@ import { buildCsv, buildPdf, type Col } from "@/lib/reportExport";
 import { getSession } from "@/lib/session";
 import { profitFor } from "@/lib/caps";
 import { formatLocations } from "@/lib/location";
+import { assortment } from "@/lib/assortment";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const stamp = new Date().toISOString().slice(0, 10);
   const filename = `${count.countNo}-${stamp}`;
 
+  // The sheet lists what this store CARRIES, not the whole synced catalog — a
+  // branch ranges a fraction of the 4,000+ master products, and a count sheet
+  // padded with items it has never stocked, sold or ordered buries the real
+  // rows. Anything counted in this count is in the set by definition (see
+  // lib/assortment), so a scanned oddball still exports.
+  const sheetProducts = assortment(db);
+
   if (format === "csv" || format === "pdf") {
     const counted = new Map(count.items.map((i) => [i.productId, i.countedQty]));
     // Units sold after the line was counted, from the POS report imported into
@@ -37,7 +45,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         i.placeQty ? (["Store", "Stock", "Vault"] as const).filter((pl) => i.placeQty![pl]).map((pl) => `${pl} ${i.placeQty![pl]}`).join(" · ") : "",
       ]),
     );
-    const rows = db.products.map((p, i) => {
+    const rows = sheetProducts.map((p, i) => {
       const cq = counted.has(p.id) ? (counted.get(p.id) as number) : null;
       return {
         no: i + 1,
@@ -109,7 +117,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     });
   }
 
-  const wb = buildStockCountWorkbook(count, db.products, db.meta.business, showValue);
+  const wb = buildStockCountWorkbook(count, sheetProducts, db.meta.business, showValue);
   const buffer = await wb.xlsx.writeBuffer();
 
   return new NextResponse(buffer as ArrayBuffer, {

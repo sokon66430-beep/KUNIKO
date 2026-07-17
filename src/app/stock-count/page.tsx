@@ -460,6 +460,9 @@ function DeleteApproveModal({
 function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: count, reload } = useFetch<StockCount>(`/api/stock-counts/${id}`);
   const { data: products } = useFetch<Product[]>("/api/products");
+  // How many products this store actually carries (vs the full synced catalog)
+  // — the denominator for the progress line and the size of the count sheet.
+  const { data: scope } = useFetch<{ carried: number; catalog: number }>("/api/stock-counts/scope");
   const [query, setQuery] = useState("");
   // Where the counter is standing right now — every scan is tagged with this
   // place (Store / Stock / Vault) so the report shows where it was counted.
@@ -721,10 +724,22 @@ function CountDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-bold text-ink-800">Count sheet</p>
-              {/* "counted" not "products counted" — the modal is narrow and the
-                  longer phrase truncates mid-word next to three buttons. */}
-              <p className="truncate text-[11px] text-slate-500">
-                {num(items.length)} of {num(products?.length || 0)} counted
+              {/* Measured against what this store CARRIES, not the synced
+                  catalog — every store holds all 4,250 master products on file,
+                  but a branch ranges a fraction of them, and "0 of 4,250" told
+                  the team nothing about how far through THEIR shop they were.
+                  Carried = has stock, or sales/PR/PO/receiving/write-off/
+                  markdown/count history (see lib/assortment). Falls back to the
+                  catalog figure until the scope loads. */}
+              <p
+                className="truncate text-[11px] text-slate-500"
+                title={
+                  scope
+                    ? `${num(scope.carried)} product${scope.carried === 1 ? "" : "s"} carried by this store (of ${num(scope.catalog)} in the catalog) — carried means it has stock or any sales, order, receiving, write-off, markdown or count history`
+                    : undefined
+                }
+              >
+                {num(items.length)} of {num(scope?.carried ?? products?.length ?? 0)} counted
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
