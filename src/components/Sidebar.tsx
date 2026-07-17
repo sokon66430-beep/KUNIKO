@@ -148,6 +148,10 @@ export default function Sidebar() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [switching, setSwitching] = useState(false);
   const [storeMenuOpen, setStoreMenuOpen] = useState(false);
+  // Work waiting per page (href → count), e.g. requests a store has sent to
+  // Procurement. Polled, so a request raised on the shop floor shows up on the
+  // buyer's rail without them refreshing or opening the bell.
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -155,6 +159,26 @@ export default function Sidebar() {
       .then((r) => (r.ok ? r.json() : null))
       .then(setSession)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      fetch("/api/notifications")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => alive && d && setCounts(d.counts || {}))
+        .catch(() => {});
+    load();
+    // Same 60s cadence as the bell — both read the same endpoint, so the badge
+    // and the dropdown can't disagree about how much work is waiting.
+    const t = setInterval(load, 60_000);
+    const onFocus = () => document.visibilityState === "visible" && load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const dark = theme === "dark";
@@ -297,6 +321,7 @@ export default function Sidebar() {
             {group.items.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.href);
+              const waiting = counts[item.href] || 0;
               return (
                 <Link
                   key={item.href}
@@ -311,7 +336,19 @@ export default function Sidebar() {
                     strokeWidth={active ? 2.5 : 2}
                     className={active ? t.navActiveIcon : t.navIdleIcon}
                   />
-                  {item.label}
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {waiting > 0 && (
+                    <span
+                      title={`${waiting} waiting`}
+                      className={`grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                        // On the active (brand) row a rose pill fights the blue,
+                        // so it goes white-on-brand there and rose everywhere else.
+                        active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
+                      }`}
+                    >
+                      {waiting > 99 ? "99+" : waiting}
+                    </span>
+                  )}
                 </Link>
               );
             })}
