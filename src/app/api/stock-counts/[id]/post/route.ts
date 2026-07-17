@@ -4,8 +4,26 @@ import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-// Post the count: set each counted product's stock to the physical quantity,
-// logging the adjustment. This is the moment the count becomes the truth.
+// Post the count: correct each product's stock by the variance the count found.
+// This is the moment the count becomes the truth.
+//
+// The store keeps trading while the audit team counts, so the counted number is
+// only true for the moment it was written down. It CANNOT be used as the stock
+// figure at posting time — by then the till has sold some of what was counted.
+//
+// So apply the DIFFERENCE the count discovered, not the count itself:
+//
+//   variance  = countedQty − systemQty   (both as at the moment of counting)
+//   new stock = stock now + variance
+//
+// 10:00 book says 100, audit counts 98 → variance −2 (two genuinely missing).
+// 11:00 till sells 5 → book 95, shelf 93.
+// 14:00 post → 95 + (−2) = 93. Correct.
+//
+// Setting stock to the counted 98 instead — which is what this did — silently
+// puts the 5 sold units back on the books, every count, for every item that
+// moved while the shelf was being counted. The busier the store, the more stock
+// a count invents.
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const result = await mutateDB((db) => {
     const count = db.stockCounts.find((c) => c.id === params.id);
@@ -15,11 +33,16 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
     let adjusted = 0;
     let netUnits = 0;
+    let movedDuringCount = 0; // lines the till touched between counting and posting
     for (const it of count.items) {
       const product = db.products.find((p) => p.id === it.productId);
       if (!product) continue;
       const before = product.stock;
-      const target = Math.max(0, it.countedQty);
+      const variance = it.countedQty - it.systemQty;
+      // Never drive stock negative: a count can only correct to something a
+      // shelf could actually hold.
+      const target = Math.max(0, before + variance);
+      if (before !== it.systemQty) movedDuringCount++;
       const delta = target - before;
       if (delta !== 0) {
         product.stock = target;
@@ -35,9 +58,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       action: "Posted",
       entityType: "Count",
       entity: count.countNo,
-      detail: `${adjusted} item${adjusted === 1 ? "" : "s"} adjusted · net ${netUnits >= 0 ? "+" : ""}${netUnits} units`,
+      // Say how many lines kept selling mid-count: it's the audit trail's record
+      // that the count ran against a live shop floor, and that the variance was
+      // measured against the book at counting time rather than at posting.
+      detail:
+        `${adjusted} item${adjusted === 1 ? "" : "s"} adjusted · net ${netUnits >= 0 ? "+" : ""}${netUnits} units` +
+        (movedDuringCount > 0 ? ` · ${movedDuringCount} still selling while counted` : ""),
     });
-    return { count, adjusted, netUnits };
+    return { count, adjusted, netUnits, movedDuringCount };
   });
 
   if ("error" in result) {
