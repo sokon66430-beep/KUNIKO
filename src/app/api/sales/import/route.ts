@@ -3,15 +3,22 @@ import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { storeInstant, storeToday } from "@/lib/storetime";
 import type { Sale, SaleItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Import historical sales from a spreadsheet so reports and order recommendations
-// reflect real selling history. Expected columns (any order, case-insensitive):
-//   Date · Item Code (or Barcode) · Qty · Price (optional)
-// Rows are grouped by date into one sale per day. Stock is NOT changed — this is
-// historical data, not a live sale.
+// Import sales from the shop's POS report so reports, order recommendations and
+// STOCK reflect what actually sold. Expected columns (any order,
+// case-insensitive):
+//   Date · Item Code (or Barcode) · Qty · Price (optional) · Time (optional)
+// Rows are grouped by date into one sale per day for reporting.
+//
+// Stock: selling happens in another POS, so this file is the only thing that
+// tells the app a shelf emptied. Lines are deducted from stock, but ONLY when
+// they sold after that product's last posted stock count — see the long note at
+// the deduction itself. Rows for never-counted products, and same-day rows with
+// no time to place them against the count, are left alone and reported back.
 //
 // Validation is all-or-nothing: if any ITEM row can't be fully read (no
 // matching product, missing qty, or — when a Date column is present — an
@@ -22,6 +29,11 @@ export const dynamic = "force-dynamic";
 // double-counted by importing the same report twice.
 const ALIASES: Record<string, string[]> = {
   date: ["date", "sale date", "sold date", "invoice date"],
+  // Time of day, used to decide whether a sale happened before or after the
+  // shelf was counted (see the stock note further down). Optional — a report
+  // without it still imports, it just can't settle a same-day sale against a
+  // same-day count.
+  time: ["time", "sale time", "sold time", "invoice time", "transaction time", "hour"],
   sku: ["item code", "item id", "sku", "product code", "system product code"],
   barcode: ["barcode", "barcodes", "default barcodes", "default barcode"],
   name: ["item name", "product name", "name"],
@@ -86,6 +98,50 @@ function toDayKey(cellValue: any, text: string): string | null {
   const d = new Date(t);
   if (isNaN(d.getTime())) return null;
   return ymd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
+/**
+ * "HH:MM" for a row, or null if the sheet doesn't say.
+ *
+ * Looks in the Time column first, then falls back to a time carried inside the
+ * Date cell (Excel datetimes are one cell). Both are read in UTC because that's
+ * how ExcelJS represents a spreadsheet's naive wall-clock — the same reason
+ * toDayKey reads getUTC*.
+ *
+ * Exactly midnight in a Date cell is treated as "no time given": a date-only
+ * cell is indistinguishable from one stamped 00:00, and guessing wrong on a
+ * date-only report would silently mark every sale as pre-dawn.
+ */
+function toHHMM(timeCellValue: any, timeText: string, dateCellValue: any): string | null {
+  const p = (h: number, m: number) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  if (timeCellValue && typeof timeCellValue === "object" && (timeCellValue as any).result instanceof Date) {
+    timeCellValue = (timeCellValue as any).result;
+  }
+  if (timeCellValue instanceof Date && !isNaN(timeCellValue.getTime())) {
+    return p(timeCellValue.getUTCHours(), timeCellValue.getUTCMinutes());
+  }
+  const t = (timeText || "").trim();
+  if (t) {
+    // "9:05", "09:05:22", "9:05 PM"
+    const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?$/i);
+    if (m) {
+      let h = +m[1];
+      const min = +m[2];
+      const ap = (m[3] || "").toLowerCase();
+      if (ap === "pm" && h < 12) h += 12;
+      if (ap === "am" && h === 12) h = 0;
+      if (h >= 0 && h <= 23 && min >= 0 && min <= 59) return p(h, min);
+    }
+  }
+  if (dateCellValue && typeof dateCellValue === "object" && (dateCellValue as any).result instanceof Date) {
+    dateCellValue = (dateCellValue as any).result;
+  }
+  if (dateCellValue instanceof Date && !isNaN(dateCellValue.getTime())) {
+    const h = dateCellValue.getUTCHours();
+    const mi = dateCellValue.getUTCMinutes();
+    if (h !== 0 || mi !== 0) return p(h, mi);
+  }
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -184,7 +240,7 @@ export async function POST(req: Request) {
   // all (spacer rows, section footers holding only summed numbers) aren't
   // items, so they're skipped like blank rows — but a real item row missing
   // its qty/date is still a hard problem, never silently dropped.
-  type Row = { day: string; invoice: string; sku: string; barcode: string; name: string; qty: number; price: number; discount: number; rowNum: number };
+  type Row = { day: string; time: string | null; invoice: string; sku: string; barcode: string; name: string; qty: number; price: number; discount: number; rowNum: number };
   // Structured so the UI can lay it out as a table (Row · Product · Issue · Qty).
   type Problem = { row: number; product: string; issue: string; qty: number };
   const rows: Row[] = [];
@@ -212,6 +268,11 @@ export async function POST(req: Request) {
     }
     rows.push({
       day,
+      time: toHHMM(
+        colOf.time ? ws.getRow(r).getCell(colOf.time).value : null,
+        colOf.time ? cellText(r, colOf.time) : "",
+        dateCellValue,
+      ),
       invoice: colOf.invoice ? cellText(r, colOf.invoice) : "",
       sku,
       barcode,
@@ -237,7 +298,7 @@ export async function POST(req: Request) {
     byName.set(cleanName(p.name), p);
   }
 
-  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string; invoice: string; discount: number };
+  type Matched = { productId: string; sku: string; name: string; qty: number; price: number; cost: number; day: string; time: string | null; invoice: string; discount: number };
   const matched: Matched[] = [];
   const skippedMap = new Map<string, { code: string; barcode: string; name: string; rows: number; units: number }>();
   for (const row of rows) {
@@ -265,6 +326,7 @@ export async function POST(req: Request) {
       price: row.price || p.price,
       cost: p.cost,
       day: row.day,
+      time: row.time,
       invoice: row.invoice,
       discount: row.discount,
     });
@@ -325,6 +387,103 @@ export async function POST(req: Request) {
   }
 
   const result = await mutateDB((db) => {
+    // -----------------------------------------------------------------------
+    // An unposted count over any of these products makes this file impossible
+    // to apply correctly, so refuse the whole import rather than get it wrong.
+    //
+    // The baseline below is the last POSTED count. With a count sitting open,
+    // the baseline is the PREVIOUS one, so every sale from today reads as
+    // "after the count" and gets deducted — including the ones this morning
+    // that the open count has already absorbed into its variance. Posting it
+    // afterwards then applies that variance on top, removing them a second
+    // time. Measured: book 100, 4 sold before the count, 5 after, count posted
+    // late → 89 instead of 93. Silent, and only visible at the next count.
+    //
+    // Post the count first and both numbers are right. So: say so, and stop.
+    // -----------------------------------------------------------------------
+    const affected = new Set(toImport.map((m) => m.productId));
+    const blocking = db.stockCounts.filter(
+      (c) => c.status !== "Posted" && c.items.some((it) => affected.has(it.productId)),
+    );
+    if (blocking.length) return { error: "open_count" as const, countNos: blocking.map((c) => c.countNo) };
+
+    // -----------------------------------------------------------------------
+    // Stock: take off what sold AFTER the shelf was counted.
+    //
+    // Selling happens in another POS, so nothing here ever empties a shelf —
+    // stock only climbs (receiving) until a count resets it. This report is the
+    // only way the app can learn what left the building.
+    //
+    // But it must not deduct everything in the file, because the count has
+    // already seen part of it. A bottle sold at 09:00 was already gone from the
+    // shelf when the accountant counted at 10:00 — it's inside the counted
+    // number, and taking it off again would remove it twice. A bottle sold at
+    // 11:00 was still on the shelf when counted, so it has to come off.
+    //
+    // Hence: deduct a line only when it happened after that product's most
+    // recent POSTED count. Which also means back-filling months of old history
+    // can't crater stock — those sales predate the count, so they're skipped by
+    // the same rule, with no special case for it.
+    //
+    // Only posted counts count: an open one hasn't touched stock yet, so it
+    // isn't a baseline for anything.
+    //
+    // This also commutes with posting a count, which applies the variance it
+    // found rather than setting stock outright. Post-then-import and
+    // import-then-post land on the same number, so the office doesn't have to
+    // get the order right.
+    // -----------------------------------------------------------------------
+    const lastCountAt = new Map<string, string>(); // productId → ISO instant
+    for (const c of db.stockCounts) {
+      if (c.status !== "Posted") continue;
+      for (const it of c.items) {
+        if (!it.countedAt) continue;
+        const prev = lastCountAt.get(it.productId);
+        if (!prev || it.countedAt > prev) lastCountAt.set(it.productId, it.countedAt);
+      }
+    }
+
+    const stock = { linesReduced: 0, unitsReduced: 0, beforeCount: 0, neverCounted: 0, sameDayNoTime: 0 };
+    for (const row of toImport) {
+      const countedAt = lastCountAt.get(row.productId);
+      if (!countedAt) {
+        // Never counted, so there's no baseline saying what's on the shelf and
+        // no way to know if this sale is already reflected. Left alone and
+        // reported rather than guessed at.
+        stock.neverCounted++;
+        continue;
+      }
+      let after: boolean;
+      if (row.time) {
+        const at = storeInstant(row.day, row.time);
+        if (!at) {
+          stock.sameDayNoTime++;
+          continue;
+        }
+        after = at.getTime() > Date.parse(countedAt);
+      } else {
+        // No time on the row: settle it by day where the day alone is decisive.
+        const countDay = storeToday(new Date(countedAt));
+        if (row.day === countDay) {
+          // Same day, no clock — can't tell which side of the count it fell.
+          // Skipped: deducting a sale the count already saw is worse than
+          // leaving stock high, because it silently invents shrinkage.
+          stock.sameDayNoTime++;
+          continue;
+        }
+        after = row.day > countDay;
+      }
+      if (!after) {
+        stock.beforeCount++;
+        continue;
+      }
+      const product = db.products.find((p) => p.id === row.productId);
+      if (!product) continue;
+      product.stock = Math.round((product.stock - row.qty) * 1e6) / 1e6;
+      stock.linesReduced++;
+      stock.unitsReduced += row.qty;
+    }
+
     // Group the new rows per day; remember which source invoices each day covers
     // so a later overlapping import can skip exactly these transactions.
     const byDay = new Map<string, { items: SaleItem[]; invoices: Set<string>; discount: number }>();
@@ -378,10 +537,18 @@ export async function POST(req: Request) {
       entity: file.name || "Excel file",
       detail: `${toImport.length} lines · ${salesCreated} day-sales${
         skippedDuplicates ? ` · skipped ${skippedDuplicates} duplicate transaction(s) already on record` : ""
-      }`,
+      }${stock.unitsReduced ? ` · stock -${stock.unitsReduced} units (sold after counting)` : ""}`,
     });
-    return { matched: toImport.length, salesCreated, totalRows: rows.length, skippedDuplicates, skippedDates };
+    return { matched: toImport.length, salesCreated, totalRows: rows.length, skippedDuplicates, skippedDates, stock };
   });
 
+  if ("error" in result && result.error === "open_count") {
+    return NextResponse.json(
+      {
+        error: `Post the open stock count first (${result.countNos.join(", ")}), then upload this report. Until it's posted, the app can't tell which of today's sales it already saw — so importing now would take those units off twice.`,
+      },
+      { status: 400 },
+    );
+  }
   return NextResponse.json(result);
 }

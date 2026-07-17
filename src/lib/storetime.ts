@@ -33,6 +33,52 @@ export function storeTimeHHMM(now: Date = new Date()): string {
   }).format(now);
 }
 
+/**
+ * How far the store's clock is ahead of UTC at a given instant, in ms.
+ *
+ * Read from the zone database rather than hard-coded to +7: Cambodia doesn't
+ * use DST today, but a hard-coded offset is a silent landmine if that ever
+ * changes or this is reused for a store elsewhere.
+ */
+function storeOffsetMs(at: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: STORE_TZ,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(at);
+  const p: Record<string, string> = {};
+  for (const part of parts) if (part.type !== "literal") p[part.type] = part.value;
+  // hour12:false renders midnight as "24" in some engines — %24 folds it back.
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+  return asUTC - at.getTime();
+}
+
+/**
+ * The real instant a wall-clock time in the shop happened.
+ *
+ * A POS report prints local time ("17/07/2026 10:30") while everything the
+ * server records — a count's `countedAt`, a sale's `createdAt` — is a UTC
+ * instant. Comparing the two as written would be out by the offset: a sale at
+ * 10:30 local is 03:30 UTC, so a naive compare against a count taken at 10:00
+ * local (03:00 UTC) would put the sale seven hours before a count it actually
+ * came after. That's the difference between deducting it and not.
+ *
+ * Returns null unless both parts are a real date and a real HH:MM.
+ */
+export function storeInstant(day: string, hhmm: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !isValidTime(hhmm)) return null;
+  const asIfUTC = Date.parse(`${day}T${hhmm}:00Z`);
+  if (!isFinite(asIfUTC)) return null;
+  // Read the offset AT that instant (not now), so a historical row is converted
+  // with the rules that were in force on its own day.
+  return new Date(asIfUTC - storeOffsetMs(new Date(asIfUTC)));
+}
+
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**

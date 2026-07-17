@@ -150,10 +150,26 @@ export default function PosPage() {
         : skippedDates.length
           ? ` · skipped ${skippedDates.length} date${skippedDates.length === 1 ? "" : "s"} already on record (${skippedDates.join(", ")})`
           : "";
+      // What the file did to STOCK, not just to the reports. Only lines that
+      // sold after a product's last count come off (the count already saw the
+      // rest), so say which — an import that silently moves stock, or silently
+      // doesn't, is the kind of thing you only discover at the next count.
+      const st = data.stock;
+      const stockNote = !st
+        ? ""
+        : st.unitsReduced
+          ? ` · stock −${st.unitsReduced} units sold after counting` +
+            (st.neverCounted ? ` · ${st.neverCounted} line${st.neverCounted === 1 ? "" : "s"} left alone (never counted)` : "") +
+            (st.sameDayNoTime ? ` · ${st.sameDayNoTime} same-day line${st.sameDayNoTime === 1 ? "" : "s"} with no time` : "")
+          : st.beforeCount || st.neverCounted || st.sameDayNoTime
+            ? ` · stock unchanged (${
+                st.beforeCount ? `${st.beforeCount} already counted` : st.neverCounted ? "never counted" : "no times to place them"
+              })`
+            : "";
       if (data.matched === 0 && (dupes || skippedDates.length)) {
         setToast(`Nothing new to import${skipNote.replace(" · ", " — ")}`);
       } else {
-        setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)${skipNote}`);
+        setToast(`Imported ${data.matched} sale lines (${data.salesCreated} days)${skipNote}${stockNote}`);
       }
       reload();
     } catch (e: any) {
