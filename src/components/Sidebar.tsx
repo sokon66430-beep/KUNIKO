@@ -36,8 +36,6 @@ import {
   TicketPercent,
   ReceiptText,
   ShieldCheck,
-  ChefHat,
-  Sparkles,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -54,15 +52,17 @@ const OPERATIONS = {
     { href: "/inventory", label: "Inventory", icon: Package },
     { href: "/stock-count", label: "Stock Count", icon: ClipboardCheck },
     { href: "/write-offs", label: "Write-Off", icon: PackageX },
-    { href: "/recipes", label: "Recipes", icon: ChefHat },
     { href: "/price-labels", label: "Price Labels", icon: Tag },
+    // Recipes (/recipes) and Promotions (/deals) are NOT listed here: both are
+    // master data now, written once for the whole chain, so they're managed on
+    // the Master Data page. The routes still exist and still render the same
+    // screens — this is a menu decision, not a removal.
+    //
     // URL stays /promotions: the saved per-role permissions key off the href, so
-    // renaming the route would silently reset who can open this page.
+    // renaming the route would silently reset who can open this page. A Mark
+    // Down is a label on specific items being cleared, and stays per store —
+    // which is why it's still here and the basket-wide deals engine isn't.
     { href: "/promotions", label: "Mark Down", icon: TicketPercent },
-    // …which is why the multi-buy deals engine lives at /deals instead. Two
-    // different tools: a Mark Down is a label on specific items being cleared,
-    // a Promotion is a rule the till applies to the whole basket.
-    { href: "/deals", label: "Promotions", icon: Sparkles },
     { href: "/purchase-requests", label: "Purchase Requests", icon: FileText },
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/reports-center", label: "Reports", icon: BarChart3 },
