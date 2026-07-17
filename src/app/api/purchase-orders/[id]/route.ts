@@ -3,7 +3,7 @@ import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { getSession } from "@/lib/session";
-import { poStatus, reflectProductChanges } from "@/lib/procurement";
+import { poStatus, reflectProductChanges, productsForPO } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +47,58 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return { error: `${po.poNo} has already been sent to ${po.supplier}. Untick "Sent" to change it.` };
     }
 
-    // Adjust the PO's lines: change ordered qty or remove a line. Never below
-    // what's already received. Cancelled POs are locked.
+    // Adjust the PO's lines: add a product, change ordered qty, or remove a
+    // line. Never below what's already received. Cancelled POs are locked.
     if (Array.isArray(body.items) && po.status !== "Cancelled" && canEditItems) {
       let changed = false;
-      for (const edit of body.items as { productId: string; qtyOrdered?: number; cost?: number; remove?: boolean }[]) {
+      // Resolved once, not per line: the whole list has to belong to this one
+      // supplier, so the answer can't change between lines.
+      const allowed = new Set(productsForPO(po, db.products, db.suppliers || []).map((p) => p.id));
+      for (const edit of body.items as {
+        productId: string;
+        qtyOrdered?: number;
+        cost?: number;
+        remove?: boolean;
+        add?: boolean;
+      }[]) {
+        // Add a product to the order.
+        //
+        // Checked HERE and not only in the picker: a PO is a document that goes
+        // to one supplier, and asking them for something they don't sell is the
+        // mistake the whole supplier-scoped catalog exists to prevent. A client
+        // could send any productId, so the rule has to live where the write is.
+        if (edit.add) {
+          const product = db.products.find((p) => p.id === edit.productId);
+          if (!product) return { error: "That product no longer exists." };
+          if (!allowed.has(product.id)) {
+            return { error: `${product.name} isn't supplied by ${po.supplier}, so it can't go on this order.` };
+          }
+          const qty = Math.max(1, Math.floor(Number(edit.qtyOrdered) || 1));
+          const existing = po.items.find((i) => i.productId === product.id);
+          if (existing) {
+            // Already on the order — add to it rather than raise a second line
+            // for the same item, which the supplier would read as a mistake.
+            existing.qtyOrdered += qty;
+          } else {
+            po.items.push({
+              productId: product.id,
+              sku: product.sku,
+              name: product.name,
+              unit: product.unit,
+              qtyOrdered: qty,
+              qtyReceived: 0,
+              // Cost comes from the product, never the request — same rule as
+              // the edit path below.
+              cost: product.cost,
+              barcode: product.barcode,
+              // No uomSize: that's units-per-box off the supplier's own order
+              // form, which a product record doesn't carry. The PO prints "-",
+              // which is what it already means for a loose unit.
+            });
+          }
+          changed = true;
+          continue;
+        }
         const line = po.items.find((i) => i.productId === edit.productId);
         if (!line) continue;
         if (edit.remove) {

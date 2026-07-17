@@ -36,6 +36,8 @@ import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
 import { OpeningOrderModal } from "@/components/OpeningOrderModal";
 import { usd, num, dateTime, shortDate } from "@/lib/format";
+import { productsForPO } from "@/lib/procurement";
+import { barcodeIncludes } from "@/lib/barcodes";
 
 export const dynamic = "force-dynamic";
 
@@ -454,6 +456,8 @@ export default function PurchaseOrdersPage() {
 
       {viewing && (
         <ViewPOModal
+          products={products || []}
+          suppliers={suppliers || []}
           po={viewing}
           onClose={() => setViewing(null)}
           onCancel={() => cancel(viewing)}
@@ -853,12 +857,16 @@ function SupplierBrowser({
 
 function ViewPOModal({
   po,
+  products,
+  suppliers,
   onClose,
   onCancel,
   onDelete,
   onSaved,
 }: {
   po: PurchaseOrder;
+  products: Product[];
+  suppliers: Supplier[];
   onClose: () => void;
   onCancel: () => void;
   onDelete: () => void;
@@ -933,6 +941,45 @@ function ViewPOModal({
   const [itemQuery, setItemQuery] = useState("");
   const [itemSort, setItemSort] = useState<ItemSort>("original");
 
+  // Adding a line: only ever this supplier's own range. A PO is one document to
+  // one supplier, so offering the whole 4,000-product catalog here would mostly
+  // be offering them things they don't sell.
+  const [addQuery, setAddQuery] = useState("");
+  const addable = useMemo(() => {
+    const onOrder = new Set(draft.map((d) => d.productId));
+    const range = productsForPO(po, products, suppliers).filter((p) => !onOrder.has(p.id));
+    const q = addQuery.trim().toLowerCase();
+    const hits = q
+      ? range.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            p.sku.toLowerCase().includes(q) ||
+            barcodeIncludes(p, q) ||
+            (p.nameKh || "").includes(q),
+        )
+      : range;
+    return { total: range.length, hits: [...hits].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 30) };
+  }, [po, products, suppliers, draft, addQuery]);
+
+  // New lines start at 1 and are edited in the qty box like any other — one way
+  // to set a quantity, not two.
+  function addLine(p: Product) {
+    setDraft((d) => [
+      ...d,
+      {
+        productId: p.id,
+        sku: p.sku,
+        name: p.name,
+        unit: p.unit,
+        qtyOrdered: 1,
+        qtyReceived: 0,
+        cost: p.cost,
+        barcode: p.barcode,
+      },
+    ]);
+    setAddQuery("");
+  }
+
   const shown = useMemo(() => {
     if (editing) return base;
     const q = itemQuery.trim().toLowerCase();
@@ -981,9 +1028,12 @@ function ViewPOModal({
     try {
       const edits = [
         // Only the ordered qty travels — unit cost is managed in Master Data.
+        // A line the PO didn't have is flagged `add`; the server re-checks the
+        // supplier and reads the cost off the product itself.
         ...draft.map((d) => ({
           productId: d.productId,
           qtyOrdered: Math.max(d.qtyReceived, Math.floor(Number(d.qtyOrdered) || 0)),
+          ...(items.some((o) => o.productId === d.productId) ? {} : { add: true }),
         })),
         // Lines removed in the draft → tell the server to drop them.
         ...items.filter((o) => !draft.some((d) => d.productId === o.productId)).map((o) => ({ productId: o.productId, remove: true })),
@@ -1065,10 +1115,62 @@ function ViewPOModal({
         {po.expectedDate && <span>Expected {shortDate(po.expectedDate)}</span>}
       </div>
       {editing && (
-        <p className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
-          Adjust the ordered quantity. You can’t go below what’s already received; remove a line only if none was
-          received. Unit cost is managed in Master Data.
-        </p>
+        <>
+          <p className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
+            Adjust the ordered quantity or add an item. You can’t go below what’s already received; remove a line only
+            if none was received. Unit cost is managed in Master Data.
+          </p>
+          <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-[0.06em] text-slate-500">Add an item</p>
+              <p className="text-[11.5px] text-slate-400">
+                {po.supplier} · {num(addable.total)} item{addable.total === 1 ? "" : "s"} not on this order
+              </p>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+              <Search size={15} className="shrink-0 text-slate-400" />
+              <input
+                value={addQuery}
+                onChange={(e) => setAddQuery(e.target.value)}
+                placeholder={`Search ${po.supplier}'s items — name, item ID or barcode…`}
+                className="w-full bg-transparent text-[13px] outline-none placeholder:text-slate-400"
+              />
+              {addQuery && (
+                <button onClick={() => setAddQuery("")} className="shrink-0 text-slate-400 hover:text-slate-600">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {addQuery.trim() && (
+              <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                {addable.hits.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => addLine(p)}
+                    className="flex w-full items-center justify-between gap-3 border-b border-slate-50 px-3 py-2 text-left last:border-0 hover:bg-brand-50"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-semibold text-ink-800">{p.name}</span>
+                      <span className="block truncate text-[11.5px] text-slate-400">
+                        {p.sku}
+                        {p.barcode ? ` · ${p.barcode}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-slate-500">{usd(p.cost)}</span>
+                  </button>
+                ))}
+                {addable.hits.length === 0 && (
+                  <p className="px-3 py-4 text-center text-[12.5px] text-slate-400">
+                    {addable.total === 0
+                      ? `Every item ${po.supplier} supplies is already on this order.`
+                      : `No item from ${po.supplier} matches “${addQuery.trim()}”. Only their own range can go on this order.`}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </>
       )}
       {/* Say WHY there's no Edit button. A missing control with no explanation
           reads as a bug; this reads as a rule. */}

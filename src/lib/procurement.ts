@@ -1,4 +1,32 @@
-import type { DB, Product, PurchaseOrder, POItem, POStatus } from "./types";
+import type { DB, Product, PurchaseOrder, POItem, POStatus, Supplier } from "./types";
+
+/**
+ * The supplier code a PO is really for.
+ *
+ * A PO stores its supplier's NAME, because that's what has to print on the
+ * document the supplier receives. Products carry both a `supplierCode` (the
+ * link) and a `supplier` (a copy of the name, as text). So going from a PO back
+ * to its supplier means a name lookup — once.
+ */
+export function poSupplierCode(po: PurchaseOrder, suppliers: Supplier[]): string | undefined {
+  return suppliers.find((s) => s.name === po.supplier)?.code;
+}
+
+/**
+ * What this PO's supplier actually sells — the only things allowed on the order.
+ *
+ * Matches on the CODE, which is the real link; the name on a product is a copy
+ * that master sync keeps in step. The name is used only when the PO's supplier
+ * isn't in the supplier list at all — an older PO, or a supplier since removed —
+ * where the text is genuinely all there is to go on.
+ *
+ * One definition because the picker and the server both need this answer, and a
+ * picker that offers what the server then refuses is worse than no picker.
+ */
+export function productsForPO(po: PurchaseOrder, products: Product[], suppliers: Supplier[]): Product[] {
+  const code = poSupplierCode(po, suppliers);
+  return products.filter((p) => (code ? p.supplierCode === code : !!p.supplier && p.supplier === po.supplier));
+}
 
 /** Suggested reorder quantity to bring a low item back to a healthy level. */
 export function suggestedQty(p: Product): number {
