@@ -638,22 +638,37 @@ export default function PosPage() {
               </div>
             </div>
           ) : (
-            /* Step 1 — one swipeable row of categories; tap one to see its items. */
+            /* Step 1 — the categories, as a grid that fills the space.
+               These used to be one horizontally-scrolling row, which made sense
+               when they sat ABOVE a product grid and wrapping would have pushed
+               the products off-screen. The till is two-step now: with no
+               category open there is nothing underneath to push, so the row only
+               hid half the categories off the right edge (no scrollbar to say
+               so) and left the rest of the screen empty. Same tile grid as the
+               products themselves, so both steps of the till look alike. */
             <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                Sell directly · tap to add{" "}
-                <span className="font-semibold normal-case tracking-normal text-slate-400">({directSaleCount})</span>
+              <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+                Sell directly · tap a category{" "}
+                <span className="font-semibold normal-case tracking-normal text-slate-400">
+                  ({directSaleCount} items)
+                </span>
               </p>
-              <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                 {directSaleGroups.map((g) => (
                   <button
                     key={g.category}
                     onClick={() => setOpenCat(g.category)}
-                    className="card shrink-0 px-3.5 py-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+                    className="card group flex min-h-[5.5rem] flex-col justify-between p-3.5 text-left transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
                   >
-                    <span className="block whitespace-nowrap text-sm font-bold text-ink-900">{g.category}</span>
-                    <span className="block text-[11px] text-slate-400">
-                      {g.items.length} item{g.items.length === 1 ? "" : "s"}
+                    <span className="text-sm font-bold leading-snug text-ink-900">{g.category}</span>
+                    <span className="mt-2 flex items-center justify-between">
+                      <span className="text-[11.5px] text-slate-500">
+                        {g.items.length} item{g.items.length === 1 ? "" : "s"}
+                      </span>
+                      <ChevronLeft
+                        size={15}
+                        className="rotate-180 text-slate-300 transition group-hover:text-brand-500"
+                      />
                     </span>
                   </button>
                 ))}
