@@ -52,6 +52,19 @@ export function buildStats(db: DB, range: RangeKey = "30d") {
     ),
   );
   const discount = round2(basketDiscount + markdownDiscount);
+
+  // Gross: the full shelf price of everything sold, before anything came off.
+  //
+  // Derived by adding the discount back rather than re-summing the lines,
+  // because that's what keeps the three figures honest as one statement:
+  //
+  //     grossRevenue − discount = revenue (what customers actually paid)
+  //
+  // `revenue` above is already net — a sale's `total` is gross-minus-discount,
+  // and a markdown line's price is the reduced one. So both kinds of discount
+  // have to be added back to get to gross, which is exactly what `discount`
+  // now sums.
+  const grossRevenue = round2(revenue + discount);
   const txCount = sales.length;
   const itemsSold = sales.reduce(
     (acc, s) => acc + s.items.reduce((a, it) => a + it.qty, 0),
@@ -150,6 +163,10 @@ export function buildStats(db: DB, range: RangeKey = "30d") {
     // one number nobody can act on.
     basketDiscount,
     markdownDiscount,
+    // Full shelf price before anything came off. `revenue` stays what it has
+    // always been — what customers actually paid — because /reports and the
+    // charts already read it that way.
+    grossRevenue,
     txCount,
     itemsSold,
     avgTicket,
