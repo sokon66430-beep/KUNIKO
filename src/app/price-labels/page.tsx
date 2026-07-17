@@ -14,7 +14,6 @@ import {
   MapPin,
   Search,
   X,
-  ChevronDown,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useFetch, api } from "@/lib/client";
@@ -184,6 +183,8 @@ export default function PriceLabelsPage() {
   // takes this Gondola/Shelf. Change it when you move to the next shelf.
   const [curGondola, setCurGondola] = useState("");
   const [curShelf, setCurShelf] = useState("");
+  // Two jobs on one page: build the labels, or look up where things live.
+  const [tab, setTab] = useState<"labels" | "locations">("labels");
   const scanRef = useRef<HTMLInputElement>(null);
 
   // Label width (mm) + a 1mm gap so there's a thin line to cut between labels
@@ -399,21 +400,56 @@ export default function PriceLabelsPage() {
       <div className="no-print">
         <PageHeader
           title="Price Labels"
-          subtitle="Scan or search a product, set how many labels, then print — ONMART shelf-label format"
+          subtitle={
+            tab === "labels"
+              ? "Scan or search a product, set how many labels, then print — ONMART shelf-label format"
+              : "Every product registered to a shelf — where it is, and what's on each gondola"
+          }
           actions={
-            <div className="flex items-center gap-2">
-              <button className="btn-primary" disabled={totalLabels === 0 || pdfBusy} onClick={downloadPdf}>
-                <FileDown size={18} /> {pdfBusy ? "Building…" : "Download PDF"}
-              </button>
-              <button className="btn-ghost" disabled={totalLabels === 0} onClick={printLabels}>
-                <Printer size={18} /> Print
-              </button>
-            </div>
+            // Only on the Labels tab: printing an empty sheet from the Location
+            // tab isn't a thing anyone wants, and a permanently-disabled button
+            // reads as broken rather than as not-applicable.
+            tab === "labels" ? (
+              <div className="flex items-center gap-2">
+                <button className="btn-primary" disabled={totalLabels === 0 || pdfBusy} onClick={downloadPdf}>
+                  <FileDown size={18} /> {pdfBusy ? "Building…" : "Download PDF"}
+                </button>
+                <button className="btn-ghost" disabled={totalLabels === 0} onClick={printLabels}>
+                  <Printer size={18} /> Print
+                </button>
+              </div>
+            ) : null
           }
         />
 
         {error && <ErrorBox message={error} />}
 
+        {/* Two jobs on one page: make the labels, or look up where things live.
+            Tabs rather than one long scroll — the label sheet runs to dozens of
+            items, and the shelf map was stranded underneath it. */}
+        <div className="mb-5 inline-flex rounded-xl bg-slate-100 p-1">
+          {(
+            [
+              { key: "labels", label: "Price Label", icon: <Tag size={15} /> },
+              { key: "locations", label: "Location", icon: <MapPin size={15} /> },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
+                tab === t.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "locations" && <RegisteredLocations products={list} />}
+
+        {tab === "labels" && (
+          <>
         {/* Scan / search */}
         <Card className="mb-6">
           <label className="label flex items-center gap-1.5">
@@ -547,15 +583,6 @@ export default function PriceLabelsPage() {
           </p>
         </Card>
 
-        {/* Everything registered so far — the answer to "what did we put on
-            that shelf?", which the page could set but never show back.
-
-            Sits directly under the location field it reports on, not at the
-            bottom: you set a Gondola/Shelf up there, and the check of what's
-            already registered belongs next to it — not below a label sheet
-            that can run to dozens of items. */}
-        <RegisteredLocations products={list} />
-
         {/* Batch list */}
         {batch.length > 0 && (
           <Card className="mb-6 p-0">
@@ -651,10 +678,14 @@ export default function PriceLabelsPage() {
         {batch.length > 0 && (
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Preview — exactly what prints</p>
         )}
+          </>
+        )}
       </div>
 
-      {/* The printable sheet: labels duplicated per requested qty */}
-      <div className="overflow-x-auto">
+      {/* The printable sheet: labels duplicated per requested qty. Hidden on the
+          Location tab — it's the print target, so leaving it mounted there would
+          hang a sheet of labels under a shelf map. */}
+      <div className={`overflow-x-auto ${tab === "labels" ? "" : "hidden"}`}>
         <div
           className="label-sheet grid"
           style={{ gridTemplateColumns: `repeat(${perRow}, ${layout.w}mm)`, gap: `${layout.gap}mm`, width: "max-content" }}
@@ -693,7 +724,6 @@ export default function PriceLabelsPage() {
  * places appears under both — that's not duplication, it's where it is.
  */
 function RegisteredLocations({ products }: { products: Product[] }) {
-  const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
   // One row per product PER PLACE it sits.
@@ -760,7 +790,9 @@ function RegisteredLocations({ products }: { products: Product[] }) {
 
   return (
     <Card className="mb-6">
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-3 text-left">
+      {/* No collapse toggle: this is its own tab now, and you don't click
+          "Location" to then be asked whether you'd like to see the locations. */}
+      <div className="flex w-full items-center justify-between gap-3 text-left">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600">
             <MapPin size={17} />
@@ -769,18 +801,16 @@ function RegisteredLocations({ products }: { products: Product[] }) {
             <p className="text-base font-bold text-ink-900">Registered Locations</p>
             <p className="mt-0.5 text-[12.5px] text-slate-500">
               {productCount === 0
-                ? "Nothing registered yet — set a Gondola/Shelf above, then scan."
+                ? "Nothing registered yet — set a Gondola/Shelf on the Price Label tab, then scan."
                 : `${num(productCount)} product${productCount === 1 ? "" : "s"} across ${num(gondolaCount)} gondola${gondolaCount === 1 ? "" : "s"}`}
               {unregistered > 0 && productCount > 0 ? ` · ${num(unregistered)} with no location` : ""}
             </p>
           </div>
         </div>
-        <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+      </div>
 
-      {open && (
-        <div className="mt-4 border-t border-slate-100 pt-4">
-          <div className="mb-3 flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+      <div className="mt-4 border-t border-slate-100 pt-4">
+        <div className="mb-3 flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
             <Search size={15} className="shrink-0 text-slate-400" />
             <input
               value={q}
@@ -800,7 +830,7 @@ function RegisteredLocations({ products }: { products: Product[] }) {
               title={placed.length === 0 ? "No shelf locations registered yet" : `Nothing matches “${q.trim()}”`}
               hint={
                 placed.length === 0
-                  ? "Type a Gondola and Shelf at the top, then scan the items on it — each scan registers that spot on the product."
+                  ? "On the Price Label tab, type a Gondola and Shelf, then scan the items on it — each scan registers that spot on the product."
                   : "Search by product name, item ID, barcode, or a gondola / shelf."
               }
               icon={<MapPin size={18} />}
@@ -853,8 +883,7 @@ function RegisteredLocations({ products }: { products: Product[] }) {
               ))}
             </div>
           )}
-        </div>
-      )}
+      </div>
     </Card>
   );
 }
