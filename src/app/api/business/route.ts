@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { canManagePromotions } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,15 @@ export async function PATCH(req: Request) {
     if (typeof body.logo === "string") {
       const ok = body.logo === "" || /^data:image\/(png|jpeg|jpg|svg\+xml|webp);base64,/.test(body.logo);
       if (ok && body.logo.length < 2_000_000) b.logo = body.logo || undefined;
+    }
+    // How deals are allowed to interact. Kept behind the same permission as
+    // creating a promotion — flipping "combine" on changes what every future
+    // basket is charged, which is the same margin decision.
+    if (body.promotionSettings && typeof body.promotionSettings === "object" && canManagePromotions(s.role)) {
+      b.promotionSettings = {
+        allowCombine: !!body.promotionSettings.allowCombine,
+        allowStackWithMarkdown: !!body.promotionSettings.allowStackWithMarkdown,
+      };
     }
     if (Array.isArray(body.approvers)) {
       // Role/name/code are all required per row — at most 3 approvers.

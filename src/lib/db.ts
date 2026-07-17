@@ -30,6 +30,8 @@ function backfill(db: DB): DB {
   if (!db.markdowns) db.markdowns = [];
   if (!db.recipes) db.recipes = [];
   if (!db.stockMovements) db.stockMovements = [];
+  if (!db.promotions) db.promotions = [];
+  if (!db.promotionUsages) db.promotionUsages = [];
   if (!db.auditLog) db.auditLog = [];
   if (db.meta.nextPR == null) db.meta.nextPR = 100002;
   if (db.meta.nextPO == null) db.meta.nextPO = 100021;
@@ -39,6 +41,12 @@ function backfill(db: DB): DB {
   if (db.meta.nextMarkdown == null) db.meta.nextMarkdown = 1;
   if (db.meta.nextRecipe == null) db.meta.nextRecipe = 100001;
   if (db.meta.nextMovement == null) db.meta.nextMovement = 1;
+  if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
+  if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;
+  // Deals don't combine or stack until the owner says so — see lib/promotions.
+  if (db.meta.business && !db.meta.business.promotionSettings) {
+    db.meta.business.promotionSettings = { allowCombine: false, allowStackWithMarkdown: false };
+  }
   if (db.meta.nextAudit == null) db.meta.nextAudit = 1;
   // Every product carries a ranking on its price label; default everything to "A".
   for (const p of db.products || []) {

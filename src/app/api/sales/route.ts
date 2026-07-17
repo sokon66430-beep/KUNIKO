@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
 import { consumptionPlan, recipeCosting, recipeFor } from "@/lib/recipes";
+import { applyPromotions, DEFAULT_PROMOTION_SETTINGS } from "@/lib/promotions";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,27 @@ export async function POST(req: Request) {
     // pays; VAT is the portion already inside it, not added on top.
     const gross = round2(items.reduce((s, it) => s + it.price * it.qty, 0));
     const cost = round2(items.reduce((s, it) => s + it.cost * it.qty, 0));
-    const discount = round2(Math.min(Number(body.discount) || 0, gross));
+
+    // Promotions are worked out HERE, from the basket, and never taken from the
+    // client. The till previews the same deals with the same engine, but a
+    // tampered request can't invent a discount — the server re-derives it from
+    // the promotion records and the prices it just resolved itself.
+    const basket = applyPromotions(
+      items.map((it) => ({
+        productId: it.productId,
+        qty: it.qty,
+        unitPrice: it.price,
+        markdownCode: it.markdownCode,
+      })),
+      db.promotions,
+      db.products,
+      db.meta.business.promotionSettings || DEFAULT_PROMOTION_SETTINGS,
+    );
+
+    // A manual discount and the automatic ones stack into one figure, capped so
+    // a basket can never total below zero.
+    const manualDiscount = Math.max(0, Number(body.discount) || 0);
+    const discount = round2(Math.min(manualDiscount + basket.discount, gross));
     const total = round2(gross - discount);
     const subtotal = round2(total / (1 + db.meta.business.vatRate)); // net of VAT
     const tax = round2(total - subtotal); // VAT already contained in the price
@@ -196,6 +217,38 @@ export async function POST(req: Request) {
       });
     }
 
+    // Record each deal that fired. Stock needs nothing special here: a "free"
+    // bottle is one the customer scanned, so it's already in `items` and has
+    // already come off the shelf above — the deal only changes what's charged.
+    const nameOf = (id: string) => items.find((i) => i.productId === id)?.name || id;
+    const skuOf = (id: string) => items.find((i) => i.productId === id)?.sku || "";
+    for (const a of basket.applications) {
+      const seq = db.meta.nextPromotionUsage++;
+      db.promotionUsages.push({
+        id: `pu${seq}`,
+        at: now,
+        saleId,
+        invoiceNo,
+        cashier: actor,
+        promotionId: a.promotionId,
+        promotionCode: a.code,
+        promotionName: a.name,
+        type: a.type,
+        detail: a.detail,
+        discount: a.discount,
+        freeQty: a.freeQty,
+        qty: a.qty,
+        revenue: a.revenue,
+        items: a.items.map((i) => ({
+          productId: i.productId,
+          sku: skuOf(i.productId),
+          name: nameOf(i.productId),
+          qty: i.qty,
+          freeQty: i.freeQty,
+        })),
+      });
+    }
+
     let customerId: string | null = null;
     let customerName: string | undefined;
     if (body.customerId) {
@@ -234,6 +287,15 @@ export async function POST(req: Request) {
       total,
       cost,
       profit,
+      promotions: basket.applications.length
+        ? basket.applications.map((a) => ({
+            code: a.code,
+            name: a.name,
+            detail: a.detail,
+            discount: a.discount,
+            freeQty: a.freeQty,
+          }))
+        : undefined,
       paymentMethod: method,
       paymentRef: body.paymentRef || undefined,
       tendered,

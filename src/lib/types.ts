@@ -196,6 +196,92 @@ export type StockMovement = {
   cost?: number; // value consumed (USD) at the time
 };
 
+// ---------------------------------------------------------------------------
+// Promotions — the multi-buy deals the till works out by itself
+//
+// Different animal from a Markdown: a markdown is a label stuck on specific
+// physical items being cleared, sold under its own barcode. A promotion is a
+// RULE over the basket ("buy 2 get 1 free", "any 3 drinks for $5") that the
+// cashier never touches — they scan, and the engine decides. See lib/promotions.
+// ---------------------------------------------------------------------------
+
+export type PromotionType =
+  | "BUY_X_GET_Y_FREE" // buy 2 get 1 free
+  | "BUY_X_AMOUNT_OFF" // buy 2, take $1 off
+  | "BUY_X_PERCENT_OFF" // buy 3, 10% off
+  | "BUNDLE_PRICE"; // any 3 drinks for $5
+
+// What the deal covers. One product, a hand-picked set, whole categories, or a
+// supplier's whole range (the master has no "brand" field — the supplier is the
+// closest real thing, and for "all Pepsi products" it's the same set).
+export type PromotionScope =
+  | { kind: "products"; productIds: string[] }
+  | { kind: "category"; categories: string[] }
+  | { kind: "supplier"; supplierCodes: string[] };
+
+export type PromotionStatus = "Active" | "Paused";
+
+export type Promotion = {
+  id: string;
+  code: string; // PRM-100001
+  name: string;
+  type: PromotionType;
+  scope: PromotionScope;
+
+  buyQty: number; // the X in every type — the qualifying quantity
+  freeQty?: number; // BUY_X_GET_Y_FREE only
+  discountAmount?: number; // BUY_X_AMOUNT_OFF only (USD off per set)
+  discountPercent?: number; // BUY_X_PERCENT_OFF only
+  bundlePrice?: number; // BUNDLE_PRICE only (what the set costs instead)
+
+  startDate: string; // yyyy-mm-dd, first day
+  endDate: string; // yyyy-mm-dd, LAST day — over the day after
+  startTime?: string; // "HH:MM" daily window; both blank = all day
+  endTime?: string;
+
+  status: PromotionStatus;
+  priority: number; // 1–100, highest wins when two deals want the same item
+
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  updatedAt?: string;
+};
+
+// One deal firing on one sale. A ledger row per usage rather than a figure
+// derived from sales: the reports need to know which items were given away and
+// what the discount cost, and re-deriving that later would mean re-running the
+// engine against promotions that may since have been edited.
+export type PromotionUsage = {
+  id: string;
+  at: string;
+  saleId: string;
+  invoiceNo: string;
+  cashier: string;
+
+  promotionId: string;
+  promotionCode: string;
+  promotionName: string;
+  type: PromotionType;
+  detail: string; // "Buy 2 Get 1 Free"
+
+  discount: number; // USD taken off this sale by this deal
+  freeQty: number; // items handed over unpaid
+  qty: number; // qualifying items the deal consumed
+  revenue: number; // what the customer still paid for those items
+  items: { productId: string; sku: string; name: string; qty: number; freeQty: number }[];
+};
+
+// How deals are allowed to interact. Both off by default: a customer getting a
+// third bottle free AND 10% off the other two is a margin decision, not a
+// default.
+export type PromotionSettings = {
+  // Let a second promotion consume items a first one already used.
+  allowCombine: boolean;
+  // Let promotions apply on top of a marked-down (already reduced) price.
+  allowStackWithMarkdown: boolean;
+};
+
 export type PaymentMethod = "Cash" | "KHQR" | "Card" | "ABA" | "Wing";
 
 export type Sale = {
@@ -205,11 +291,15 @@ export type Sale = {
   customerId?: string | null;
   customerName?: string;
   subtotal: number;
-  discount: number;
+  discount: number; // every discount off the gross — promotions included
   tax: number;
   total: number;
   cost: number; // total cost of goods sold
   profit: number;
+  // The deals the engine fired on this basket, for the receipt and a reprint.
+  // The reporting source is db.promotionUsages — this is the customer-facing
+  // summary of the same event, written in the same transaction.
+  promotions?: { code: string; name: string; detail: string; discount: number; freeQty: number }[];
   paymentMethod: PaymentMethod;
   paymentRef?: string; // e.g. KHQR md5 of the confirmed Bakong transaction
   // Cash sales only: what the customer handed over and what went back to them.
@@ -424,7 +514,8 @@ export type AuditEntityType =
   | "WriteOff"
   | "Sale"
   | "Markdown"
-  | "Recipe";
+  | "Recipe"
+  | "Promotion";
 
 export type AuditEvent = {
   id: string;
@@ -449,6 +540,8 @@ export type DB = {
   writeOffs: WriteOff[];
   recipes: Recipe[];
   stockMovements: StockMovement[];
+  promotions: Promotion[];
+  promotionUsages: PromotionUsage[];
   auditLog: AuditEvent[];
   meta: {
     nextInvoice: number;
@@ -460,6 +553,8 @@ export type DB = {
     nextMarkdown: number;
     nextRecipe: number;
     nextMovement: number;
+    nextPromotion: number;
+    nextPromotionUsage: number;
     nextAudit: number;
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().
@@ -480,6 +575,7 @@ export type DB = {
       invoiceTo: string[]; // Khmer/English invoice-to note lines
       poNotes: string[]; // standing notes printed on every PO
       approvers?: Approver[]; // who may approve edits to submitted receipts
+      promotionSettings?: PromotionSettings; // how deals may interact (see lib/promotions)
     };
   };
 };

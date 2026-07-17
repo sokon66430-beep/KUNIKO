@@ -17,6 +17,7 @@ import {
   BarChart3,
   ScanLine,
   ChevronLeft,
+  Sparkles,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
@@ -28,6 +29,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { isShownOnPos } from "@/lib/pos";
+import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
 
 // A discounted line and a full-price line for the SAME product can sit in one
 // sale (the customer grabbed one reduced loaf and one fresh), so the markdown
@@ -64,6 +66,8 @@ export default function PosPage() {
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const cartSeq = useRef(0);
+  const [promos, setPromos] = useState<PromoApplication[]>([]);
+  const promoSeq = useRef(0); // guards against out-of-order preview replies
   const [customerId, setCustomerId] = useState<string>("");
   const [discount, setDiscount] = useState<string>("");
   const [payment, setPayment] = useState<PaymentMethod>("Cash");
@@ -193,10 +197,50 @@ export default function PosPage() {
 
   // Newest-added line on top so the cashier always sees what they just scanned.
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
+
+  // --- Promotions the basket qualifies for ---------------------------------
+  // Asked of the server rather than worked out here: the engine needs every
+  // promotion record and every product's real price, and a second copy of the
+  // rules living in the till is a second copy that can drift from the one that
+  // actually charges the customer.
+  const basketKey = JSON.stringify(
+    [...lines].sort((a, b) => a.product.id.localeCompare(b.product.id)).map((l) => [l.product.id, l.qty, l.markdown?.code]),
+  );
+  useEffect(() => {
+    if (lines.length === 0) {
+      setPromos([]);
+      return;
+    }
+    // Scanning fires these faster than they return, so tag each request and
+    // ignore any answer that isn't for the newest basket — otherwise a slow
+    // reply for 2 bottles could overwrite the right answer for 3.
+    const seq = ++promoSeq.current;
+    api<{ applications: PromoApplication[] }>("/api/promotions/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        items: lines.map((l) => ({ productId: l.product.id, qty: l.qty, markdownCode: l.markdown?.code })),
+      }),
+    })
+      .then((r) => {
+        if (seq === promoSeq.current) setPromos(r.applications || []);
+      })
+      .catch(() => {
+        // Preview unavailable — show no deal rather than a stale one. The sale
+        // still gets it: the server applies promotions whatever this says.
+        if (seq === promoSeq.current) setPromos([]);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basketKey]);
+  const promoDiscount = promos.reduce((s, a) => s + a.discount, 0);
   // Selling prices are VAT-INCLUSIVE: the sticker price already contains VAT, so
   // the customer pays it as-is — VAT is the portion inside, never added on top.
   const gross = lines.reduce((s, l) => s + linePrice(l) * l.qty, 0);
-  const discountNum = Math.min(Number(discount) || 0, gross);
+  const manualDiscount = Math.min(Number(discount) || 0, gross);
+  // Deals the engine says apply to what's in the basket right now. The server
+  // works these out again for real when the sale lands — this is the preview
+  // that lets the cashier tell the customer BEFORE taking the money, and it has
+  // to be in the total or the change owed would be wrong.
+  const discountNum = Math.min(manualDiscount + promoDiscount, gross);
   const total = gross - discountNum; // what the customer pays (VAT included)
   const subtotal = total / (1 + VAT_RATE); // net of the included VAT
   const tax = total - subtotal; // VAT already contained in the price
@@ -323,7 +367,10 @@ export default function PosPage() {
         // label and re-checks it's still live before discounting anything.
         items: lines.map((l) => ({ productId: l.product.id, qty: l.qty, markdownCode: l.markdown?.code })),
         customerId: customerId || null,
-        discount: discountNum,
+        // ONLY the cashier's typed discount. The promotion part of `discountNum`
+        // is the server's own to work out — sending it back would have it
+        // counted twice.
+        discount: manualDiscount,
         paymentMethod: payment,
         paymentRef: opts?.paymentRef,
         tendered: opts?.tendered,
@@ -693,8 +740,33 @@ export default function PosPage() {
                 </div>
               </div>
 
+              {/* What the basket has earned. The cashier applies nothing — this
+                  is here so they can tell the customer before taking payment. */}
+              {promos.length > 0 && (
+                <div className="space-y-2 rounded-xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200">
+                  <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.06em] text-emerald-700">
+                    <Sparkles size={13} /> Promotion applied
+                  </p>
+                  {promos.map((a) => (
+                    <div key={a.promotionId} className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-semibold text-emerald-900">{a.name}</p>
+                        <p className="text-[11.5px] text-emerald-700">
+                          {a.detail}
+                          {a.freeQty > 0 && ` · ${a.freeQty} free`}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[13px] font-bold tabular-nums text-emerald-700">
+                        - {usd(a.discount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
-                {discountNum > 0 && <Row label="Discount" value={`- ${usd(discountNum)}`} tone="rose" />}
+                {promoDiscount > 0 && <Row label="Promotions" value={`- ${usd(promoDiscount)}`} tone="rose" />}
+                {manualDiscount > 0 && <Row label="Discount" value={`- ${usd(manualDiscount)}`} tone="rose" />}
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-bold text-ink-900">Total</span>
@@ -870,9 +942,32 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
               </div>
             ))}
           </div>
+          {/* Name each deal on the receipt — the customer should be able to see
+              what they got and why, not just a lump discount. */}
+          {sale.promotions?.length ? (
+            <div className="mt-2 space-y-1 border-t border-dashed border-slate-200 pt-2">
+              {sale.promotions.map((p) => (
+                <div key={p.code} className="flex items-start justify-between gap-2 text-[12px]">
+                  <span className="min-w-0 text-emerald-700">
+                    {p.name}
+                    <span className="block text-[11px] text-slate-400">
+                      {p.detail}
+                      {p.freeQty > 0 && ` · ${p.freeQty} free`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-semibold text-emerald-700">- {usd(p.discount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* Order matters: `subtotal` is the ex-VAT value of what's actually
+              PAID, so it has to come after the discount or the receipt reads as
+              if the numbers don't add up (items − discount = total, and
+              subtotal + VAT = total). */}
           <div className="mt-2 space-y-1 border-t border-dashed border-slate-200 pt-2 text-sm">
-            <Row label="Subtotal" value={usd(sale.subtotal)} />
+            {sale.discount > 0 && <Row label="Items" value={usd(sale.total + sale.discount)} />}
             {sale.discount > 0 && <Row label="Discount" value={`- ${usd(sale.discount)}`} tone="rose" />}
+            <Row label="Subtotal (ex VAT)" value={usd(sale.subtotal)} />
             <Row label="VAT" value={usd(sale.tax)} />
             <div className="flex justify-between pt-1 text-base font-bold text-ink-900">
               <span>Total</span>

@@ -1,4 +1,10 @@
 import type { Markdown } from "./types";
+import { storeToday } from "./storetime";
+
+// The store clock now lives in lib/storetime (promotions need the time of day
+// too, and one shop can't have two ideas of what day it is). Re-exported here
+// so the many callers that already import it from this module keep working.
+export { storeToday };
 
 // ---------------------------------------------------------------------------
 // Markdowns — the "reduced to clear" label. A product is registered for a cut
@@ -30,22 +36,6 @@ export function isMarkdownCode(code: string): boolean {
 export function markdownPrice(originalPrice: number, percent: number): number {
   const p = Math.max(0, Math.min(100, percent));
   return Math.round(originalPrice * (1 - p / 100) * 100) / 100;
-}
-
-// The store runs on Phnom Penh time while the server runs on UTC. Resolving
-// "today" in the store's own zone is what stops a promo dying at 5pm local on
-// its final day (UTC midnight), or lingering an extra evening.
-const STORE_TZ = "Asia/Phnom_Penh";
-
-/** Today's calendar date in the store's timezone, as yyyy-mm-dd. */
-export function storeToday(now: Date = new Date()): string {
-  // en-CA formats as yyyy-mm-dd, which sorts and compares as plain text.
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: STORE_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
 }
 
 export type MarkdownStatus = "Scheduled" | "Active" | "Expired" | "Cancelled";

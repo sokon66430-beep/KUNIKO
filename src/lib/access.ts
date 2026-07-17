@@ -52,6 +52,10 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/promotions", label: "Mark Down" },
   { href: "/recipes", label: "Recipes" },
   { href: "/recipe-reports", label: "Recipe Reports" },
+  // URL is /deals: /promotions was kept by the Mark Down page (renaming it
+  // would drop the saved per-role access, which is keyed on the href).
+  { href: "/deals", label: "Promotions" },
+  { href: "/promotion-reports", label: "Promotion Reports" },
   { href: "/purchase-requests", label: "Purchase Requests" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },
@@ -156,6 +160,21 @@ export function canMarkDown(role: Role): boolean {
 // what comes off stock on every future sale, so it sits with store leadership
 // and above — crew cook to the recipe, they don't rewrite it.
 export function canManageRecipes(role: Role): boolean {
+  return (
+    role === "owner" ||
+    role === "store_manager" ||
+    role === "asst_store_manager" ||
+    role === "area_manager" ||
+    role === "ops_manager" ||
+    role === "manager" ||
+    role === "operations"
+  );
+}
+
+// Who may write a promotion. A deal applies itself to every basket that
+// qualifies, with no one at the till to catch a mistake — so setting one up is
+// a margin decision that stays with store leadership and above.
+export function canManagePromotions(role: Role): boolean {
   return (
     role === "owner" ||
     role === "store_manager" ||

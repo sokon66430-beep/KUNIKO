@@ -218,6 +218,8 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
     markdowns: [],
     recipes: [],
     stockMovements: [],
+    promotions: [],
+    promotionUsages: [],
     auditLog,
     meta: {
       nextInvoice: 100001,
@@ -228,6 +230,8 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
       nextMarkdown: 1,
       nextRecipe: 100001,
       nextMovement: 1,
+      nextPromotion: 100001,
+      nextPromotionUsage: 1,
       nextWriteOff: 100001,
       nextAudit: withDemo ? 4 : 1,
       business,

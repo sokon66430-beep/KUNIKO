@@ -14,9 +14,10 @@ import {
   FileType2,
   FileDown,
   ChefHat,
+  Sparkles,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
-import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount, Recipe } from "@/lib/types";
+import type { Sale, PurchaseOrder, PurchaseRequest, GoodsReceipt, WriteOff, StockCount, Recipe, Promotion } from "@/lib/types";
 import { PageHeader, Card } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
 import { num } from "@/lib/format";
@@ -50,6 +51,7 @@ export default function ReportsCenterPage() {
   const { data: wos } = useFetch<WriteOff[]>("/api/write-offs");
   const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
   const { data: recipes } = useFetch<Recipe[]>("/api/recipes");
+  const { data: promotions } = useFetch<Promotion[]>("/api/promotions");
 
   // Receiving report can be narrowed to one supplier.
   const [grnSupplier, setGrnSupplier] = useState("All");
@@ -136,6 +138,14 @@ export default function ReportsCenterPage() {
       desc: "Ingredients the kitchen consumed, bowls sold per recipe, and food cost vs margin.",
       stat: recipes ? `${num(recipes.length)} recipes` : undefined,
       open: "/recipe-reports",
+    },
+    {
+      icon: Sparkles,
+      accent: "emerald",
+      title: "Promotions",
+      desc: "How each deal performed — times used, items given free, discount cost and sales generated.",
+      stat: promotions ? `${num(promotions.length)} promotions` : undefined,
+      open: "/promotion-reports",
     },
     {
       icon: ClipboardCheck,

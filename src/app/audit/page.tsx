@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   Tag,
   ChefHat,
+  Sparkles,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
 import type { AuditEvent, AuditEntityType } from "@/lib/types";
@@ -35,6 +36,7 @@ const TYPE_META: Record<AuditEntityType, { icon: any; tint: string }> = {
   Markdown: { icon: Tag, tint: "bg-amber-50 text-amber-600" },
   Sale: { icon: ShoppingCart, tint: "bg-brand-50 text-brand-600" },
   Recipe: { icon: ChefHat, tint: "bg-violet-50 text-violet-600" },
+  Promotion: { icon: Sparkles, tint: "bg-emerald-50 text-emerald-600" },
 };
 
 const ACTION_COLOR: Record<string, string> = {

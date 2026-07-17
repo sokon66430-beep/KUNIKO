@@ -37,6 +37,7 @@ import {
   ReceiptText,
   ShieldCheck,
   ChefHat,
+  Sparkles,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -58,6 +59,10 @@ const OPERATIONS = {
     // URL stays /promotions: the saved per-role permissions key off the href, so
     // renaming the route would silently reset who can open this page.
     { href: "/promotions", label: "Mark Down", icon: TicketPercent },
+    // …which is why the multi-buy deals engine lives at /deals instead. Two
+    // different tools: a Mark Down is a label on specific items being cleared,
+    // a Promotion is a rule the till applies to the whole basket.
+    { href: "/deals", label: "Promotions", icon: Sparkles },
     { href: "/purchase-requests", label: "Purchase Requests", icon: FileText },
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/reports-center", label: "Reports", icon: BarChart3 },
