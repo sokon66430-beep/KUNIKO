@@ -4,7 +4,7 @@ import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
-import { canApproveCash } from "@/lib/access";
+import { canCancelInvoice } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +28,11 @@ function tierFor(spent: number) {
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  if (!canApproveCash(session.role)) {
-    return NextResponse.json({ error: "Only a supervisor can cancel an invoice" }, { status: 403 });
+  if (!canCancelInvoice(session.role)) {
+    return NextResponse.json(
+      { error: "Only the store manager or assistant store manager can cancel an invoice" },
+      { status: 403 },
+    );
   }
   const body = await req.json().catch(() => ({}));
   const reason = String(body.reason || "").trim();

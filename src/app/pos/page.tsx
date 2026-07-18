@@ -31,7 +31,7 @@ import { usd, riel, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
-import { canSeeProfit, canApproveCash } from "@/lib/access";
+import { canSeeProfit, canCancelInvoice } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
@@ -1328,10 +1328,11 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
 // the server puts the stock back, reverses loyalty and drops the sale from every
 // report — the row stays, marked Cancelled, so the void is on the record.
 function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
-  const { data, loading, reload } = useFetch<Sale[]>("/api/sales?limit=60");
+  const { data, loading, reload } = useFetch<Sale[]>("/api/sales?limit=200");
   const role = useRole();
-  const canCancel = role ? canApproveCash(role) : false;
+  const canCancel = role ? canCancelInvoice(role) : false;
   const [busy, setBusy] = useState<string | null>(null);
+  const [q, setQ] = useState("");
 
   async function cancelInvoice(s: Sale) {
     const reason = window.prompt(`Cancel invoice ${s.invoiceNo} (${usd(s.total)})?\n\nType a reason — this puts the stock back and voids the sale:`);
@@ -1348,7 +1349,15 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
     }
   }
 
-  const rows = data || [];
+  const query = q.trim().toLowerCase();
+  const rows = (data || []).filter(
+    (s) =>
+      !query ||
+      s.invoiceNo.toLowerCase().includes(query) ||
+      s.paymentMethod.toLowerCase().includes(query) ||
+      (s.customerName || "").toLowerCase().includes(query) ||
+      String(s.total).includes(query),
+  );
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
@@ -1357,8 +1366,23 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
           <h3 className="flex items-center gap-2 text-base font-bold text-ink-900"><ReceiptText size={18} className="text-brand-600" /> Invoices</h3>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X size={17} /></button>
         </div>
+        {/* Search by invoice number, amount, payment or customer */}
+        <div className="border-b border-slate-100 px-5 py-3">
+          <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+            <Search size={15} className="shrink-0 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search invoice no., amount, payment…"
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-slate-400"
+            />
+            {q && (
+              <button onClick={() => setQ("")} className="shrink-0 text-slate-400 hover:text-slate-600"><X size={14} /></button>
+            )}
+          </div>
+        </div>
         {!canCancel && (
-          <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice needs a supervisor. You can view them here.</p>
+          <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice must be done by the store manager or assistant store manager. You can view and search here.</p>
         )}
         <div className="overflow-y-auto px-2 py-2">
           {loading && !data ? (

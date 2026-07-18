@@ -228,6 +228,13 @@ export function canReopenShift(role: Role): boolean {
   );
 }
 
+// Who may cancel (void) a sale invoice. Authorised by the STORE's own leadership
+// — the store manager or assistant store manager (owner always). A void happens
+// on the shop floor, so regional managers and departments are excluded.
+export function canCancelInvoice(role: Role): boolean {
+  return role === "owner" || role === "store_manager" || role === "asst_store_manager";
+}
+
 // Cross-store, elevated roles — only an owner may create or assign these. Area
 // Manager reaches multiple owner-assigned stores; Operation Manager reaches all.
 export function isCrossStoreRole(role: Role): boolean {
