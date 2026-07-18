@@ -58,6 +58,10 @@ export type Drawer = {
   cashOut: number;
   drop: number;
   refunds: number;
+  // Cash handed back for CANCELLED invoices this shift. Informational only:
+  // a cancelled sale is already excluded from cashSales, so expected drops by
+  // itself — this figure just shows the money that went back.
+  refundedCancelled: number;
   expected: number;
   // Payment mix over the shift, for the dashboard.
   sales: { total: number; cash: number; card: number; ewallet: number };
@@ -83,6 +87,15 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     sales[bucket(s.paymentMethod)] = round2(sales[bucket(s.paymentMethod)] + s.total);
   }
 
+  // Cash invoices cancelled this shift: the sale above is already excluded, so
+  // the expected drawer self-corrects — this is the "handed back" figure shown
+  // on the dashboard, not part of the arithmetic.
+  const refundedCancelled = round2(
+    db.sales
+      .filter((s: Sale) => s.shiftId === shift.id && s.cancelled && bucket(s.paymentMethod) === "cash")
+      .reduce((t, s) => t + s.total, 0),
+  );
+
   const mv = db.cashMovements.filter((m) => m.shiftId === shift.id);
   const sumOf = (t: string) => round2(mv.filter((m) => m.type === t).reduce((s, m) => s + m.amount, 0));
   const rielOf = (t: string) => mv.filter((m) => m.type === t).reduce((s, m) => s + (Number(m.amountRiel) || 0), 0);
@@ -100,6 +113,7 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     cashOut,
     drop,
     refunds,
+    refundedCancelled,
     expected,
     sales,
     riel: { cashIn: rielOf("CASH_IN"), cashOut: rielOf("CASH_OUT"), drop: rielOf("DROP"), refunds: rielOf("REFUND") },

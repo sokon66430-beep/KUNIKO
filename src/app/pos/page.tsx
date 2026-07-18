@@ -1335,19 +1335,40 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
 // Recent invoices with a Cancel (void) action. Cancelling is supervisor-only;
 // the server puts the stock back, reverses loyalty and drops the sale from every
 // report — the row stays, marked Cancelled, so the void is on the record.
+const CANCEL_REASONS = [
+  "Wrong items rung up",
+  "Customer changed mind",
+  "Wrong amount / price",
+  "Wrong payment method",
+  "Duplicate invoice",
+  "Other",
+];
+
 function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const { data, loading, reload } = useFetch<Sale[]>("/api/sales?limit=200");
   const role = useRole();
   const canCancel = role ? canCancelInvoice(role) : false;
   const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  // The invoice a supervisor is about to cancel — opens the confirm dialog
+  // (a reason dropdown, not a browser prompt).
+  const [cancelling, setCancelling] = useState<Sale | null>(null);
+  const [reasonSel, setReasonSel] = useState("");
+  const [reasonOther, setReasonOther] = useState("");
+  const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
 
-  async function cancelInvoice(s: Sale) {
-    const reason = window.prompt(`Cancel invoice ${s.invoiceNo} (${usd(s.total)})?\n\nType a reason — this puts the stock back and voids the sale:`);
-    if (!reason || !reason.trim()) return;
-    setBusy(s.id);
+  function startCancel(s: Sale) {
+    setReasonSel("");
+    setReasonOther("");
+    setCancelling(s);
+  }
+
+  async function confirmCancel() {
+    if (!cancelling || !reason) return;
+    setBusy(cancelling.id);
     try {
-      await api(`/api/sales/${s.id}/cancel`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+      await api(`/api/sales/${cancelling.id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+      setCancelling(null);
       reload();
       onChanged();
     } catch (e: any) {
@@ -1421,7 +1442,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
                     <td className="px-3 py-2 text-slate-500">{s.paymentMethod}</td>
                     <td className="px-3 py-2 text-right">
                       {!s.cancelled && canCancel && (
-                        <button onClick={() => cancelInvoice(s)} disabled={busy === s.id} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+                        <button onClick={() => startCancel(s)} disabled={busy === s.id} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50">
                           <X size={13} /> {busy === s.id ? "Cancelling…" : "Cancel"}
                         </button>
                       )}
@@ -1433,6 +1454,48 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
           )}
         </div>
       </div>
+
+      {/* Cancel-invoice confirmation — a proper dialog with a reason dropdown.
+          The money side is automatic: a cancelled cash sale comes off the
+          drawer's expected cash by itself, so nothing is entered twice. */}
+      {cancelling && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-[2px]" onClick={() => setCancelling(null)} />
+          <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-lift">
+            <h4 className="text-base font-bold text-ink-900">Cancel invoice {cancelling.invoiceNo}?</h4>
+            <p className="mt-1 text-sm text-slate-500">
+              {usd(cancelling.total)} · {cancelling.paymentMethod} · {dateTime(cancelling.createdAt)}
+            </p>
+            <ul className="mt-3 space-y-1 rounded-xl bg-slate-50 px-3.5 py-2.5 text-[12.5px] text-slate-600 ring-1 ring-slate-200">
+              <li>• Stock goes back on the shelf automatically.</li>
+              {cancelling.paymentMethod === "Cash" && (
+                <li>• The cash drawer expects {usd(cancelling.total)} less — the refund is automatic, nothing else to record.</li>
+              )}
+              <li>• The invoice stays on record, marked CANCELLED.</li>
+            </ul>
+            <div className="mt-3">
+              <label className="label">Reason (required)</label>
+              <select value={reasonSel} onChange={(e) => setReasonSel(e.target.value)} className="input">
+                <option value="">Select a reason…</option>
+                {CANCEL_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+              {reasonSel === "Other" && (
+                <input value={reasonOther} onChange={(e) => setReasonOther(e.target.value)} placeholder="Type the reason" className="input mt-2" autoFocus />
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setCancelling(null)}>Keep invoice</button>
+              <button
+                onClick={confirmCancel}
+                disabled={!reason || busy === cancelling.id}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+              >
+                <X size={15} /> {busy === cancelling.id ? "Cancelling…" : "Cancel invoice"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

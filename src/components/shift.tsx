@@ -27,7 +27,8 @@ import { CASH_DENOMS, RIEL_DENOMS, countTotal } from "@/lib/money";
 import type { CashCount, CashMovementType } from "@/lib/types";
 
 export type Drawer = {
-  opening: number; cashSales: number; cashIn: number; cashOut: number; drop: number; refunds: number; expected: number;
+  opening: number; cashSales: number; cashIn: number; cashOut: number; drop: number; refunds: number;
+  refundedCancelled: number; expected: number;
   sales: { total: number; cash: number; card: number; ewallet: number };
   riel: { cashIn: number; cashOut: number; drop: number; refunds: number };
   counts: { movements: number; drops: number; refunds: number };
@@ -167,15 +168,24 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <StatCard label="E-wallet" value={usd(d.sales.ewallet)} accent="violet" />
         <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} sub={d.riel.cashIn > 0 ? `incl. ${khr(d.riel.cashIn)}` : undefined} accent="emerald" />
         <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} sub={d.riel.cashOut > 0 ? `incl. ${khr(d.riel.cashOut)}` : undefined} accent="amber" />
-        <StatCard label="Safe Drops / Refunds" value={`-${usd(d.drop + d.refunds)}`} sub={d.riel.drop + d.riel.refunds > 0 ? `incl. ${khr(d.riel.drop + d.riel.refunds)}` : undefined} accent="amber" />
+        <StatCard label="Safe Drops" value={`-${usd(d.drop + d.refunds)}`} sub={d.riel.drop + d.riel.refunds > 0 ? `incl. ${khr(d.riel.drop + d.riel.refunds)}` : undefined} accent="amber" />
         <StatCard label="Expected Drawer" value={usd(d.expected)} accent={over ? "rose" : "emerald"} />
       </div>
+
+      {/* Refunds are NOT a button: cash goes back when an invoice is CANCELLED
+          (Invoices → Cancel), and the drawer deducts it by itself. This line
+          just shows how much went back, so nobody records it twice. */}
+      {d.refundedCancelled > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-600">
+          <RotateCcw size={15} className="mt-0.5 shrink-0 text-slate-400" />
+          <span><b>{usd(d.refundedCancelled)}</b> handed back for cancelled invoices this shift — already deducted from the expected drawer automatically.</span>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <button className="btn-ghost" onClick={() => onMovement("CASH_IN")}><PlusCircle size={16} /> Cash In</button>
         <button className="btn-ghost" onClick={() => onMovement("CASH_OUT")}><MinusCircle size={16} /> Cash Out</button>
         <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
-        <button className="btn-ghost" onClick={() => onMovement("REFUND")}><RotateCcw size={16} /> Cash Refund</button>
         <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Money survey</button>
         <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
       </div>
