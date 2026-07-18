@@ -84,12 +84,49 @@ export async function GET(req: Request) {
     perf.set(s.cashier, e);
   }
 
+  // --- Safe Drop report ------------------------------------------------------
+  // Every drop to the safe under the same filters, with the DOLLARS part and the
+  // RIEL part kept separate — so the count in the safe can be checked note for
+  // note in each currency. Older drops recorded before the split are all-USD.
+  const shiftById = new Map(db.shifts.map((s) => [s.id, s]));
+  let dropMoves = db.cashMovements.filter((m) => m.type === "DROP");
+  if (day) dropMoves = dropMoves.filter((m) => storeToday(new Date(m.at)) === day);
+  if (terminal) dropMoves = dropMoves.filter((m) => m.posTerminalId === terminal);
+  if (cashier) dropMoves = dropMoves.filter((m) => m.createdBy === cashier);
+  if (shiftName) dropMoves = dropMoves.filter((m) => shiftById.get(m.shiftId)?.shift === shiftName);
+  dropMoves.sort((a, b) => b.at.localeCompare(a.at));
+
+  const drops = dropMoves.map((m) => ({
+    id: m.id,
+    at: m.at,
+    posTerminalId: m.posTerminalId,
+    shift: shiftById.get(m.shiftId)?.shift ?? "—",
+    by: m.createdBy,
+    reason: m.reason,
+    // Pre-split drops carry only `amount` (USD) — show them as dollars.
+    usd: round2(m.amountUsd ?? m.amount),
+    riel: m.amountRiel ?? 0,
+    usdEquivalent: round2(m.amount),
+    status: m.status,
+  }));
+  const dropTotals = drops.reduce(
+    (t, d) => ({
+      usd: round2(t.usd + d.usd),
+      riel: t.riel + d.riel,
+      usdEquivalent: round2(t.usdEquivalent + d.usdEquivalent),
+      count: t.count + 1,
+    }),
+    { usd: 0, riel: 0, usdEquivalent: 0, count: 0 },
+  );
+
   return NextResponse.json({
     day: day ?? null,
     terminals: [...new Set(db.shifts.map((s) => s.posTerminalId))].sort(),
     cashiers: [...new Set(db.shifts.map((s) => s.cashier))].sort(),
     rows,
     totals,
+    drops,
+    dropTotals,
     cashierPerformance: [...perf.values()].sort((a, b) => b.salesTotal - a.salesTotal),
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { Wallet, Unlock, Lock, ClipboardCheck, BarChart3 } from "lucide-react";
+import { Wallet, Unlock, Lock, ClipboardCheck, BarChart3, Vault } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import { confirmDialog } from "@/components/confirm";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Table, THead, Th, TBody, Tr, Td, EmptyState } from "@/components/ui";
@@ -266,6 +266,44 @@ function ReportTab() {
                   </TBody>
                 </Table>
               </div>
+            )}
+          </Card>
+
+          {/* Safe Drop report — what went to the safe, dollars and riel SEPARATE,
+              so the safe can be counted note-for-note in each currency. */}
+          <Card title="Safe Drop report" subtitle="Money moved to the store safe — dollars and riel counted separately" icon={<Vault size={15} />}>
+            {(!data.drops || data.drops.length === 0) ? (
+              <EmptyState title="No safe drops in range" hint="Record drops from the till's Cash Drawer." icon={<Vault size={18} />} />
+            ) : (
+              <>
+                <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <StatCard label="Dropped in Dollars" value={usd(data.dropTotals.usd)} accent="brand" />
+                  <StatCard label="Dropped in Riel" value={`${data.dropTotals.riel.toLocaleString()}៛`} accent="violet" />
+                  <StatCard label="Total (USD equivalent)" value={usd(data.dropTotals.usdEquivalent)} accent="emerald" />
+                  <StatCard label="Drops" value={num(data.dropTotals.count)} accent="violet" />
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <THead>
+                      <Th>When</Th><Th>Terminal</Th><Th>Shift</Th><Th>By</Th><Th>Reason</Th><Th align="right">Dollars</Th><Th align="right">Riel</Th><Th align="right">= USD</Th>
+                    </THead>
+                    <TBody>
+                      {data.drops.map((d: any) => (
+                        <Tr key={d.id}>
+                          <Td className="whitespace-nowrap text-slate-500">{dateTime(d.at)}</Td>
+                          <Td>{d.posTerminalId}</Td>
+                          <Td>Shift {d.shift}</Td>
+                          <Td>{d.by}</Td>
+                          <Td className="text-slate-500">{d.reason}</Td>
+                          <Td align="right">{d.usd > 0 ? usd(d.usd) : "—"}</Td>
+                          <Td align="right">{d.riel > 0 ? `${d.riel.toLocaleString()}៛` : "—"}</Td>
+                          <Td align="right" className="font-semibold">{usd(d.usdEquivalent)}</Td>
+                        </Tr>
+                      ))}
+                    </TBody>
+                  </Table>
+                </div>
+              </>
             )}
           </Card>
 
