@@ -203,10 +203,7 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
       </div>
     }>
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-        <div>
-          <p className="label">Count the drawer to check</p>
-          <DenomCounter value={count} onChange={setCount} rate={rate} />
-        </div>
+        <DenomCounter value={count} onChange={setCount} rate={rate} />
         <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
           {/* How much was sold this shift — the "how much they can sell" side. */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
@@ -388,10 +385,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
       </div>
     }>
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-        <div>
-          <p className="label">Count the drawer</p>
-          <DenomCounter value={count} onChange={setCount} rate={rate} />
-        </div>
+        <DenomCounter value={count} onChange={setCount} rate={rate} />
         <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
             <Row label="Expected cash" value={usd(expected)} />
