@@ -17,8 +17,9 @@ import {
   FileSpreadsheet,
   FileType2,
   ClipboardCheck,
+  Calculator,
 } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useRole } from "@/lib/client";
 import type { Product, Supplier , StockCount } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
@@ -36,6 +37,9 @@ export default function InventoryPage() {
   // live on /stock-count.
   const { data: counts } = useFetch<StockCount[]>("/api/stock-counts");
   const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
+  const role = useRole();
+  const isOwner = role === "owner";
+  const [recalcBusy, setRecalcBusy] = useState(false);
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -69,6 +73,46 @@ export default function InventoryPage() {
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  // Rebuild on-hand from movement history (opening + receiving − sales −
+  // write-offs). For a store with only sales and no opening, this is what turns
+  // recorded sales into the negative on-hand they imply. Preview the numbers,
+  // confirm, then apply — owner only.
+  async function recalcStock() {
+    setRecalcBusy(true);
+    try {
+      const preview: any = await api("/api/recalc-stock?mode=preview", { method: "POST" });
+      if (!preview.changed) {
+        await confirmDialog({
+          title: "Nothing to recalculate",
+          message: "Every product's on-hand already matches its history (opening + receiving − sales − write-offs).",
+          confirmText: "OK",
+          tone: "brand",
+        });
+        return;
+      }
+      const ok = await confirmDialog({
+        title: "Recalculate on-hand from history",
+        message:
+          `${num(preview.changed)} product(s) will change · net ${preview.netUnits >= 0 ? "+" : ""}${num(preview.netUnits)} units` +
+          (preview.willBeNegative ? ` · ${num(preview.willBeNegative)} will go negative` : "") +
+          `.\n\nOn-hand is rebuilt as opening + receiving − sales − write-offs. Prior stock counts and manual edits are NOT re-applied. This writes an adjustment to the ledger for each change.`,
+        confirmText: `Recalculate ${num(preview.changed)}`,
+      });
+      if (!ok) return;
+      const res: any = await api("/api/recalc-stock?mode=commit", { method: "POST" });
+      setImportMsg(
+        `On-hand recalculated — ${num(res.applied)} product(s) updated · net ${res.netUnits >= 0 ? "+" : ""}${num(res.netUnits)} units${
+          res.willBeNegative ? ` · ${num(res.willBeNegative)} now negative` : ""
+        }`,
+      );
+      reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setRecalcBusy(false);
     }
   }
 
@@ -198,6 +242,16 @@ export default function InventoryPage() {
                 if (f) importExcel(f);
               }}
             />
+            {isOwner && (
+              <button
+                className="btn-ghost !py-2 text-sm"
+                disabled={recalcBusy}
+                onClick={recalcStock}
+                title="Rebuild on-hand from history: opening + receiving − sales − write-offs"
+              >
+                <Calculator size={16} /> {recalcBusy ? "Recalculating…" : "Recalculate"}
+              </button>
+            )}
             <a className="btn-ghost !py-2 text-sm" href="/api/products/export" title="Download inventory as Excel">
               <FileSpreadsheet size={16} /> Export
             </a>
