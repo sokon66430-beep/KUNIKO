@@ -26,7 +26,7 @@ import {
 import { useFetch, useAccess } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
-import { DatePicker } from "@/components/DatePicker";
+import { DateRangePicker } from "@/components/DatePicker";
 import { usd, riel, num, pct } from "@/lib/format";
 import { canSeeProfit } from "@/lib/access";
 
@@ -150,29 +150,17 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
-            {/* Pick any specific day from the calendar — then, optionally, a
-                second date to report a from–to range instead of one day. */}
-            <DatePicker
-              value={customDate ?? ""}
-              max={customTo ?? localDayKey(new Date())}
-              onChange={(v) => {
-                setCustomDate(v || null);
-                if (!v) setCustomTo(null); // clearing the start clears the range
+            {/* One calendar: click a day for a single day, or click a start
+                then an end day for a range. */}
+            <DateRangePicker
+              from={customDate ?? ""}
+              to={customTo ?? ""}
+              max={localDayKey(new Date())}
+              onChange={(f, t) => {
+                setCustomDate(f || null);
+                setCustomTo(t || null);
               }}
-              allowClear
             />
-            {customDate && (
-              <>
-                <span className="text-xs font-medium text-slate-400">to</span>
-                <DatePicker
-                  value={customTo ?? ""}
-                  min={customDate}
-                  max={localDayKey(new Date())}
-                  onChange={(v) => setCustomTo(v || null)}
-                  allowClear
-                />
-              </>
-            )}
           </div>
         }
       />

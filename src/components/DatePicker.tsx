@@ -28,6 +28,17 @@ function label(v?: string): string {
   return `${p.d} ${MONTHS_SHORT[p.mo]} ${p.y}`;
 }
 
+// "18 Jul 2026" for a single day, "15 – 18 Jul 2026" / "28 Jun – 3 Jul 2026"
+// for a range (the left side drops its year/month when it matches the right).
+function rangeLabel(from?: string, to?: string): string {
+  const a = parse(from);
+  if (!a) return "Select date";
+  const b = parse(to);
+  if (!b || (a.y === b.y && a.mo === b.mo && a.d === b.d)) return `${a.d} ${MONTHS_SHORT[a.mo]} ${a.y}`;
+  const left = a.y !== b.y ? `${a.d} ${MONTHS_SHORT[a.mo]} ${a.y}` : a.mo !== b.mo ? `${a.d} ${MONTHS_SHORT[a.mo]}` : `${a.d}`;
+  return `${left} – ${b.d} ${MONTHS_SHORT[b.mo]} ${b.y}`;
+}
+
 export function DatePicker({
   value,
   onChange,
@@ -262,6 +273,236 @@ export function DatePicker({
               type="button"
               onClick={() => select(todayKey)}
               disabled={(min && todayKey < min) || (max && todayKey > max) || false}
+              className="text-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              Today
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// One calendar that selects a single day OR a range. First click sets the day
+// (and the caller sees it as a single day immediately); a second click on a
+// different day makes it a range (order-independent — click either end first).
+// Clicking a third time starts over. Same "yyyy-mm-dd" strings as DatePicker.
+export function DateRangePicker({
+  from,
+  to,
+  onChange,
+  max,
+  className,
+}: {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+  max?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  // "start" = next click begins a new selection; "end" = next click completes
+  // the range (or repeats the day for a single day).
+  const [phase, setPhase] = useState<"start" | "end">("start");
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const now = new Date();
+  const parsed = parse(from);
+  const [viewY, setViewY] = useState(parsed?.y ?? now.getFullYear());
+  const [viewMo, setViewMo] = useState(parsed?.mo ?? now.getMonth());
+
+  useEffect(() => {
+    if (!open) return;
+    const p = parse(from);
+    setViewY(p?.y ?? now.getFullYear());
+    setViewMo(p?.mo ?? now.getMonth());
+    setPhase("start"); // opening always starts a fresh selection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const GAP = 8;
+  function place() {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const pw = popRef.current?.offsetWidth || 288;
+    const ph = popRef.current?.offsetHeight || 340;
+    let top = b.bottom + GAP;
+    if (top + ph > window.innerHeight - GAP) {
+      const above = b.top - ph - GAP;
+      top = above >= GAP ? above : Math.max(GAP, window.innerHeight - ph - GAP);
+    }
+    const left = Math.max(GAP, Math.min(b.left, window.innerWidth - pw - GAP));
+    setPos({ top, left });
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    const onMove = () => place();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+    return () => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, viewY, viewMo]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const cells = useMemo(() => {
+    const startWd = new Date(viewY, viewMo, 1).getDay();
+    const daysInMonth = new Date(viewY, viewMo + 1, 0).getDate();
+    const out: (number | null)[] = [];
+    for (let i = 0; i < startWd; i++) out.push(null);
+    for (let d = 1; d <= daysInMonth; d++) out.push(d);
+    return out;
+  }, [viewY, viewMo]);
+
+  const shift = (delta: number) => {
+    let m = viewMo + delta;
+    let y = viewY;
+    if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    setViewMo(m);
+    setViewY(y);
+  };
+
+  const isDisabled = (d: number) => {
+    const k = keyOf(viewY, viewMo, d);
+    return !!(max && k > max);
+  };
+
+  const todayKey = keyOf(now.getFullYear(), now.getMonth(), now.getDate());
+
+  function pick(k: string) {
+    if (phase === "start") {
+      // Begin a new selection — shows as a single day until a second click.
+      onChange(k, "");
+      setPhase("end");
+    } else {
+      // Complete the range; order-independent, so swap if the second click is
+      // earlier than the first.
+      const a = from && k < from ? k : from;
+      const b = from && k < from ? from : k;
+      onChange(a, b);
+      setPhase("start");
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div ref={ref} className={`relative ${className || ""}`}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => {
+          const next = !open;
+          if (next && btnRef.current) {
+            const b = btnRef.current.getBoundingClientRect();
+            setPos({ top: b.bottom + GAP, left: b.left });
+          }
+          setOpen(next);
+        }}
+        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-ink-800 outline-none transition hover:border-slate-300 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+      >
+        <CalendarIcon size={15} className="text-slate-400" />
+        <span className={parsed ? "" : "text-slate-400"}>{rangeLabel(from, to)}</span>
+      </button>
+
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: "fixed", top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}
+          className="z-[80] w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lift"
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <button type="button" onClick={() => shift(-1)} className="grid h-7 w-7 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Previous month">
+              <ChevronLeft size={16} />
+            </button>
+            <p className="text-sm font-bold text-ink-900">{MONTHS[viewMo]} {viewY}</p>
+            <button type="button" onClick={() => shift(1)} className="grid h-7 w-7 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Next month">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {/* Tells the user what the next click will do. */}
+          <p className="mb-2 text-center text-[11px] font-medium text-slate-400">
+            {phase === "start" ? "Pick a day — or a start day for a range" : "Pick the end day, or the same day again"}
+          </p>
+
+          <div className="mb-1 grid grid-cols-7 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            {WEEKDAYS.map((w) => (
+              <span key={w} className="py-1">{w}</span>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-y-0.5">
+            {cells.map((d, i) => {
+              if (d === null) return <span key={i} />;
+              const k = keyOf(viewY, viewMo, d);
+              const hasRange = !!to && to !== from;
+              const isStart = k === from;
+              const isEnd = hasRange && k === to;
+              const inRange = hasRange && !!from && k > from && k < to;
+              const isToday = k === todayKey;
+              const disabled = isDisabled(d);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => pick(k)}
+                  // Continuous bar look: middle days are square-tinted; the two
+                  // ends round outward and fill brand.
+                  className={`grid h-8 w-full place-items-center text-sm transition ${
+                    inRange ? "bg-brand-100" : ""
+                  } ${isStart && hasRange ? "rounded-l-lg" : ""} ${isEnd ? "rounded-r-lg" : ""} ${
+                    isStart || isEnd
+                      ? "bg-brand-500 font-bold text-white"
+                      : inRange
+                        ? "text-brand-700"
+                        : disabled
+                          ? "cursor-not-allowed rounded-lg text-slate-300"
+                          : isToday
+                            ? "rounded-lg font-semibold text-brand-600 ring-1 ring-inset ring-brand-200 hover:bg-brand-50"
+                            : "rounded-lg text-ink-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-xs font-semibold">
+            <button type="button" onClick={() => { onChange("", ""); setPhase("start"); setOpen(false); }} className="text-slate-500 hover:text-slate-700">
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => { onChange(todayKey, ""); setPhase("start"); setOpen(false); }}
+              disabled={!!(max && todayKey > max)}
               className="text-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:text-slate-300"
             >
               Today
