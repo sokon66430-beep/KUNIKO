@@ -501,6 +501,7 @@ function ReviewPRModal({
       open
       onClose={onClose}
       title={`Review ${pr.prNo}`}
+      size="2xl"
       footer={
         <div className="flex w-full items-center justify-between">
           <a href={`/api/purchase-requests/${pr.id}/export`} className="btn-ghost">
@@ -1074,8 +1075,10 @@ function ViewPOModal({
               </>
             ) : (
               <>
+                {/* Utility actions — quiet, so they don't compete with the one
+                    decision on this screen (Receive Goods). */}
                 <Link href={`/purchase-orders/${po.id}/print`} className="btn-ghost">
-                  <Printer size={16} /> Print PO
+                  <Printer size={16} /> Print
                 </Link>
                 <a href={`/api/purchase-orders/${po.id}/export`} className="btn-ghost">
                   <FileSpreadsheet size={16} /> Excel
@@ -1085,17 +1088,19 @@ function ViewPOModal({
                     <Pencil size={16} /> Edit
                   </button>
                 )}
+                {/* Destructive actions are borderless rose text — present but
+                    never shouting; a thin rule sets them apart from utilities. */}
+                {((canDelete && !hasReceipts) || po.status === "Open" || po.status === "Partial") && (
+                  <span className="mx-1 h-6 w-px self-center bg-slate-200 dark:bg-slate-700" />
+                )}
                 {canDelete && !hasReceipts && (
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-                    onClick={onDelete}
-                  >
+                  <button className="btn-quiet-danger" onClick={onDelete}>
                     <Trash2 size={16} /> Delete
                   </button>
                 )}
                 {(po.status === "Open" || po.status === "Partial") && (
                   <>
-                    <button className="btn-danger" onClick={onCancel}>
+                    <button className="btn-quiet-danger" onClick={onCancel}>
                       <Ban size={16} /> Cancel PO
                     </button>
                     <Link href="/receiving" className="btn-primary">

@@ -70,6 +70,11 @@ body {
   .btn-danger {
     @apply btn bg-rose-50 text-rose-600 ring-1 ring-rose-100 hover:bg-rose-100;
   }
+  /* Destructive action, de-emphasized: rose text with no fill until hover, so
+     it reads as available without competing with a primary button beside it. */
+  .btn-quiet-danger {
+    @apply btn bg-transparent text-rose-600 hover:bg-rose-50;
+  }
   .input {
     @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink-800 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
   }
