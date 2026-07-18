@@ -16,10 +16,12 @@ export const dynamic = "force-dynamic";
 // Rows are grouped by date into one sale per day for reporting.
 //
 // Stock: selling happens in another POS, so this file is the only thing that
-// tells the app a shelf emptied. Lines are deducted from stock, but ONLY when
-// they sold after that product's last posted stock count — see the long note at
-// the deduction itself. Rows for never-counted products, and same-day rows with
-// no time to place them against the count, are left alone and reported back.
+// tells the app a shelf emptied. Every matched line reduces stock. The one
+// exception is a product with a posted count/opening baseline: there, only
+// lines that sold AFTER that baseline come off (earlier ones are already inside
+// the counted number) — see the long note at the deduction itself. Products with
+// no baseline at all deduct in full. Same-day rows with no time to place them
+// against an OPEN count are the only ones left alone, and are reported back.
 //
 // Validation is all-or-nothing: if any ITEM row can't be fully read (no
 // matching product, missing qty, or — when a Date column is present — an
@@ -424,19 +426,23 @@ export async function POST(req: Request) {
     // stock only climbs (receiving) until a count resets it. This report is the
     // only way the app can learn what left the building.
     //
-    // But it must not deduct everything in the file, because the count has
-    // already seen part of it. A bottle sold at 09:00 was already gone from the
-    // shelf when the accountant counted at 10:00 — it's inside the counted
-    // number, and taking it off again would remove it twice. A bottle sold at
-    // 11:00 was still on the shelf when counted, so it has to come off.
+    // For a product that HAS a baseline (a posted count or an opening balance),
+    // it must not deduct everything in the file, because the count has already
+    // seen part of it. A bottle sold at 09:00 was already gone from the shelf
+    // when the accountant counted at 10:00 — it's inside the counted number, and
+    // taking it off again would remove it twice. A bottle sold at 11:00 was
+    // still on the shelf when counted, so it has to come off. Hence for those
+    // products: deduct a line only when it happened after that product's most
+    // recent baseline. Which also means back-filling months of old history can't
+    // crater a counted product — those sales predate the count, so they're
+    // skipped by the same rule.
     //
-    // Hence: deduct a line only when it happened after that product's most
-    // recent POSTED count. Which also means back-filling months of old history
-    // can't crater stock — those sales predate the count, so they're skipped by
-    // the same rule, with no special case for it.
+    // For a product with NO baseline, there's nothing already reflecting the
+    // sale, so the whole line comes off (handled below). That's what makes an
+    // import always move stock even before the first count is posted.
     //
-    // Only posted counts count: an open one hasn't touched stock yet, so it
-    // isn't a baseline for anything.
+    // Only posted counts count as a baseline here: an open one hasn't touched
+    // stock yet, so it isn't a baseline for anything.
     //
     // This also commutes with posting a count, which applies the variance it
     // found rather than setting stock outright. Post-then-import and
@@ -503,10 +509,15 @@ export async function POST(req: Request) {
 
       const countedAt = lastCountAt.get(row.productId);
       if (!countedAt) {
-        // Never counted, so there's no baseline saying what's on the shelf and
-        // no way to know if this sale is already reflected. Left alone and
-        // reported rather than guessed at.
-        stock.neverCounted++;
+        // No baseline yet — no opening balance, no posted count — for this
+        // product. A sales import must still reduce stock; that's the whole
+        // point of importing it. With no count to say which units were already
+        // reflected, the line comes straight off: stock follows what sold. If
+        // the book never knew it had those units it goes negative, which the
+        // inventory page surfaces as "set an opening balance to fix the book."
+        stock.deduct.set(row.productId, (stock.deduct.get(row.productId) || 0) + row.qty);
+        stock.linesReduced++;
+        stock.unitsReduced += row.qty;
         continue;
       }
       let after: boolean;
