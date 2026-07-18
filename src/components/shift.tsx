@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardCheck,
+  Scale,
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { Badge, StatCard, Modal } from "@/components/ui";
@@ -131,12 +132,14 @@ export function Row({ label, value }: { label: string; value: string }) {
 // The live shift summary — the "shift survey" the cashier reads at a glance:
 // where the drawer stands right now (opening float, what's sold, cash movements
 // and the expected cash to count). The action buttons underneath run the drawer.
-export function DrawerView({ shift, drawerLimit, onMovement, onClose }: {
-  shift: ShiftView; drawerLimit: number; onMovement: (t: CashMovementType) => void; onClose: () => void;
+export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
+  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void;
 }) {
   const d = shift.drawer;
   const over = drawerLimit > 0 && d.expected > drawerLimit;
   const recDrop = over ? Math.max(0, Math.round((d.expected - drawerLimit) * 100) / 100) : 0;
+  // Money survey — count the drawer to check it matches, WITHOUT closing.
+  const [survey, setSurvey] = useState(false);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -172,9 +175,69 @@ export function DrawerView({ shift, drawerLimit, onMovement, onClose }: {
         <button className="btn-ghost" onClick={() => onMovement("CASH_OUT")}><MinusCircle size={16} /> Cash Out</button>
         <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
         <button className="btn-ghost" onClick={() => onMovement("REFUND")}><RotateCcw size={16} /> Cash Refund</button>
-        <button className="btn-primary ml-auto" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
+        <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Money survey</button>
+        <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
       </div>
+
+      {survey && <SurveyModal shift={shift} rate={rate} onClose={() => setSurvey(false)} />}
     </div>
+  );
+}
+
+// Money survey — a mid-shift CHECK, not a close. The operations team counts the
+// drawer whenever they want to verify the till: it shows what sold, the cash the
+// drawer should hold, what was actually counted, and a plain verdict — does the
+// money MATCH or not? Counting here changes nothing and never ends the shift.
+export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: number; onClose: () => void }) {
+  const [count, setCount] = useState<CashCount>(emptyCount());
+  const d = shift.drawer;
+  const expected = d.expected;
+  const counted = countTotal(count, rate);
+  const variance = Math.round((counted - expected) * 100) / 100;
+  const matched = variance === 0;
+
+  return (
+    <Modal open onClose={onClose} size="2xl" title={`Money Survey · Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
+      <div className="flex w-full justify-end">
+        <button className="btn-primary" onClick={onClose}>Done</button>
+      </div>
+    }>
+      <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+        <div>
+          <p className="label">Count the drawer to check</p>
+          <DenomCounter value={count} onChange={setCount} rate={rate} />
+        </div>
+        <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
+          {/* How much was sold this shift — the "how much they can sell" side. */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Sold this shift</p>
+            <Row label="Total sales" value={usd(d.sales.total)} />
+            <Row label="Cash" value={usd(d.sales.cash)} />
+            <Row label="Card" value={usd(d.sales.card)} />
+            <Row label="E-wallet" value={usd(d.sales.ewallet)} />
+          </div>
+          {/* Expected vs counted — the "does the money match" side. */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+            <Row label="Expected cash" value={usd(expected)} />
+            <Row label="Counted cash" value={usd(counted)} />
+          </div>
+          {/* Plain verdict. */}
+          {matched ? (
+            <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3.5 font-bold text-emerald-700 ring-1 ring-emerald-200">
+              <CheckCircle2 size={18} /> Money matches
+            </div>
+          ) : (
+            <div className={`rounded-2xl px-4 py-3.5 font-bold ring-1 ${variance < 0 ? "bg-rose-50 text-rose-700 ring-rose-200" : "bg-amber-50 text-amber-700 ring-amber-200"}`}>
+              <div className="flex items-center gap-2"><AlertTriangle size={18} /> {variance < 0 ? "Short" : "Over"} by {usd(Math.abs(variance))}</div>
+              <p className="mt-1 text-xs font-medium opacity-80">
+                {variance < 0 ? "Less cash in the drawer than the sales say there should be." : "More cash in the drawer than the sales say there should be."}
+              </p>
+            </div>
+          )}
+          <p className="text-xs text-slate-400">This is a check only — it doesn&apos;t record anything or close the shift.</p>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -152,7 +152,7 @@ export default function MoneyPage() {
           )}
 
           {current ? (
-            <DrawerView shift={current} drawerLimit={drawerLimit} onMovement={setMv} onClose={() => setClosing(true)} />
+            <DrawerView shift={current} drawerLimit={drawerLimit} rate={rate} onMovement={setMv} onClose={() => setClosing(true)} />
           ) : (
             <Card title={`Open a shift on ${terminal}`} subtitle="Count the opening float by denomination, then open the shift." icon={<Wallet size={15} />}>
               <div className="grid gap-4 sm:grid-cols-2">
