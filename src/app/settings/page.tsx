@@ -18,6 +18,7 @@ const APPROVER_ROLES = ["Area Manager", "Manager", "Assistant Store Manager"];
 export default function SettingsPage() {
   const params = useSearchParams();
   const welcome = params.get("welcome") === "1";
+  const role = useRole();
   const { data, loading, error, reload } = useFetch<Business>("/api/business");
   const [form, setForm] = useState<Business | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,11 +120,21 @@ export default function SettingsPage() {
 
       <ChangePasswordCard />
 
-      <ClearSalesCard />
-
-      <ClearProductsCard />
-
-      <CleanupDuplicatesCard />
+      {/* Owner-only data tools, grouped into one tidy Danger zone instead of
+          three separate red cards stacked down the page. */}
+      {role === "owner" && (
+        <Card className="mb-6 border-rose-200/70">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-rose-700">
+            <Trash2 size={16} /> Danger zone
+          </h3>
+          <p className="mb-1 mt-0.5 text-xs text-slate-500">Owner-only maintenance. Deletions can&apos;t be undone.</p>
+          <div className="divide-y divide-slate-100">
+            <ClearSalesCard />
+            <ClearProductsCard />
+            <CleanupDuplicatesCard />
+          </div>
+        </Card>
+      )}
 
       {saved && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -372,27 +383,24 @@ function ClearSalesCard() {
   }
 
   return (
-    <Card className="mb-6 border-rose-200">
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-rose-700">
-        <Trash2 size={16} /> Clear sales history
-      </h3>
-      <p className="mb-4 text-xs text-slate-500">
-        Delete every sale for this store so you can re-import a fresh set. This does not touch products or stock — only
-        the sales report data. Owner only, and it cannot be undone.
-      </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
-          disabled={busy}
-          onClick={clearSales}
-        >
-          <Trash2 size={16} /> {busy ? "Clearing…" : "Clear all sales"}
-        </button>
+    <div className="flex flex-wrap items-start justify-between gap-3 py-4">
+      <div className="min-w-0 flex-1">
+        <h4 className="text-[13px] font-bold text-ink-900">Clear sales history</h4>
+        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          Delete every sale so you can re-import a fresh set. Products and stock are untouched — only the sales data.
+        </p>
         {msg && (
-          <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+          <span className={`mt-1.5 block text-xs font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
         )}
       </div>
-    </Card>
+      <button
+        className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-rose-600 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+        disabled={busy}
+        onClick={clearSales}
+      >
+        <Trash2 size={15} /> {busy ? "Clearing…" : "Clear sales"}
+      </button>
+    </div>
   );
 }
 
@@ -430,66 +438,59 @@ function ClearProductsCard() {
   }
 
   return (
-    <Card className="mb-6 border-rose-200">
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-rose-700">
-        <Trash2 size={16} /> Clear all products
-      </h3>
-      <p className="mb-4 text-xs text-slate-500">
-        Delete <b>every product</b> in this store so a fresh product master can be imported. Sales, orders and
-        receipts keep their own history. Owner only — your password is required to approve, and it cannot be undone.
-      </p>
-      {!arming ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-            onClick={() => {
-              setArming(true);
-              setMsg(null);
-            }}
-          >
-            <Trash2 size={16} /> Clear all products…
-          </button>
-          {msg && (
-            <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="label">Your password (to approve)</label>
+    <div className="flex flex-wrap items-start justify-between gap-3 py-4">
+      <div className="min-w-0 flex-1">
+        <h4 className="text-[13px] font-bold text-ink-900">Clear all products</h4>
+        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          Delete <b>every product</b> so a fresh master can be imported. Sales, orders and receipts keep their history.
+          Your password is required to approve.
+        </p>
+        {arming && (
+          <div className="mt-2 flex flex-wrap items-end gap-2">
             <input
-              className="input"
+              className="input h-9 w-40"
               type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Your password"
             />
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+              disabled={busy || !password.trim()}
+              onClick={clearProducts}
+            >
+              <Trash2 size={14} /> {busy ? "Deleting…" : "Delete ALL"}
+            </button>
+            <button
+              className="btn-ghost !py-2 text-[13px]"
+              disabled={busy}
+              onClick={() => {
+                setArming(false);
+                setPassword("");
+                setMsg(null);
+              }}
+            >
+              Cancel
+            </button>
           </div>
-          <button
-            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
-            disabled={busy || !password.trim()}
-            onClick={clearProducts}
-          >
-            <Trash2 size={16} /> {busy ? "Deleting…" : "Delete ALL products"}
-          </button>
-          <button
-            className="btn-ghost"
-            disabled={busy}
-            onClick={() => {
-              setArming(false);
-              setPassword("");
-              setMsg(null);
-            }}
-          >
-            Cancel
-          </button>
-          {msg && (
-            <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
-          )}
-        </div>
+        )}
+        {msg && (
+          <span className={`mt-1.5 block text-xs font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+        )}
+      </div>
+      {!arming && (
+        <button
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-rose-600 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700"
+          onClick={() => {
+            setArming(true);
+            setMsg(null);
+          }}
+        >
+          <Trash2 size={15} /> Clear products…
+        </button>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -531,24 +532,21 @@ function CleanupDuplicatesCard() {
   }
 
   return (
-    <Card className="mb-6">
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
-        <Copy size={16} className="text-brand-600" /> Remove duplicate products
-      </h3>
-      <p className="mb-4 text-xs text-slate-500">
-        Past imports can leave copies of the same product with a placeholder Item ID (SKU-1234). This removes those
-        copies when the real product exists and the copy isn&apos;t used in any sale, order, receipt, count or
-        write-off. The real products always stay.
-      </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-primary" disabled={busy} onClick={cleanup}>
-          <Copy size={16} /> {busy ? "Cleaning…" : "Remove duplicates"}
-        </button>
+    <div className="flex flex-wrap items-start justify-between gap-3 py-4">
+      <div className="min-w-0 flex-1">
+        <h4 className="text-[13px] font-bold text-ink-900">Remove duplicate products</h4>
+        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          Past imports can leave placeholder-ID copies (SKU-1234) of a product. This removes copies that exist nowhere
+          else (no sale, order, receipt, count or write-off). The real products always stay.
+        </p>
         {msg && (
-          <span className={`text-sm font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
+          <span className={`mt-1.5 block text-xs font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
         )}
       </div>
-    </Card>
+      <button className="btn-ghost shrink-0 !py-2 text-[13px]" disabled={busy} onClick={cleanup}>
+        <Copy size={15} /> {busy ? "Cleaning…" : "Remove duplicates"}
+      </button>
+    </div>
   );
 }
 
