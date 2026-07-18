@@ -37,6 +37,7 @@ import {
   ReceiptText,
   ShieldCheck,
   BookOpen,
+  Search,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -88,6 +89,28 @@ const ACCOUNTING = {
   label: "Accounting",
   items: [{ href: "/invoices", label: "Invoices", icon: ReceiptText }],
 };
+const ADMIN = {
+  label: "Management",
+  items: [
+    { href: "/all-stores", label: "All Stores", icon: LayoutGrid },
+    { href: "/master-data", label: "Master Data", icon: Boxes },
+    { href: "/opening-inventory", label: "Opening Inventory", icon: PackageCheck },
+    { href: "/historical-purchases", label: "Purchase History", icon: History },
+    { href: "/inventory-ledger", label: "Inventory Ledger", icon: BookOpen },
+    { href: "/permissions", label: "Permissions", icon: ShieldCheck },
+    { href: "/stores", label: "Stores & Employees", icon: Building2 },
+    { href: "/menu-layout", label: "Menu Layout", icon: LayoutGrid },
+    { href: "/invoice-settings", label: "Invoice Customization", icon: ReceiptText },
+    { href: "/settings", label: "Store Settings", icon: Settings },
+  ],
+};
+
+// Plain menu data (no icons) for the Menu Layout page — one source of truth for
+// the labels/hrefs the owner can reorder.
+export const MENU_GROUPS_DATA = [OPERATIONS, PROCUREMENT, ACCOUNTING, ADMIN].map((g) => ({
+  label: g.label,
+  items: g.items.map((i) => ({ href: i.href, label: i.label })),
+}));
 
 // Two full palettes for the navigation chrome. Light is the default (clean white
 // rail); dark is the optional ink theme. Everything else in the app stays light.
@@ -117,6 +140,9 @@ function palette(dark: boolean, switcherOpen: boolean) {
         toggleTrack: "bg-white/5 ring-white/10",
         toggleActive: "bg-white/15 text-white shadow-sm",
         toggleIdle: "text-slate-400 hover:text-white",
+        searchBox: "bg-white/5 ring-white/10 focus-within:ring-brand-400/50",
+        searchIcon: "text-slate-500 hover:text-slate-300",
+        searchInput: "text-white placeholder:text-slate-500",
       }
     : {
         surface: "bg-white ring-1 ring-slate-200/80",
@@ -142,6 +168,9 @@ function palette(dark: boolean, switcherOpen: boolean) {
         toggleTrack: "bg-slate-100 ring-slate-200",
         toggleActive: "bg-white text-ink-900 shadow-sm",
         toggleIdle: "text-slate-400 hover:text-slate-600",
+        searchBox: "bg-slate-50 ring-slate-200 focus-within:ring-brand-400",
+        searchIcon: "text-slate-400 hover:text-slate-600",
+        searchInput: "text-ink-900 placeholder:text-slate-400",
       };
 }
 
@@ -152,16 +181,23 @@ export default function Sidebar() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [switching, setSwitching] = useState(false);
   const [storeMenuOpen, setStoreMenuOpen] = useState(false);
+  const [query, setQuery] = useState(""); // sidebar function search
   // Work waiting per page (href → count), e.g. requests a store has sent to
   // Procurement. Polled, so a request raised on the shop floor shows up on the
   // buyer's rail without them refreshing or opening the bell.
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [menuOrder, setMenuOrder] = useState<string[]>([]); // owner-set order (Menu Layout)
   const { theme } = useTheme();
 
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => (r.ok ? r.json() : null))
       .then(setSession)
+      .catch(() => {});
+    // The owner's saved sidebar order, if any.
+    fetch("/api/business")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => setMenuOrder(Array.isArray(b?.menuOrder) ? b.menuOrder : []))
       .catch(() => {});
   }, []);
 
@@ -195,24 +231,25 @@ export default function Sidebar() {
 
   const role = (session?.user.role || "operations") as Role;
   const denied = session?.denied;
-  const admin = {
-    label: "Management",
-    items: [
-      { href: "/all-stores", label: "All Stores", icon: LayoutGrid },
-      { href: "/master-data", label: "Master Data", icon: Boxes },
-      { href: "/opening-inventory", label: "Opening Inventory", icon: PackageCheck },
-      { href: "/historical-purchases", label: "Purchase History", icon: History },
-      { href: "/inventory-ledger", label: "Inventory Ledger", icon: BookOpen },
-      { href: "/permissions", label: "Permissions", icon: ShieldCheck },
-      { href: "/stores", label: "Stores & Employees", icon: Building2 },
-      { href: "/invoice-settings", label: "Invoice Customization", icon: ReceiptText },
-      { href: "/settings", label: "Store Settings", icon: Settings },
-    ],
+  const admin = ADMIN;
+  // Apply the owner's saved order WITHIN each group: listed hrefs come first in
+  // their saved order, anything not listed keeps its default position after.
+  const orderItems = <T extends { href: string }>(items: T[]): T[] => {
+    if (!menuOrder.length) return items;
+    const idx = (h: string) => {
+      const i = menuOrder.indexOf(h);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return items
+      .map((it, i) => ({ it, i }))
+      .sort((a, b) => idx(a.it.href) - idx(b.it.href) || a.i - b.i)
+      .map(({ it }) => it);
   };
+
   // Show only the menus this role may use — owner-set overrides (via
   // /permissions) take priority over the built-in baseline.
   const groups = [OPERATIONS, PROCUREMENT, ACCOUNTING, admin]
-    .map((g) => ({ ...g, items: g.items.filter((it) => canAccessPage(role, it.href, denied)) }))
+    .map((g) => ({ ...g, items: orderItems(g.items.filter((it) => canAccessPage(role, it.href, denied))) }))
     .filter((g) => g.items.length > 0);
 
   async function switchStore(storeId: string) {
@@ -320,48 +357,80 @@ export default function Sidebar() {
         </div>
       )}
 
+      {/* Search — jump to any function by name; there are a lot of them now. */}
+      <div className="px-3 pb-1 pt-1">
+        <div className={`flex items-center gap-2 rounded-xl px-3 py-2 ring-1 ${t.searchBox}`}>
+          <Search size={15} className={t.searchIcon} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search functions…"
+            className={`w-full bg-transparent text-[13px] outline-none ${t.searchInput}`}
+          />
+          {query && (
+            <button onClick={() => setQuery("")} className={t.searchIcon} title="Clear">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-3">
-        {groups.map((group) => (
-          <div key={group.label} className="space-y-0.5">
-            <p className={`mb-1.5 px-3 text-[10.5px] font-bold uppercase tracking-[0.14em] ${t.groupLabel}`}>
-              {group.label}
-            </p>
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-              const waiting = counts[item.href] || 0;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] transition-all ${
-                    active ? t.navActive : t.navIdle
-                  }`}
-                >
-                  <Icon
-                    size={18}
-                    strokeWidth={active ? 2.5 : 2}
-                    className={active ? t.navActiveIcon : t.navIdleIcon}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {waiting > 0 && (
-                    <span
-                      title={`${waiting} waiting`}
-                      className={`grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
-                        // On the active (brand) row a rose pill fights the blue,
-                        // so it goes white-on-brand there and rose everywhere else.
-                        active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
-                      }`}
-                    >
-                      {waiting > 99 ? "99+" : waiting}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        {(() => {
+          const q = query.trim().toLowerCase();
+          // While searching, flatten every group into one filtered list so a
+          // match in Management shows next to a match in Operations.
+          const shownGroups = q
+            ? [{ label: "Results", items: groups.flatMap((g) => g.items).filter((it) => it.label.toLowerCase().includes(q)) }]
+            : groups;
+
+          if (q && shownGroups[0].items.length === 0) {
+            return <p className={`px-3 py-6 text-center text-[12px] ${t.groupLabel}`}>No function matches “{query.trim()}”.</p>;
+          }
+
+          return shownGroups.map((group) => (
+            <div key={group.label} className="space-y-0.5">
+              <p className={`mb-1.5 px-3 text-[10.5px] font-bold uppercase tracking-[0.14em] ${t.groupLabel}`}>
+                {group.label}
+              </p>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+                const waiting = counts[item.href] || 0;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => {
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                    className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] transition-all ${
+                      active ? t.navActive : t.navIdle
+                    }`}
+                  >
+                    <Icon
+                      size={18}
+                      strokeWidth={active ? 2.5 : 2}
+                      className={active ? t.navActiveIcon : t.navIdleIcon}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {waiting > 0 && (
+                      <span
+                        title={`${waiting} waiting`}
+                        className={`grid h-5 min-w-[20px] shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                          active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
+                        }`}
+                      >
+                        {waiting > 99 ? "99+" : waiting}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ));
+        })()}
       </nav>
 
       {/* User + logout */}

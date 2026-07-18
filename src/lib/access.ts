@@ -10,6 +10,7 @@ import type { Role } from "./auth";
 const OWNER_ONLY = [
   "/all-stores",
   "/permissions",
+  "/menu-layout",
   "/master-data",
   // Migration surfaces: opening inventory rewrites stock wholesale, purchase
   // history is company-level data, and the ledger is the book behind both.

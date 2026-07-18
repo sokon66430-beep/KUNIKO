@@ -57,6 +57,10 @@ export async function PATCH(req: Request) {
         accent: ACCENTS.includes(r.accent) ? r.accent : "ink",
       };
     }
+    // Owner-set sidebar order (Menu Layout) — a list of page hrefs.
+    if (Array.isArray(body.menuOrder)) {
+      b.menuOrder = body.menuOrder.map((x: any) => String(x)).filter(Boolean).slice(0, 100);
+    }
     if (Array.isArray(body.approvers)) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers
