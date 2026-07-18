@@ -10,9 +10,13 @@ const VALID: RangeKey[] = ["today", "yesterday", "7d", "30d", "90d"];
 
 export async function GET(req: Request) {
   const db = await readDB();
-  const raw = new URL(req.url).searchParams.get("range") as RangeKey | null;
+  const params = new URL(req.url).searchParams;
+  const raw = params.get("range") as RangeKey | null;
   const range: RangeKey = raw && VALID.includes(raw) ? raw : "30d";
-  const stats = buildStats(db, range);
+  // A specific day picked from the calendar overrides the preset range.
+  const dateParam = params.get("date");
+  const customDay = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
+  const stats = buildStats(db, range, customDay);
 
   const session = await getSession();
   if (!session || (await profitFor(session.role))) return NextResponse.json(stats);

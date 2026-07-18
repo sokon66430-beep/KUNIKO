@@ -18,7 +18,25 @@ function inRange(s: Sale, from: Date, to: Date) {
 
 export type RangeKey = "today" | "yesterday" | "7d" | "30d" | "90d";
 
-export function rangeBounds(range: RangeKey): { from: Date; to: Date; days: number } {
+// A specific calendar day (yyyy-mm-dd) picked from the dashboard's date picker,
+// as a single-day window. Read straight off the string into a LOCAL date so the
+// day the user tapped is the day that's summed, on any server timezone.
+function customDayBounds(day: string): { from: Date; to: Date; days: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  const from = new Date(+m[1], +m[2] - 1, +m[3]);
+  from.setHours(0, 0, 0, 0);
+  if (isNaN(+from)) return null;
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  return { from, to, days: 1 };
+}
+
+export function rangeBounds(range: RangeKey, customDay?: string): { from: Date; to: Date; days: number } {
+  if (customDay) {
+    const c = customDayBounds(customDay);
+    if (c) return c;
+  }
   const to = new Date();
   const from = startOfDay(new Date());
   if (range === "today") return { from, to, days: 1 };
@@ -43,8 +61,8 @@ function sum(sales: Sale[], pick: (s: Sale) => number) {
   return round2(sales.reduce((acc, s) => acc + pick(s), 0));
 }
 
-export function buildStats(db: DB, range: RangeKey = "30d") {
-  const { from, to, days } = rangeBounds(range);
+export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string) {
+  const { from, to, days } = rangeBounds(range, customDay);
   const sales = db.sales.filter((s) => inRange(s, from, to));
 
   const revenue = sum(sales, (s) => s.total);
