@@ -26,8 +26,18 @@ import {
 import { useFetch, useAccess } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
+import { DatePicker } from "@/components/DatePicker";
 import { usd, riel, num, pct } from "@/lib/format";
 import { canSeeProfit } from "@/lib/access";
+
+// yyyy-mm-dd on the local calendar — the picker's max (can't pick the future)
+// and the seed for a nice label.
+const localDayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const niceDay = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : iso;
+};
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
@@ -104,7 +114,11 @@ function CategoryMix({ categories }: { categories: { name: string; value: number
 
 export default function DashboardPage() {
   const [range, setRange] = useState<RangeKey>("30d");
-  const { data, loading, error } = useFetch<Stats>(`/api/stats?range=${range}`);
+  // A specific day picked from the calendar. When set, it overrides the preset
+  // range and the dashboard reports just that day.
+  const [customDate, setCustomDate] = useState<string | null>(null);
+  const url = customDate ? `/api/stats?date=${customDate}` : `/api/stats?range=${range}`;
+  const { data, loading, error } = useFetch<Stats>(url);
   const { role, caps } = useAccess();
   const showProfit = role == null || canSeeProfit(role, caps);
 
@@ -114,18 +128,30 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Live overview of sales, profit and inventory health"
         actions={
-          <div className="inline-flex rounded-xl bg-slate-100 p-1">
-            {RANGES.map((r) => (
-              <button
-                key={r.key}
-                onClick={() => setRange(r.key)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
-                  range === r.key ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-xl bg-slate-100 p-1">
+              {RANGES.map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => {
+                    setRange(r.key);
+                    setCustomDate(null); // a preset clears any picked day
+                  }}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                    range === r.key && !customDate ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {/* Pick any specific day from the calendar. */}
+            <DatePicker
+              value={customDate ?? ""}
+              max={localDayKey(new Date())}
+              onChange={(v) => setCustomDate(v || null)}
+              allowClear
+            />
           </div>
         }
       />
@@ -148,7 +174,7 @@ export default function DashboardPage() {
               leaves a gap that reads as something failed to load. */}
           <div className={`grid grid-cols-2 gap-4 ${showProfit ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
             <StatCard
-              label={SALES_LABEL[range]}
+              label={customDate ? `Sales · ${niceDay(customDate)}` : SALES_LABEL[range]}
               value={usd(data.revenue)}
               sub={`${riel(data.revenue)} · ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
               icon={<DollarSign size={18} />}

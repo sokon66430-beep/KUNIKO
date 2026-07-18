@@ -1160,7 +1160,6 @@ function ProductCard({
   onAdd: (p: Product) => void;
   onToggleFavourite?: (p: Product) => void;
 }) {
-  const out = p.stock <= 0;
   return (
     // `relative` so the star can sit on top: the whole tile is one big button
     // (a cashier taps anywhere to sell), and a button can't legally nest inside
@@ -1176,23 +1175,12 @@ function ProductCard({
             <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
           </div>
         )}
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-            {p.sku}
-          </span>
-          <span className="flex items-center gap-1">
-            {p.stock <= p.reorderLevel && !out && <span className="text-[10px] font-bold text-amber-500">low</span>}
-            {out && <span className="text-[10px] font-bold text-rose-500">out</span>}
-            {/* Leave room for the star so it never covers the low/out flag. */}
-            {onToggleFavourite && <span className="w-5" />}
-          </span>
-        </div>
-        <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink-800">{p.name}</p>
-        <div className="mt-2 flex items-end justify-between">
+        {/* Name and price only — the cashier taps the tile to sell. Item code,
+            stock and status stay on the Inventory screen. `pr-6` keeps the name
+            clear of the favourite star in the top-right corner. */}
+        <p className="line-clamp-2 min-h-[2.5rem] pr-6 text-sm font-semibold text-ink-800">{p.name}</p>
+        <div className="mt-2">
           <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
-          <span className={`text-[11px] ${out ? "font-semibold text-rose-500" : "text-slate-500"}`}>
-            {p.stock} {p.unit}
-          </span>
         </div>
       </button>
 
