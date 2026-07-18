@@ -31,7 +31,18 @@ export type Session = {
 };
 
 export const SESSION_COOKIE = "kuon_session";
-const SECRET = process.env.AUTH_SECRET || "kuon-dev-secret-change-in-production";
+// In PRODUCTION a real AUTH_SECRET is mandatory. It must never fall back to a
+// value that lives in the source tree — the session cookie is only a signed
+// JSON blob, so anyone who knows the signing key can forge a cookie for any
+// user, role and store and walk straight past the login. So: use the env secret
+// everywhere; only in development fall back to a fixed dev key so local logins
+// keep working. If production is missing the secret (or it's too short to be
+// safe) the app fails CLOSED — signing throws and every cookie is rejected —
+// rather than silently trusting a guessable key.
+const IS_PROD = process.env.NODE_ENV === "production";
+const DEV_SECRET = "kuon-dev-secret-change-in-production";
+const SECRET = process.env.AUTH_SECRET || (IS_PROD ? "" : DEV_SECRET);
+const SECRET_READY = SECRET.length >= 16;
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 function b64urlEncode(bytes: Uint8Array): string {
@@ -67,12 +78,18 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 export async function signSession(s: Omit<Session, "exp"> & { exp?: number }): Promise<string> {
+  if (!SECRET_READY) {
+    throw new Error("AUTH_SECRET is not set (or is too short). Set a strong AUTH_SECRET in the environment.");
+  }
   const payload: Session = { ...s, exp: s.exp ?? Math.floor(Date.now() / 1000) + MAX_AGE };
   const body = b64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
   return `${body}.${await hmac(body)}`;
 }
 
 export async function verifySession(token: string | undefined | null): Promise<Session | null> {
+  // No usable secret → trust nothing. Fails closed instead of validating cookies
+  // against a default key.
+  if (!SECRET_READY) return null;
   if (!token) return null;
   const dot = token.lastIndexOf(".");
   if (dot < 0) return null;

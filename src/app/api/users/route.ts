@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { readSystem, mutateSystem, type User } from "@/lib/system";
 import { hashPassword } from "@/lib/password";
-import { isCrossStoreRole } from "@/lib/access";
+import { canManageStaff, isCrossStoreRole } from "@/lib/access";
 import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +44,12 @@ export async function GET() {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // Only staff managers (and owners) may create accounts — same gate as editing
+  // and deleting. Without this, any signed-in user, down to shop-floor crew,
+  // could mint a higher-privileged account in their store and log in as it.
+  if (!canManageStaff(s.role)) {
+    return NextResponse.json({ error: "You don't have permission to add employees" }, { status: 403 });
+  }
   const isOwner = s.role === "owner";
   const body = await req.json().catch(() => ({}));
   const username = String(body.username || "").trim().toLowerCase();
