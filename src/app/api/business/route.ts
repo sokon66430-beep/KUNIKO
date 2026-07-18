@@ -61,6 +61,16 @@ export async function PATCH(req: Request) {
     if (Array.isArray(body.menuOrder)) {
       b.menuOrder = body.menuOrder.map((x: any) => String(x)).filter(Boolean).slice(0, 100);
     }
+    // Full sidebar layout: sections with their ordered hrefs (cross-group moves).
+    if (Array.isArray(body.menuLayout)) {
+      b.menuLayout = body.menuLayout
+        .filter((g: any) => g && typeof g.group === "string" && Array.isArray(g.hrefs))
+        .map((g: any) => ({
+          group: String(g.group),
+          hrefs: g.hrefs.map((h: any) => String(h)).filter(Boolean).slice(0, 100),
+        }))
+        .slice(0, 20);
+    }
     if (Array.isArray(body.approvers)) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers

@@ -850,7 +850,11 @@ export type DB = {
       approvers?: Approver[]; // who may approve edits to submitted receipts
       promotionSettings?: PromotionSettings; // how deals may interact (see lib/promotions)
       receipt?: ReceiptSettings; // how the customer receipt is styled (Invoice Customization)
-      menuOrder?: string[]; // owner-set sidebar order — hrefs, most-preferred first (Menu Layout)
+      menuOrder?: string[]; // legacy owner-set order (within-group) — superseded by menuLayout
+      // Full owner-set sidebar layout (Menu Layout): each section and the ordered
+      // hrefs in it. Lets the owner move a function to a DIFFERENT section, not
+      // just reorder within one. Missing/new hrefs fall back to their default group.
+      menuLayout?: { group: string; hrefs: string[] }[];
       // Cash drawer ceiling per till: when the expected drawer exceeds this, the
       // money screen prompts a safe drop. In dollars; 0 = no limit.
       cashDrawerLimit?: number;

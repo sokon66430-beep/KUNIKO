@@ -108,11 +108,18 @@ const ADMIN = {
 };
 
 // Plain menu data (no icons) for the Menu Layout page — one source of truth for
-// the labels/hrefs the owner can reorder.
+// the labels/hrefs the owner can reorder (and move between sections).
 export const MENU_GROUPS_DATA = [OPERATIONS, PROCUREMENT, ACCOUNTING, ADMIN].map((g) => ({
   label: g.label,
   items: g.items.map((i) => ({ href: i.href, label: i.label })),
 }));
+
+// Lookups the sidebar uses to rebuild itself from a saved layout.
+const ALL_MENU_GROUPS = [OPERATIONS, PROCUREMENT, ACCOUNTING, ADMIN];
+const ITEM_BY_HREF: Record<string, { href: string; label: string; icon: any }> = Object.fromEntries(
+  ALL_MENU_GROUPS.flatMap((g) => g.items).map((i) => [i.href, i]),
+);
+const DEFAULT_LAYOUT = ALL_MENU_GROUPS.map((g) => ({ group: g.label, hrefs: g.items.map((i) => i.href) }));
 
 // Two full palettes for the navigation chrome. Light is the default (clean white
 // rail); dark is the optional ink theme. Everything else in the app stays light.
@@ -188,7 +195,8 @@ export default function Sidebar() {
   // Procurement. Polled, so a request raised on the shop floor shows up on the
   // buyer's rail without them refreshing or opening the bell.
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [menuOrder, setMenuOrder] = useState<string[]>([]); // owner-set order (Menu Layout)
+  const [menuOrder, setMenuOrder] = useState<string[]>([]); // legacy within-group order
+  const [menuLayout, setMenuLayout] = useState<{ group: string; hrefs: string[] }[] | null>(null);
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -196,10 +204,13 @@ export default function Sidebar() {
       .then((r) => (r.ok ? r.json() : null))
       .then(setSession)
       .catch(() => {});
-    // The owner's saved sidebar order, if any.
+    // The owner's saved sidebar layout / order, if any.
     fetch("/api/business")
       .then((r) => (r.ok ? r.json() : null))
-      .then((b) => setMenuOrder(Array.isArray(b?.menuOrder) ? b.menuOrder : []))
+      .then((b) => {
+        setMenuOrder(Array.isArray(b?.menuOrder) ? b.menuOrder : []);
+        setMenuLayout(Array.isArray(b?.menuLayout) && b.menuLayout.length ? b.menuLayout : null);
+      })
       .catch(() => {});
   }, []);
 
@@ -249,24 +260,38 @@ export default function Sidebar() {
   const role = (session?.user.role || "operations") as Role;
   const denied = session?.denied;
   const admin = ADMIN;
-  // Apply the owner's saved order WITHIN each group: listed hrefs come first in
-  // their saved order, anything not listed keeps its default position after.
-  const orderItems = <T extends { href: string }>(items: T[]): T[] => {
-    if (!menuOrder.length) return items;
+  // Rebuild the sidebar from the owner's saved layout (sections + ordered hrefs,
+  // possibly moved across sections). Falls back to the default layout; any href
+  // not placed anywhere (e.g. a newly added page) is appended to its default
+  // section. `admin` is referenced so the default-groups list is used.
+  void admin;
+  const layout = (menuLayout ?? DEFAULT_LAYOUT).map((g) => ({ group: g.group, hrefs: [...g.hrefs] }));
+  // Legacy within-group order (before cross-group layout existed).
+  if (!menuLayout && menuOrder.length) {
     const idx = (h: string) => {
       const i = menuOrder.indexOf(h);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
-    return items
-      .map((it, i) => ({ it, i }))
-      .sort((a, b) => idx(a.it.href) - idx(b.it.href) || a.i - b.i)
-      .map(({ it }) => it);
-  };
-
-  // Show only the menus this role may use — owner-set overrides (via
-  // /permissions) take priority over the built-in baseline.
-  const groups = [OPERATIONS, PROCUREMENT, ACCOUNTING, admin]
-    .map((g) => ({ ...g, items: orderItems(g.items.filter((it) => canAccessPage(role, it.href, denied))) }))
+    for (const g of layout) g.hrefs.sort((a, b) => idx(a) - idx(b));
+  }
+  const placed = new Set(layout.flatMap((g) => g.hrefs));
+  for (const dg of DEFAULT_LAYOUT) {
+    for (const href of dg.hrefs) {
+      if (placed.has(href)) continue;
+      let grp = layout.find((g) => g.group === dg.group);
+      if (!grp) { grp = { group: dg.group, hrefs: [] }; layout.push(grp); }
+      grp.hrefs.push(href);
+      placed.add(href);
+    }
+  }
+  const groups = layout
+    .map((g) => ({
+      label: g.group,
+      items: g.hrefs
+        .map((h) => ITEM_BY_HREF[h])
+        .filter(Boolean)
+        .filter((it) => canAccessPage(role, it.href, denied)),
+    }))
     .filter((g) => g.items.length > 0);
 
   async function switchStore(storeId: string) {
