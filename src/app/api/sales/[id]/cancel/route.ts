@@ -4,7 +4,9 @@ import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
-import { canCancelInvoice } from "@/lib/access";
+import { canCancelInvoice, isCrossStoreRole } from "@/lib/access";
+import { readSystem } from "@/lib/system";
+import { verifyPassword } from "@/lib/password";
 
 export const dynamic = "force-dynamic";
 
@@ -25,18 +27,38 @@ function tierFor(spent: number) {
 //   • Reports & drawer — the sale is flagged `cancelled`, which every revenue and
 //     drawer calc skips. The row itself is KEPT so the void is on the record.
 // Imported (historical) sales never moved stock, so cancelling one just flags it.
+//
+// MANAGER APPROVAL: a void must be authorised by a store manager or assistant
+// store manager (or the owner) entering their own login — the person at the till
+// can be a cashier, but the manager's code is what approves the cancellation.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  if (!canCancelInvoice(session.role)) {
-    return NextResponse.json(
-      { error: "Only the store manager or assistant store manager can cancel an invoice" },
-      { status: 403 },
-    );
-  }
   const body = await req.json().catch(() => ({}));
   const reason = String(body.reason || "").trim();
   if (!reason) return NextResponse.json({ error: "A reason is required to cancel an invoice" }, { status: 400 });
+
+  // Verify the approving manager's credentials against the user directory.
+  const managerUsername = String(body.managerUsername || "").trim();
+  const managerPassword = String(body.managerPassword || "");
+  if (!managerUsername || !managerPassword) {
+    return NextResponse.json({ error: "Manager approval is required to cancel an invoice" }, { status: 400 });
+  }
+  const sys = await readSystem();
+  const mgr = sys.users.find((u) => u.username.toLowerCase() === managerUsername.toLowerCase());
+  const managerOk =
+    !!mgr &&
+    verifyPassword(managerPassword, mgr.passwordHash) &&
+    canCancelInvoice(mgr.role) &&
+    // The manager must belong to this store (or be a cross-store role / owner).
+    (isCrossStoreRole(mgr.role) || mgr.storeId === session.storeId || (mgr.storeIds || []).includes(session.storeId));
+  if (!managerOk) {
+    return NextResponse.json(
+      { error: "Manager approval failed — check the manager username and code. Only a store manager or assistant store manager can approve." },
+      { status: 403 },
+    );
+  }
+  const approvedBy = mgr!.name;
   const actor = await currentActor();
 
   const result = await mutateDB((db) => {
@@ -79,15 +101,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     sale.cancelled = true;
     sale.cancelledAt = new Date().toISOString();
-    sale.cancelledBy = session.name;
+    // Who APPROVED the void (the manager whose code authorised it).
+    sale.cancelledBy = approvedBy;
     sale.cancelReason = reason;
 
+    // Name both people: who operated the till, and the manager who approved.
+    const operator = session.name;
+    const bySuffix = operator && operator !== approvedBy ? ` · processed by ${operator}` : "";
     logAudit(db, {
       actor,
       action: "Cancelled",
       entityType: "Sale",
       entity: sale.invoiceNo,
-      detail: `Invoice ${sale.invoiceNo} voided (${sale.total.toFixed(2)}) — ${reason}${
+      detail: `Invoice ${sale.invoiceNo} voided (${sale.total.toFixed(2)}) — ${reason} · approved by ${approvedBy}${bySuffix}${
         promoRemoved ? ` · ${promoRemoved} promo usage(s) removed` : ""
       }`,
     });

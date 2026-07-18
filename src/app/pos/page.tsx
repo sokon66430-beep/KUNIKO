@@ -22,8 +22,9 @@ import {
   Star,
   Wallet,
   ReceiptText,
+  ShieldCheck,
 } from "lucide-react";
-import { useFetch, api, useAccess, useRole } from "@/lib/client";
+import { useFetch, api, useAccess } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
@@ -31,7 +32,7 @@ import { usd, riel, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
-import { canSeeProfit, canCancelInvoice } from "@/lib/access";
+import { canSeeProfit } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
 import { PosShiftModal } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
@@ -1350,33 +1351,44 @@ const CANCEL_REASONS = [
 
 function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const { data, loading, reload } = useFetch<Sale[]>("/api/sales?limit=200");
-  const role = useRole();
-  const canCancel = role ? canCancelInvoice(role) : false;
   const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  // The invoice a supervisor is about to cancel — opens the confirm dialog
-  // (a reason dropdown, not a browser prompt).
+  // The invoice being cancelled — opens the confirm dialog (reason dropdown +
+  // manager approval; the void only goes through with a manager's login).
   const [cancelling, setCancelling] = useState<Sale | null>(null);
   const [reasonSel, setReasonSel] = useState("");
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
+  // Manager approval — a store manager / assistant store manager signs in here
+  // to authorise the void.
+  const [mgrUser, setMgrUser] = useState("");
+  const [mgrPass, setMgrPass] = useState("");
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   function startCancel(s: Sale) {
     setReasonSel("");
     setReasonOther("");
+    setMgrUser("");
+    setMgrPass("");
+    setCancelError(null);
     setCancelling(s);
   }
 
   async function confirmCancel() {
-    if (!cancelling || !reason) return;
+    if (!cancelling || !reason || !mgrUser.trim() || !mgrPass) return;
     setBusy(cancelling.id);
+    setCancelError(null);
     try {
-      await api(`/api/sales/${cancelling.id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+      await api(`/api/sales/${cancelling.id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason, managerUsername: mgrUser.trim(), managerPassword: mgrPass }),
+      });
       setCancelling(null);
       reload();
       onChanged();
     } catch (e: any) {
-      alert(e.message);
+      // Keep the dialog open so the manager can re-enter their code.
+      setCancelError(e.message || "Cancellation failed.");
     } finally {
       setBusy(null);
     }
@@ -1414,9 +1426,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
             )}
           </div>
         </div>
-        {!canCancel && (
-          <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice must be done by the store manager or assistant store manager. You can view and search here.</p>
-        )}
+        <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice needs a store manager or assistant store manager to approve it with their login code.</p>
         <div className="overflow-y-auto px-2 py-2">
           {loading && !data ? (
             <p className="px-3 py-8 text-center text-sm text-slate-400">Loading…</p>
@@ -1445,7 +1455,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
                     <td className={`px-3 py-2 text-right font-bold ${s.cancelled ? "text-slate-400 line-through" : "text-ink-900"}`}>{usd(s.total)}</td>
                     <td className="px-3 py-2 text-slate-500">{s.paymentMethod}</td>
                     <td className="px-3 py-2 text-right">
-                      {!s.cancelled && canCancel && (
+                      {!s.cancelled && (
                         <button onClick={() => startCancel(s)} disabled={busy === s.id} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50">
                           <X size={13} /> {busy === s.id ? "Cancelling…" : "Cancel"}
                         </button>
@@ -1484,17 +1494,49 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
                 {CANCEL_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
               {reasonSel === "Other" && (
-                <input value={reasonOther} onChange={(e) => setReasonOther(e.target.value)} placeholder="Type the reason" className="input mt-2" autoFocus />
+                <input value={reasonOther} onChange={(e) => setReasonOther(e.target.value)} placeholder="Type the reason" className="input mt-2" />
               )}
             </div>
+
+            {/* Manager approval — a store manager / assistant store manager signs
+                in here to authorise the void. */}
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                <ShieldCheck size={13} /> Manager approval
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={mgrUser}
+                  onChange={(e) => setMgrUser(e.target.value)}
+                  placeholder="Manager username"
+                  autoComplete="off"
+                  className="input"
+                />
+                <input
+                  type="password"
+                  value={mgrPass}
+                  onChange={(e) => setMgrPass(e.target.value)}
+                  placeholder="Manager code"
+                  autoComplete="off"
+                  onKeyDown={(e) => { if (e.key === "Enter") confirmCancel(); }}
+                  className="input"
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-400">A store manager or assistant store manager must enter their own login to approve.</p>
+            </div>
+
+            {cancelError && (
+              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">{cancelError}</p>
+            )}
+
             <div className="mt-4 flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => setCancelling(null)}>Keep invoice</button>
               <button
                 onClick={confirmCancel}
-                disabled={!reason || busy === cancelling.id}
+                disabled={!reason || !mgrUser.trim() || !mgrPass || busy === cancelling.id}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
               >
-                <X size={15} /> {busy === cancelling.id ? "Cancelling…" : "Cancel invoice"}
+                <X size={15} /> {busy === cancelling.id ? "Cancelling…" : "Approve & cancel"}
               </button>
             </div>
           </div>
