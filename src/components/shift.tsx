@@ -248,6 +248,44 @@ const MV_META: Record<CashMovementType, { title: string; hint: string }> = {
   REFUND: { title: "Cash Refund", hint: "Cash returned to a customer." },
 };
 
+// Preset reasons per movement type — a dropdown, not free text, so the reason
+// is always one of a known set (and reports can group by it). "Other" reveals a
+// box for anything not listed.
+const MV_REASONS: Record<CashMovementType, string[]> = {
+  CASH_IN: ["Change fund top-up", "Returned petty cash", "Cash correction", "Other"],
+  CASH_OUT: ["Supplier / delivery payment", "Store supplies", "Petty cash", "Utility / bill payment", "Other"],
+  DROP: ["Over cash limit", "Scheduled safe drop", "End-of-shift drop", "Other"],
+  REFUND: ["Customer refund", "Wrong charge", "Damaged / returned product", "Other"],
+};
+
+const VARIANCE_REASONS = [
+  "Wrong change given",
+  "Miscount",
+  "Unrecorded cash sale",
+  "Cash paid out not recorded",
+  "Suspected theft / loss",
+  "Other",
+];
+
+// A required reason picker: a dropdown of preset reasons; picking "Other" shows
+// a text box. `value` is the effective reason, "" until a valid choice is made.
+function ReasonSelect({ label, options, sel, onSel, other, onOther }: {
+  label: string; options: string[]; sel: string; onSel: (v: string) => void; other: string; onOther: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <select value={sel} onChange={(e) => onSel(e.target.value)} className="input">
+        <option value="">Select a reason…</option>
+        {options.map((r) => <option key={r} value={r}>{r}</option>)}
+      </select>
+      {sel === "Other" && (
+        <input value={other} onChange={(e) => onOther(e.target.value)} placeholder="Type the reason" className="input mt-2" autoFocus />
+      )}
+    </div>
+  );
+}
+
 export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate }: {
   type: CashMovementType; onClose: () => void; onSubmit: (p: { amount: number; reason: string; notes?: string }) => Promise<void>;
   drawer: Drawer; drawerLimit: number; rate: number;
@@ -255,7 +293,9 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const meta = MV_META[type];
   const recDrop = type === "DROP" && drawerLimit > 0 ? Math.max(0, Math.round((drawer.expected - drawerLimit) * 100) / 100) : 0;
   const [amount, setAmount] = useState(recDrop > 0 ? String(recDrop) : "");
-  const [reason, setReason] = useState("");
+  const [reasonSel, setReasonSel] = useState("");
+  const [reasonOther, setReasonOther] = useState("");
+  const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const amt = Math.round((Number(amount) || 0) * 100) / 100;
@@ -272,16 +312,16 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
 
   async function go() {
     setBusy(true);
-    try { await onSubmit({ amount: amt, reason: reason.trim(), notes: notes.trim() || undefined }); }
+    try { await onSubmit({ amount: amt, reason, notes: notes.trim() || undefined }); }
     catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
   }
 
   return (
-    <Modal open onClose={onClose} title={meta.title} footer={
+    <Modal open onClose={onClose} size="lg" title={meta.title} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || amt <= 0 || !reason.trim()} onClick={go}>{busy ? "Saving…" : `Record ${usd(amt)}`}</button>
+        <button className="btn-primary" disabled={busy || amt <= 0 || !reason} onClick={go}>{busy ? "Saving…" : `Record ${usd(amt)}`}</button>
       </div>
     }>
       <p className="mb-3 text-sm text-slate-500">{meta.hint}</p>
@@ -310,8 +350,9 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
         </button>
       </div>
       <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="input mb-3" autoFocus />
-      <label className="label">Reason</label>
-      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={type === "CASH_OUT" ? "e.g. Buy cleaning supplies" : "Reason"} className="input mb-3" />
+      <div className="mb-3">
+        <ReasonSelect label="Reason" options={MV_REASONS[type]} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
+      </div>
       <label className="label">Notes (optional)</label>
       <input value={notes} onChange={(e) => setNotes(e.target.value)} className="input" />
     </Modal>
@@ -320,7 +361,9 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
 
 export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView; rate: number; onClose: () => void; onDone: () => void }) {
   const [count, setCount] = useState<CashCount>(emptyCount());
-  const [reason, setReason] = useState("");
+  const [reasonSel, setReasonSel] = useState("");
+  const [reasonOther, setReasonOther] = useState("");
+  const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [busy, setBusy] = useState(false);
   const expected = shift.drawer.expected;
   const actual = countTotal(count, rate);
@@ -329,7 +372,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
   async function submit() {
     setBusy(true);
     try {
-      await api(`/api/shifts/${shift.id}/close`, { method: "POST", body: JSON.stringify({ closingCount: count, varianceReason: reason.trim() }) });
+      await api(`/api/shifts/${shift.id}/close`, { method: "POST", body: JSON.stringify({ closingCount: count, varianceReason: reason }) });
       onDone();
     } catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
@@ -339,7 +382,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
     <Modal open onClose={onClose} size="2xl" title={`Close Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || (variance !== 0 && !reason.trim())} onClick={submit}>
+        <button className="btn-primary" disabled={busy || (variance !== 0 && !reason)} onClick={submit}>
           <ClipboardCheck size={16} /> {busy ? "Submitting…" : "Submit for approval"}
         </button>
       </div>
@@ -359,10 +402,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
             </div>
           </div>
           {variance !== 0 && (
-            <div>
-              <label className="label">Variance reason (required)</label>
-              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Explain the difference" className="input" />
-            </div>
+            <ReasonSelect label="Variance reason (required)" options={VARIANCE_REASONS} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
           )}
           <p className="text-xs text-slate-400">Submitting sends the count to a supervisor. Once approved, the shift locks and can&apos;t be edited.</p>
         </div>
