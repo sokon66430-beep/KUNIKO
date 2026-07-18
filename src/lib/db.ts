@@ -48,6 +48,11 @@ function backfill(db: DB): DB {
   if (db.meta.nextLedger == null) db.meta.nextLedger = 1;
   if (!db.historicalPurchases) db.historicalPurchases = [];
   if (db.meta.nextHistorical == null) db.meta.nextHistorical = 1;
+  // Customer pickup-number queue — stores created before it get an empty book
+  // and a zeroed counter (first number issued will be 001).
+  if (!db.queue) db.queue = [];
+  if (db.meta.nextQueueId == null) db.meta.nextQueueId = 1;
+  if (!db.meta.queue) db.meta.queue = { current: 0, updatedAt: new Date().toISOString() };
   if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
   if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;
   // Deals don't combine or stack until the owner says so — see lib/promotions.

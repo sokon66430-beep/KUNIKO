@@ -55,6 +55,7 @@ export const DEFAULT_ROLE_DENIED: Partial<Record<Role, string[]>> = {
 // reach it, so a denied role always has somewhere safe to land.
 export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/pos", label: "Point of Sale" },
+  { href: "/queue", label: "Pickup Queue" },
   { href: "/inventory", label: "Inventory" },
   { href: "/stock-count", label: "Stock Count" },
   { href: "/write-offs", label: "Write-Off" },
@@ -197,6 +198,14 @@ export function canManageStaff(role: Role): boolean {
     role === "asst_store_manager" ||
     role === "manager"
   );
+}
+
+// Who counts as a "supervisor" for the pickup-number queue: may reset the
+// counter and cancel a wrong number. Cashiers (any signed-in till user) can
+// already generate and view numbers; these two actions are the extra power.
+// Same set as staff management — store leadership and above.
+export function canManageQueue(role: Role): boolean {
+  return canManageStaff(role);
 }
 
 // Cross-store, elevated roles — only an owner may create or assign these. Area

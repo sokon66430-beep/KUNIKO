@@ -30,6 +30,7 @@ import { SearchSelect } from "@/components/SearchSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
+import { formatQueue } from "@/lib/queue";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
 import { baseUnitName, defaultUnitOf, findByBarcode, type ResolvedUnit } from "@/lib/sellingUnits";
@@ -91,6 +92,20 @@ export default function PosPage() {
   const [customerId, setCustomerId] = useState<string>("");
   const [discount, setDiscount] = useState<string>("");
   const [payment, setPayment] = useState<PaymentMethod>("Cash");
+  // Pickup number: the cashier turns this on for orders the customer waits for
+  // (coffee, noodles, warmed food). The server issues the number centrally.
+  const [wantQueue, setWantQueue] = useState(false);
+  // This till's identifier, saved per device so the queue record shows which POS
+  // issued a number. Set once in the checkout box; persists in localStorage.
+  const [terminal, setTerminal] = useState("POS 1");
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("stookii_pos_terminal") : null;
+    if (saved) setTerminal(saved);
+  }, []);
+  const saveTerminal = (v: string) => {
+    setTerminal(v);
+    if (typeof window !== "undefined") window.localStorage.setItem("stookii_pos_terminal", v);
+  };
   const [submitting, setSubmitting] = useState(false);
   const [khqrOpen, setKhqrOpen] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
@@ -495,6 +510,9 @@ export default function PosPage() {
         paymentMethod: payment,
         paymentRef: opts?.paymentRef,
         tendered: opts?.tendered,
+        // Ask the server for a pickup number only when the cashier turned it on.
+        queue: wantQueue,
+        posTerminalId: terminal,
       }),
     });
     setReceipt(sale);
@@ -882,6 +900,37 @@ export default function PosPage() {
                 </div>
               </div>
 
+              {/* Pickup number — the cashier flips this on for orders the
+                  customer waits for. The number is issued by the server on
+                  payment, shared across every till. */}
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setWantQueue((v) => !v)}
+                  className="flex items-center gap-2"
+                  aria-pressed={wantQueue}
+                >
+                  <span
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+                      wantQueue ? "bg-brand-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                        wantQueue ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </span>
+                  <span className="text-[13px] font-semibold text-ink-800">Pickup number</span>
+                </button>
+                <input
+                  value={terminal}
+                  onChange={(e) => saveTerminal(e.target.value)}
+                  title="This till's name — saved on this device"
+                  className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-xs font-semibold text-ink-800 outline-none focus:border-brand-400"
+                />
+              </div>
+
               <div>
                 <label className="label">Payment</label>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -1180,6 +1229,18 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
           <p className="text-sm text-slate-500">{sale.invoiceNo}</p>
         </div>
 
+        {/* Pickup number — big, so the customer can read it across a counter.
+            Only shown when the cashier asked for one at checkout. */}
+        {sale.queueNumber != null && (
+          <div className="mb-4 rounded-xl bg-brand-50 py-4 text-center ring-1 ring-brand-200">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-700">Pickup Number</p>
+            <p className="my-1 text-5xl font-extrabold tabular-nums tracking-wide text-brand-700">
+              {formatQueue(sale.queueNumber)}
+            </p>
+            <p className="text-[12px] text-brand-700/80">Please wait for your number.</p>
+          </div>
+        )}
+
         <div className="rounded-xl border border-dashed border-slate-200 p-4">
           <div className="mb-2 text-center">
             <p className="font-bold text-ink-900">Monakom Pro Store</p>
@@ -1255,6 +1316,12 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
             <span>Paid by {sale.paymentMethod}</span>
             <Badge tone="emerald">{sale.customerName || "Walk-in"}</Badge>
           </div>
+          {sale.queueNumber != null && (
+            <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-sm">
+              <span className="font-semibold text-ink-800">Pickup Number</span>
+              <span className="text-lg font-extrabold tabular-nums text-ink-900">{formatQueue(sale.queueNumber)}</span>
+            </div>
+          )}
         </div>
 
         <button onClick={onClose} className="btn-primary mt-4 w-full">
