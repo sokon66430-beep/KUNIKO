@@ -140,7 +140,7 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
   const d = shift.drawer;
   const over = drawerLimit > 0 && d.expected > drawerLimit;
   const recDrop = over ? Math.max(0, Math.round((d.expected - drawerLimit) * 100) / 100) : 0;
-  // Money survey — count the drawer to check it matches, WITHOUT closing.
+  // Shift survey — count the drawer to check it matches, WITHOUT closing.
   const [survey, setSurvey] = useState(false);
   return (
     <div className="space-y-4">
@@ -186,7 +186,7 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <button className="btn-ghost" onClick={() => onMovement("CASH_IN")}><PlusCircle size={16} /> Cash In</button>
         <button className="btn-ghost" onClick={() => onMovement("CASH_OUT")}><MinusCircle size={16} /> Cash Out</button>
         <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
-        <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Money survey</button>
+        <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Shift survey</button>
         <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
       </div>
 
@@ -195,7 +195,7 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
   );
 }
 
-// Money survey — a mid-shift CHECK, not a close. The operations team counts the
+// Shift survey — a mid-shift CHECK, not a close. The operations team counts the
 // drawer whenever they want to verify the till: it shows what sold, the cash the
 // drawer should hold, what was actually counted, and a plain verdict — does the
 // money MATCH or not? Counting here changes nothing and never ends the shift.
@@ -208,7 +208,7 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
   const matched = variance === 0;
 
   return (
-    <Modal open onClose={onClose} size="2xl" title={`Money Survey · Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
+    <Modal open onClose={onClose} size="2xl" title={`Shift Survey · Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
       <div className="flex w-full justify-end">
         <button className="btn-primary" onClick={onClose}>Done</button>
       </div>
