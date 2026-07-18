@@ -33,6 +33,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit, canCancelInvoice } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
+import { PosShiftModal } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
 import { baseUnitName, defaultUnitOf, findByBarcode, type ResolvedUnit } from "@/lib/sellingUnits";
@@ -115,6 +116,8 @@ export default function PosPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [invoicesOpen, setInvoicesOpen] = useState(false);
+  // The cash shift, opened right here in the till: live drawer summary + close.
+  const [shiftOpen, setShiftOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [openCat, setOpenCat] = useState<string | null>(null); // drilled-into category at the till
   const [importing, setImporting] = useState(false);
@@ -139,7 +142,7 @@ export default function PosPage() {
   const markdownsRef = useRef<Markdown[]>([]);
   markdownsRef.current = markdowns ?? [];
   const blockScanRef = useRef(false);
-  blockScanRef.current = khqrOpen || cashOpen || !!receipt || reportOpen || invoicesOpen || cameraOpen;
+  blockScanRef.current = khqrOpen || cashOpen || !!receipt || reportOpen || invoicesOpen || cameraOpen || shiftOpen;
 
   async function importSales(file: File) {
     setImporting(true);
@@ -222,7 +225,7 @@ export default function PosPage() {
   // The till only shows matches while the cashier is actually searching.
   // Is anything modal on screen? A toast has to get out of a dialog's way — a
   // dialog's buttons live at the bottom, which is exactly where the toast sits.
-  const modalOpen = khqrOpen || cashOpen || !!receipt || reportOpen || invoicesOpen || cameraOpen;
+  const modalOpen = khqrOpen || cashOpen || !!receipt || reportOpen || invoicesOpen || cameraOpen || shiftOpen;
 
   // Toasts clear themselves. Without this a message stayed until someone
   // clicked its X by hand — which is how a note about a star tapped minutes
@@ -559,9 +562,13 @@ export default function PosPage() {
         subtitle="Ring up a sale — stock and loyalty update automatically"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <a className="btn-ghost !py-2 text-sm" href="/money" title="Cash shifts & drawer control">
+            <button
+              className="btn-ghost !py-2 text-sm"
+              onClick={() => setShiftOpen(true)}
+              title="Shift summary, cash drawer & close shift — without leaving the till"
+            >
               <Wallet size={16} /> Cash Drawer
-            </a>
+            </button>
             <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
               <ReceiptText size={16} /> Invoices
             </button>
@@ -646,6 +653,7 @@ export default function PosPage() {
 
       {reportOpen && <SalesReportModal onClose={() => setReportOpen(false)} />}
       {invoicesOpen && <InvoicesModal onClose={() => setInvoicesOpen(false)} onChanged={reload} />}
+      {shiftOpen && <PosShiftModal terminal={terminal} onClose={() => setShiftOpen(false)} />}
 
       {/* Camera barcode scanner — for phones, iPads and any device without a
           hardware scanner. Stays open for continuous scanning; each barcode is
