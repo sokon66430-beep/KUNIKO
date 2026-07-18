@@ -1271,29 +1271,27 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
   const [reasonSel, setReasonSel] = useState("");
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
-  // Manager approval — a store manager / assistant store manager signs in here
-  // to authorise the void.
-  const [mgrUser, setMgrUser] = useState("");
+  // Manager approval — a store manager / assistant store manager enters their
+  // code to authorise the void; the system finds who it belongs to.
   const [mgrPass, setMgrPass] = useState("");
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   function startCancel(s: Sale) {
     setReasonSel("");
     setReasonOther("");
-    setMgrUser("");
     setMgrPass("");
     setCancelError(null);
     setCancelling(s);
   }
 
   async function confirmCancel() {
-    if (!cancelling || !reason || !mgrUser.trim() || !mgrPass) return;
+    if (!cancelling || !reason || !mgrPass) return;
     setBusy(cancelling.id);
     setCancelError(null);
     try {
       await api(`/api/sales/${cancelling.id}/cancel`, {
         method: "POST",
-        body: JSON.stringify({ reason, managerUsername: mgrUser.trim(), managerPassword: mgrPass }),
+        body: JSON.stringify({ reason, managerCode: mgrPass }),
       });
       setCancelling(null);
       reload();
@@ -1416,25 +1414,17 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
               <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wide text-slate-500">
                 <ShieldCheck size={13} /> Manager approval
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={mgrUser}
-                  onChange={(e) => setMgrUser(e.target.value)}
-                  placeholder="Manager username"
-                  autoComplete="off"
-                  className="input"
-                />
-                <input
-                  type="password"
-                  value={mgrPass}
-                  onChange={(e) => setMgrPass(e.target.value)}
-                  placeholder="Manager code"
-                  autoComplete="off"
-                  onKeyDown={(e) => { if (e.key === "Enter") confirmCancel(); }}
-                  className="input"
-                />
-              </div>
-              <p className="mt-1.5 text-[11px] text-slate-400">A store manager or assistant store manager must enter their own login to approve.</p>
+              <input
+                type="password"
+                value={mgrPass}
+                onChange={(e) => setMgrPass(e.target.value)}
+                placeholder="Manager code"
+                autoComplete="off"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") confirmCancel(); }}
+                className="input"
+              />
+              <p className="mt-1.5 text-[11px] text-slate-400">A store manager or assistant store manager enters their code — the system knows who approved.</p>
             </div>
 
             {cancelError && (
@@ -1445,7 +1435,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
               <button className="btn-ghost" onClick={() => setCancelling(null)}>Keep invoice</button>
               <button
                 onClick={confirmCancel}
-                disabled={!reason || !mgrUser.trim() || !mgrPass || busy === cancelling.id}
+                disabled={!reason || !mgrPass || busy === cancelling.id}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
               >
                 <X size={15} /> {busy === cancelling.id ? "Cancelling…" : "Approve & cancel"}

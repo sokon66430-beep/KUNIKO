@@ -65,7 +65,7 @@ export default function InvoiceSettingsPage() {
     setFooterNote(r.footerNote || "");
     setAccent(r.accent || "ink");
     setShowLogo(!!r.showLogo);
-    setShowVat(r.showVat !== false);
+    setShowVat(!!r.showVat); // default OFF — total just notes "Includes VAT x%"
     setShowPickup(r.showPickup !== false);
     setSeeded(true);
   }, [data, seeded]);
@@ -77,9 +77,10 @@ export default function InvoiceSettingsPage() {
       address,
       phone,
       logo: data?.logo,
+      vatRate: data?.vatRate,
       receipt: { headerNote, footerNote, accent, showLogo, showVat, showPickup },
     }),
-    [name, address, phone, data?.logo, headerNote, footerNote, accent, showLogo, showVat, showPickup],
+    [name, address, phone, data?.logo, data?.vatRate, headerNote, footerNote, accent, showLogo, showVat, showPickup],
   );
 
   async function save() {
@@ -163,7 +164,7 @@ export default function InvoiceSettingsPage() {
             </div>
             <div className="mt-4 space-y-2">
               {data?.logo && <Toggle label="Show store logo on the receipt" on={showLogo} onToggle={() => setShowLogo((v) => !v)} />}
-              <Toggle label="Show VAT breakdown (subtotal + VAT)" on={showVat} onToggle={() => setShowVat((v) => !v)} />
+              <Toggle label="Break out VAT (subtotal + VAT lines) — off shows only ‘Includes VAT’" on={showVat} onToggle={() => setShowVat((v) => !v)} />
               <Toggle label="Show pickup number when there is one" on={showPickup} onToggle={() => setShowPickup((v) => !v)} />
             </div>
           </Card>

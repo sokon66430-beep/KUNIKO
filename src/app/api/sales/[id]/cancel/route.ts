@@ -38,27 +38,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const reason = String(body.reason || "").trim();
   if (!reason) return NextResponse.json({ error: "A reason is required to cancel an invoice" }, { status: 400 });
 
-  // Verify the approving manager's credentials against the user directory.
-  const managerUsername = String(body.managerUsername || "").trim();
-  const managerPassword = String(body.managerPassword || "");
-  if (!managerUsername || !managerPassword) {
-    return NextResponse.json({ error: "Manager approval is required to cancel an invoice" }, { status: 400 });
+  // Verify the approving manager by their CODE alone — no username. The system
+  // finds which manager it belongs to: match the code against every store
+  // manager / assistant store manager (or owner) who can approve here.
+  const managerCode = String(body.managerCode || body.managerPassword || "");
+  if (!managerCode) {
+    return NextResponse.json({ error: "A manager code is required to cancel an invoice" }, { status: 400 });
   }
   const sys = await readSystem();
-  const mgr = sys.users.find((u) => u.username.toLowerCase() === managerUsername.toLowerCase());
-  const managerOk =
-    !!mgr &&
-    verifyPassword(managerPassword, mgr.passwordHash) &&
-    canCancelInvoice(mgr.role) &&
-    // The manager must belong to this store (or be a cross-store role / owner).
-    (isCrossStoreRole(mgr.role) || mgr.storeId === session.storeId || (mgr.storeIds || []).includes(session.storeId));
-  if (!managerOk) {
+  const approvers = sys.users.filter(
+    (u) =>
+      canCancelInvoice(u.role) &&
+      (isCrossStoreRole(u.role) || u.storeId === session.storeId || (u.storeIds || []).includes(session.storeId)),
+  );
+  const mgr = approvers.find((u) => verifyPassword(managerCode, u.passwordHash));
+  if (!mgr) {
     return NextResponse.json(
-      { error: "Manager approval failed — check the manager username and code. Only a store manager or assistant store manager can approve." },
+      { error: "Manager code not recognised — only a store manager or assistant store manager can approve." },
       { status: 403 },
     );
   }
-  const approvedBy = mgr!.name;
+  const approvedBy = mgr.name;
   const actor = await currentActor();
 
   const result = await mutateDB((db) => {

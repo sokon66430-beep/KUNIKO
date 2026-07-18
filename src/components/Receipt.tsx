@@ -14,6 +14,7 @@ export type ReceiptBusiness = {
   address?: string;
   phone?: string;
   logo?: string;
+  vatRate?: number; // e.g. 0.10 — shown as "Includes VAT 10%" under the total
   receipt?: ReceiptSettings;
 };
 
@@ -38,10 +39,11 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ros
 export function ReceiptCard({ sale, business }: { sale: Sale; business?: ReceiptBusiness }) {
   const r = business?.receipt || {};
   const accent = ACCENT[r.accent || "ink"] || ACCENT.ink;
-  const showVat = r.showVat !== false; // default on
+  const showVat = !!r.showVat; // default OFF — the total just notes "Includes VAT x%"
   const showPickup = r.showPickup !== false; // default on
   const name = business?.name || "Store";
   const contact = [business?.address, business?.phone].filter(Boolean).join(" · ");
+  const vatPct = Math.round((business?.vatRate ?? 0.1) * 100);
 
   return (
     <div className="rounded-xl border border-dashed border-slate-200 p-4">
@@ -98,7 +100,11 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
           <span>Total</span>
           <span>{usd(sale.total)}</span>
         </div>
-        <p className="text-right text-[11px] text-slate-400">{riel(sale.total)}</p>
+        {/* No separate VAT line — the total already includes it, so just say so. */}
+        <div className="flex items-center justify-between text-[11px] text-slate-400">
+          <span>{!showVat ? `Includes VAT ${vatPct}%` : ""}</span>
+          <span>{riel(sale.total)}</span>
+        </div>
         {sale.tendered != null && (
           <div className="mt-1 space-y-1 border-t border-dashed border-slate-200 pt-2">
             <Row label="Cash received" value={usd(sale.tendered)} />
