@@ -44,6 +44,7 @@ export default function InventoryPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [supplierFilter, setSupplierFilter] = useState("All");
+  const [sort, setSort] = useState("default");
   const [supplierFilterApplied, setSupplierFilterApplied] = useState(false);
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [restock, setRestock] = useState<Product | null>(null);
@@ -151,8 +152,17 @@ export default function InventoryPage() {
           barcodeIncludes(p, q),
       );
     }
+    if (sort !== "default") {
+      // Copy before sorting so we never mutate the fetched array in place.
+      list = [...list].sort((a, b) => {
+        if (sort === "name") return a.name.localeCompare(b.name);
+        if (sort === "stock-asc") return a.stock - b.stock; // negatives first
+        if (sort === "stock-desc") return b.stock - a.stock;
+        return 0;
+      });
+    }
     return list;
-  }, [products, category, supplierFilter, query]);
+  }, [products, category, supplierFilter, query, sort]);
 
   const lowStock = (products || []).filter((p) => p.stock <= p.reorderLevel).length;
   const invValue = (products || []).reduce((s, p) => s + p.cost * p.stock, 0);
@@ -332,6 +342,17 @@ export default function InventoryPage() {
             options={[
               { value: "All", label: "All Suppliers" },
               ...supplierNames.filter((s) => s !== "All").map((s) => ({ value: s, label: s })),
+            ]}
+          />
+          <SearchSelect
+            className="sm:w-52"
+            value={sort}
+            onChange={setSort}
+            options={[
+              { value: "default", label: "Sort: Default" },
+              { value: "stock-asc", label: "On hand: low → high" },
+              { value: "stock-desc", label: "On hand: high → low" },
+              { value: "name", label: "Name: A → Z" },
             ]}
           />
         </div>
