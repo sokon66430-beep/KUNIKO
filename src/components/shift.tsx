@@ -248,9 +248,9 @@ const MV_META: Record<CashMovementType, { title: string; hint: string }> = {
   REFUND: { title: "Cash Refund", hint: "Cash returned to a customer." },
 };
 
-export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit }: {
+export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate }: {
   type: CashMovementType; onClose: () => void; onSubmit: (p: { amount: number; reason: string; notes?: string }) => Promise<void>;
-  drawer: Drawer; drawerLimit: number;
+  drawer: Drawer; drawerLimit: number; rate: number;
 }) {
   const meta = MV_META[type];
   const recDrop = type === "DROP" && drawerLimit > 0 ? Math.max(0, Math.round((drawer.expected - drawerLimit) * 100) / 100) : 0;
@@ -259,6 +259,16 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit }: 
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const amt = Math.round((Number(amount) || 0) * 100) / 100;
+
+  // Tap-to-add note buttons — the amount is recorded in USD, so the riel notes
+  // add their USD value at the store rate. Tap several times to stack notes.
+  const QUICK = [
+    { label: "$100", usd: 100 },
+    { label: "$50", usd: 50 },
+    { label: khr(100000), usd: 100000 / (rate || 4100) },
+    { label: khr(50000), usd: 50000 / (rate || 4100) },
+  ];
+  const addQuick = (v: number) => setAmount(String(Math.round(((Number(amount) || 0) + v) * 100) / 100));
 
   async function go() {
     setBusy(true);
@@ -279,6 +289,26 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit }: 
         <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">Recommended drop to reach the {usd(drawerLimit)} limit: {usd(recDrop)}</p>
       )}
       <label className="label">Amount ($)</label>
+      {/* Quick notes — tap to add, so the operations team doesn't have to type. */}
+      <div className="mb-2 flex flex-wrap gap-2">
+        {QUICK.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            onClick={() => addQuick(q.usd)}
+            className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-[0.97]"
+          >
+            + {q.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setAmount("")}
+          className="ml-auto rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        >
+          Clear
+        </button>
+      </div>
       <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="input mb-3" autoFocus />
       <label className="label">Reason</label>
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={type === "CASH_OUT" ? "e.g. Buy cleaning supplies" : "Reason"} className="input mb-3" />

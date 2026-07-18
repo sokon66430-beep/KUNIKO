@@ -138,7 +138,7 @@ export function PosShiftModal({ terminal, onClose }: { terminal: string; onClose
         </div>
       </div>
 
-      {mv && current && <MovementModal type={mv} onClose={() => setMv(null)} onSubmit={submitMovement} drawer={current.drawer} drawerLimit={drawerLimit} />}
+      {mv && current && <MovementModal type={mv} onClose={() => setMv(null)} onSubmit={submitMovement} drawer={current.drawer} drawerLimit={drawerLimit} rate={rate} />}
       {closing && current && (
         <CloseModal
           shift={current}

@@ -208,7 +208,7 @@ export default function MoneyPage() {
         </div>
       )}
 
-      {mv && current && <MovementModal type={mv} onClose={() => setMv(null)} onSubmit={submitMovement} drawer={current.drawer} drawerLimit={drawerLimit} />}
+      {mv && current && <MovementModal type={mv} onClose={() => setMv(null)} onSubmit={submitMovement} drawer={current.drawer} drawerLimit={drawerLimit} rate={rate} />}
       {closing && current && <CloseModal shift={current} rate={rate} onClose={() => setClosing(false)} onDone={() => { setClosing(false); reload(); }} />}
     </div>
   );
