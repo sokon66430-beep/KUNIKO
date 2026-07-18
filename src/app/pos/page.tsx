@@ -715,7 +715,7 @@ export default function PosPage() {
             loading ? (
               <Spinner label="Loading products…" />
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
                 {filtered.slice(0, 24).map((p) => (
                   <ProductCard
                     key={p.id}
@@ -753,7 +753,7 @@ export default function PosPage() {
                   {openGroup.category} <span className="font-normal text-slate-400">· {openGroup.items.length}</span>
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
                 {openGroup.items.map((p) => (
                   <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
                 ))}
@@ -782,20 +782,20 @@ export default function PosPage() {
                   ({directSaleCount} items)
                 </span>
               </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
                 {directSaleGroups.map((g) => (
                   <button
                     key={g.category}
                     onClick={() => setOpenCat(g.category)}
-                    className="card group flex min-h-[5.5rem] flex-col justify-between p-3.5 text-left transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                    className="card group flex aspect-square flex-col items-center justify-center gap-1 p-2 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
                   >
-                    <span className="text-sm font-bold leading-snug text-ink-900">{g.category}</span>
-                    <span className="mt-2 flex items-center justify-between">
-                      <span className="text-[11.5px] text-slate-500">
+                    <span className="line-clamp-2 text-[13px] font-bold leading-tight text-ink-900">{g.category}</span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-[11px] text-slate-500">
                         {g.items.length} item{g.items.length === 1 ? "" : "s"}
                       </span>
                       <ChevronLeft
-                        size={15}
+                        size={13}
                         className="rotate-180 text-slate-300 transition group-hover:text-brand-500"
                       />
                     </span>
@@ -1121,7 +1121,7 @@ function FavouritesSection({
       </p>
 
       {favourites.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
           {favourites.map((p) => (
             <ProductCard key={p.id} p={p} onAdd={onAdd} onToggleFavourite={onToggleFavourite} />
           ))}
@@ -1165,23 +1165,23 @@ function ProductCard({
     // (a cashier taps anywhere to sell), and a button can't legally nest inside
     // another, so the star is a sibling layered over it.
     <div className="group relative">
+      {/* Square tile (height = width): image on top, then name, price pinned to
+          the bottom — a compact grid the cashier taps to sell. */}
       <button
         onClick={() => onAdd(p)}
-        className="card flex h-full w-full flex-col p-3 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+        className="card flex aspect-square w-full flex-col p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
       >
         {p.image && (
-          <div className="mb-2 h-24 w-full overflow-hidden rounded-lg bg-slate-100">
+          <div className="mb-1.5 h-1/2 w-full overflow-hidden rounded-lg bg-slate-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
           </div>
         )}
         {/* Name and price only — the cashier taps the tile to sell. Item code,
-            stock and status stay on the Inventory screen. `pr-6` keeps the name
+            stock and status stay on the Inventory screen. `pr-5` keeps the name
             clear of the favourite star in the top-right corner. */}
-        <p className="line-clamp-2 min-h-[2.5rem] pr-6 text-sm font-semibold text-ink-800">{p.name}</p>
-        <div className="mt-2">
-          <span className="text-base font-bold text-brand-600">{usd(p.price)}</span>
-        </div>
+        <p className="line-clamp-2 pr-5 text-[13px] font-semibold leading-tight text-ink-800">{p.name}</p>
+        <span className="mt-auto pt-1 text-sm font-bold text-brand-600">{usd(p.price)}</span>
       </button>
 
       {onToggleFavourite && (
