@@ -719,7 +719,7 @@ export default function PosPage() {
             loading ? (
               <Spinner label="Loading products…" />
             ) : (
-              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
                 {filtered.slice(0, 24).map((p) => (
                   <ProductCard
                     key={p.id}
@@ -757,7 +757,7 @@ export default function PosPage() {
                   {openGroup.category} <span className="font-normal text-slate-400">· {openGroup.items.length}</span>
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
                 {openGroup.items.map((p) => (
                   <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
                 ))}
@@ -786,7 +786,7 @@ export default function PosPage() {
                   ({directSaleCount} items)
                 </span>
               </p>
-              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
                 {directSaleGroups.map((g) => (
                   <button
                     key={g.category}
@@ -1125,7 +1125,7 @@ function FavouritesSection({
       </p>
 
       {favourites.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
           {favourites.map((p) => (
             <ProductCard key={p.id} p={p} onAdd={onAdd} onToggleFavourite={onToggleFavourite} />
           ))}
