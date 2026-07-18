@@ -34,7 +34,6 @@ import {
   Store,
   Tag,
   Ticket,
-  Wallet,
   TicketPercent,
   ReceiptText,
   ShieldCheck,
@@ -52,7 +51,8 @@ const OPERATIONS = {
   items: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/pos", label: "Point of Sale", icon: ShoppingCart },
-    { href: "/money", label: "Money Management", icon: Wallet },
+    // Money Management isn't a separate menu item — it lives inside the POS,
+    // opened from the "Cash Drawer" button in the till header.
     { href: "/queue", label: "Pickup Queue", icon: Ticket },
     { href: "/inventory", label: "Inventory", icon: Package },
     { href: "/stock-count", label: "Stock Count", icon: ClipboardCheck },
