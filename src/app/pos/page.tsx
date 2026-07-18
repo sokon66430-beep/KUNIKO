@@ -312,8 +312,11 @@ export default function PosPage() {
       setToast(e.message);
     }
   }
-  // Two-step till: pick a category, then the item inside it.
-  const openGroup = openCat ? directSaleGroups.find((g) => g.category === openCat) ?? null : null;
+  // Two-step till: pick a category, then the item inside it. Favourites is a
+  // pseudo-category pinned to the FRONT of the grid — tapping it drills into the
+  // starred items exactly like a real category.
+  const FAV = "__favourites__";
+  const openGroup = openCat && openCat !== FAV ? directSaleGroups.find((g) => g.category === openCat) ?? null : null;
 
   // Newest-added line on top so the cashier always sees what they just scanned.
   const lines = Object.values(cart).sort((a, b) => b.seq - a.seq);
@@ -747,6 +750,45 @@ export default function PosPage() {
               <p className="text-sm font-semibold text-slate-600">Scan to sell</p>
               <p className="mt-1 text-xs text-slate-400">Every product has a barcode — scan it to add to the sale.</p>
             </div>
+          ) : openCat === FAV ? (
+            /* The Favourites category — all starred items in one place. */
+            <div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button onClick={() => setOpenCat(null)} className="btn-ghost !py-2 text-sm">
+                  <ChevronLeft size={16} /> Categories
+                </button>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-ink-900">
+                  <Star size={14} className="text-amber-400" fill="currentColor" /> Favourites
+                  <span className="font-normal text-slate-400">· {favourites.length}</span>
+                </p>
+              </div>
+              {favourites.length > 0 ? (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
+                  {favourites.map((p) => (
+                    <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
+                  ))}
+                </div>
+              ) : (
+                <div className="card p-4">
+                  <p className="text-[13px] font-semibold text-ink-900">Pin what you sell most</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-slate-500">
+                    Star an item anywhere on the till and it lives here, one tap away. These are your best sellers so far — tap to pin one.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {favouriteSuggestions.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => toggleFavourite(p)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[12.5px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:text-ink-900 hover:ring-amber-300"
+                      >
+                        <Star size={12} className="text-slate-300" />
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : openGroup ? (
             /* Step 2 — the items inside the chosen category. */
             <div>
@@ -774,20 +816,30 @@ export default function PosPage() {
                so) and left the rest of the screen empty. Same tile grid as the
                products themselves, so both steps of the till look alike. */
             <div>
-              <FavouritesSection
-                favourites={favourites}
-                suggestions={favouriteSuggestions}
-                onAdd={addToCart}
-                onToggleFavourite={toggleFavourite}
-              />
-
               <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
-                Sell directly · tap a category{" "}
+                Tap a category{" "}
                 <span className="font-semibold normal-case tracking-normal text-slate-400">
                   ({directSaleCount} items)
                 </span>
               </p>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
+                {/* Favourites pinned FIRST — same square tile as a category, so
+                    the whole grid lines up. */}
+                {(favourites.length > 0 || favouriteSuggestions.length > 0) && (
+                  <button
+                    onClick={() => setOpenCat(FAV)}
+                    className="card group flex aspect-square flex-col items-center justify-center gap-1 p-2 text-center ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:ring-amber-300 hover:shadow-soft"
+                  >
+                    <Star size={18} className="text-amber-400" fill="currentColor" />
+                    <span className="text-[13px] font-bold leading-tight text-ink-900">Favourites</span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-[11px] text-slate-500">
+                        {favourites.length} item{favourites.length === 1 ? "" : "s"}
+                      </span>
+                      <ChevronLeft size={13} className="rotate-180 text-slate-300 transition group-hover:text-amber-500" />
+                    </span>
+                  </button>
+                )}
                 {directSaleGroups.map((g) => (
                   <button
                     key={g.category}
@@ -1093,69 +1145,6 @@ export default function PosPage() {
 
 // One tappable product tile — used for search results and for the
 // sell-directly (no barcode) groups.
-/**
- * The till's favourites — the things sold all day, one tap from the front.
- *
- * When nothing is starred yet, this offers the shop's actual best sellers
- * instead of an empty box: the till already knows what moves, so asking someone
- * to go and find their own top items through the categories would be work the
- * system can do for them.
- */
-function FavouritesSection({
-  favourites,
-  suggestions,
-  onAdd,
-  onToggleFavourite,
-}: {
-  favourites: Product[];
-  suggestions: Product[];
-  onAdd: (p: Product) => void;
-  onToggleFavourite: (p: Product) => void;
-}) {
-  // Nothing starred and nothing sold yet — say nothing rather than show an
-  // empty box a brand-new store can't act on.
-  if (favourites.length === 0 && suggestions.length === 0) return null;
-
-  return (
-    <div className="mb-5">
-      <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
-        <Star size={12} className="text-amber-400" fill="currentColor" /> Favourites
-        {favourites.length > 0 && (
-          <span className="font-semibold normal-case tracking-normal text-slate-400">({favourites.length})</span>
-        )}
-      </p>
-
-      {favourites.length > 0 ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
-          {favourites.map((p) => (
-            <ProductCard key={p.id} p={p} onAdd={onAdd} onToggleFavourite={onToggleFavourite} />
-          ))}
-        </div>
-      ) : (
-        <div className="card p-4">
-          <p className="text-[13px] font-semibold text-ink-900">Pin what you sell most</p>
-          <p className="mt-0.5 text-[12px] leading-relaxed text-slate-500">
-            Star an item anywhere on this screen and it lives up here, one tap away. These are your best sellers so
-            far — tap to pin one.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {suggestions.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onToggleFavourite(p)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[12.5px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:text-ink-900 hover:ring-amber-300"
-              >
-                <Star size={12} className="text-slate-300" />
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ProductCard({
   p,
   onAdd,
