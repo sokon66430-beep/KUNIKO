@@ -21,12 +21,23 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 // USD notes counted at the till, largest first. Loose coins are a single lump
 // (CashCount.coins) so a count stays fast.
 export const CASH_DENOMS = [100, 50, 20, 10, 5, 1];
+// Khmer riel notes counted alongside — the store takes both currencies.
+export const RIEL_DENOMS = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500];
+// Fallback KHR-per-USD if a store has no rate set.
+const DEFAULT_RATE = 4100;
 
-/** Total value of a counted stack: Σ note×count + loose coins. */
-export function countTotal(c?: CashCount | null): number {
+/**
+ * Total value of a counted stack, in USD. USD notes + loose coins at face value;
+ * riel notes converted at the store's exchange rate (KHR per 1 USD). The books
+ * are kept in dollars, so the drawer figure is one currency even though the
+ * cashier counts two.
+ */
+export function countTotal(c?: CashCount | null, exchangeRate = DEFAULT_RATE): number {
   if (!c) return 0;
-  const notes = (c.denoms || []).reduce((s, d) => s + (Number(d.denom) || 0) * (Number(d.count) || 0), 0);
-  return round2(notes + (Number(c.coins) || 0));
+  const usd = (c.denoms || []).reduce((s, d) => s + (Number(d.denom) || 0) * (Number(d.count) || 0), 0);
+  const riel = (c.riel || []).reduce((s, d) => s + (Number(d.denom) || 0) * (Number(d.count) || 0), 0);
+  const rate = exchangeRate > 0 ? exchangeRate : DEFAULT_RATE;
+  return round2(usd + (Number(c.coins) || 0) + riel / rate);
 }
 
 /** The open shift on a given terminal, if any. One open shift per till. */

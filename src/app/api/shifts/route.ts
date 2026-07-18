@@ -21,7 +21,11 @@ export async function GET() {
     .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
     .slice(0, 100)
     .map((s) => ({ ...s, drawer: drawerFor(db, s) }));
-  return NextResponse.json({ drawerLimit: db.meta.business.cashDrawerLimit ?? 0, shifts });
+  return NextResponse.json({
+    drawerLimit: db.meta.business.cashDrawerLimit ?? 0,
+    exchangeRate: db.meta.business.exchangeRate ?? 4100,
+    shifts,
+  });
 }
 
 export async function POST(req: Request) {
@@ -42,7 +46,7 @@ export async function POST(req: Request) {
     if (existing) {
       return { error: `${posTerminalId} already has an open shift (${existing.shift}, ${existing.cashier}). Close it first.` };
     }
-    const openingFloat = countTotal(openingCount);
+    const openingFloat = countTotal(openingCount, db.meta.business.exchangeRate);
     const s: Shift = {
       id: `SH-${String(db.meta.nextShift++).padStart(6, "0")}`,
       posTerminalId,

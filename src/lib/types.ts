@@ -491,8 +491,9 @@ export type ShiftStatus = "open" | "pending_close" | "closed";
 // A counted stack of cash: how many of each note/coin denomination. `coins` is a
 // single lump for loose change under $1, so the count stays quick at the till.
 export type CashCount = {
-  denoms: { denom: number; count: number }[]; // e.g. [{denom:100,count:2}, …]
-  coins?: number; // total value of loose coins, in dollars
+  denoms: { denom: number; count: number }[]; // USD notes, e.g. [{denom:100,count:2}, …]
+  coins?: number; // total value of loose USD coins, in dollars
+  riel?: { denom: number; count: number }[]; // KHR notes; converted to USD at the store rate
 };
 
 export type Shift = {

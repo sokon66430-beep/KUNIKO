@@ -31,7 +31,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     const drawer = drawerFor(db, shift);
-    const actualCash = countTotal(closingCount);
+    const actualCash = countTotal(closingCount, db.meta.business.exchangeRate);
     const variance = Math.round((actualCash - drawer.expected) * 100) / 100;
     if (variance !== 0 && !varianceReason) return { error: "reason_required" as const, variance };
 

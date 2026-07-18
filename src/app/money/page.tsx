@@ -18,7 +18,7 @@ import { useFetch, api, useRole } from "@/lib/client";
 import { confirmDialog } from "@/components/confirm";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, Table, THead, Th, TBody, Tr, Td, EmptyState } from "@/components/ui";
 import { usd, num, dateTime, timeOnly } from "@/lib/format";
-import { CASH_DENOMS, countTotal } from "@/lib/money";
+import { CASH_DENOMS, RIEL_DENOMS, countTotal } from "@/lib/money";
 import { canApproveCash, canReopenShift } from "@/lib/access";
 import type { CashCount, CashMovementType } from "@/lib/types";
 
@@ -35,50 +35,65 @@ type ShiftView = {
   reopenedAt?: string; reopenedBy?: string;
   drawer: Drawer;
 };
-type ShiftsData = { drawerLimit: number; shifts: ShiftView[] };
+type ShiftsData = { drawerLimit: number; exchangeRate: number; shifts: ShiftView[] };
 
 const TERMINAL_KEY = "stookii_pos_terminal";
-const emptyCount = (): CashCount => ({ denoms: CASH_DENOMS.map((d) => ({ denom: d, count: 0 })), coins: 0 });
+const emptyCount = (): CashCount => ({
+  denoms: CASH_DENOMS.map((d) => ({ denom: d, count: 0 })),
+  coins: 0,
+  riel: RIEL_DENOMS.map((d) => ({ denom: d, count: 0 })),
+});
 
-// A quick denomination counter — one row per note plus loose coins, with a live
-// total. Used to count the opening float and the closing drawer.
-function DenomCounter({ value, onChange }: { value: CashCount; onChange: (c: CashCount) => void }) {
-  const total = countTotal(value);
-  const setCount = (denom: number, count: number) =>
+const khr = (n: number) => `${n.toLocaleString("en-US")}៛`; // riel symbol ៛
+
+// A quick denomination counter — USD notes + loose coins on the left, Khmer riel
+// notes on the right (the store takes both). The live total is in USD, with
+// riel converted at the store rate.
+function DenomCounter({ value, onChange, rate }: { value: CashCount; onChange: (c: CashCount) => void; rate: number }) {
+  const total = countTotal(value, rate);
+  const setUsd = (denom: number, count: number) =>
     onChange({ ...value, denoms: value.denoms.map((d) => (d.denom === denom ? { ...d, count: Math.max(0, Math.floor(count) || 0) } : d)) });
+  const setRiel = (denom: number, count: number) =>
+    onChange({ ...value, riel: (value.riel || []).map((d) => (d.denom === denom ? { ...d, count: Math.max(0, Math.floor(count) || 0) } : d)) });
   return (
     <div className="rounded-xl border border-slate-200 p-3">
-      <div className="space-y-1.5">
-        {value.denoms.map((d) => (
-          <div key={d.denom} className="flex items-center gap-3">
-            <span className="w-12 text-sm font-semibold text-slate-500">${d.denom}</span>
-            <span className="text-slate-400">×</span>
-            <input
-              type="number"
-              min={0}
-              value={d.count || ""}
-              onChange={(e) => setCount(d.denom, Number(e.target.value))}
-              className="h-9 w-24 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400"
-            />
-            <span className="ml-auto text-sm font-semibold tabular-nums text-ink-800">{usd(d.denom * d.count)}</span>
+      <div className="grid gap-x-5 gap-y-1.5 sm:grid-cols-2">
+        {/* USD */}
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">US Dollars</p>
+          {value.denoms.map((d) => (
+            <div key={d.denom} className="flex items-center gap-2">
+              <span className="w-10 text-sm font-semibold text-slate-500">${d.denom}</span>
+              <span className="text-slate-400">×</span>
+              <input type="number" min={0} value={d.count || ""} onChange={(e) => setUsd(d.denom, Number(e.target.value))}
+                className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400" />
+              <span className="ml-auto text-xs font-semibold tabular-nums text-ink-800">{usd(d.denom * d.count)}</span>
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <span className="w-10 text-sm font-semibold text-slate-500">Coins</span>
+            <span className="text-slate-400">$</span>
+            <input type="number" min={0} step="0.01" value={value.coins || ""} onChange={(e) => onChange({ ...value, coins: Math.max(0, Number(e.target.value) || 0) })}
+              className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400" />
+            <span className="ml-auto text-xs font-semibold tabular-nums text-ink-800">{usd(value.coins || 0)}</span>
           </div>
-        ))}
-        <div className="flex items-center gap-3">
-          <span className="w-12 text-sm font-semibold text-slate-500">Coins</span>
-          <span className="text-slate-400">$</span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={value.coins || ""}
-            onChange={(e) => onChange({ ...value, coins: Math.max(0, Number(e.target.value) || 0) })}
-            className="h-9 w-24 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400"
-          />
-          <span className="ml-auto text-sm font-semibold tabular-nums text-ink-800">{usd(value.coins || 0)}</span>
+        </div>
+        {/* Riel */}
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Khmer Riel (÷ {rate.toLocaleString()})</p>
+          {(value.riel || []).map((d) => (
+            <div key={d.denom} className="flex items-center gap-2">
+              <span className="w-16 text-[13px] font-semibold text-slate-500">{khr(d.denom)}</span>
+              <span className="text-slate-400">×</span>
+              <input type="number" min={0} value={d.count || ""} onChange={(e) => setRiel(d.denom, Number(e.target.value))}
+                className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400" />
+              <span className="ml-auto text-xs font-semibold tabular-nums text-ink-800">{usd((d.denom * d.count) / (rate || 4100))}</span>
+            </div>
+          ))}
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-dashed border-slate-200 pt-2">
-        <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Counted total</span>
+        <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Counted total (USD)</span>
         <span className="text-lg font-extrabold tabular-nums text-brand-600">{usd(total)}</span>
       </div>
     </div>
@@ -104,6 +119,7 @@ export default function MoneyPage() {
 
   const shifts = data?.shifts ?? [];
   const drawerLimit = data?.drawerLimit ?? 0;
+  const rate = data?.exchangeRate ?? 4100;
   const current = shifts.find((s) => s.posTerminalId === terminal && s.status === "open");
   const pendingCloses = shifts.filter((s) => s.status === "pending_close");
 
@@ -225,12 +241,12 @@ export default function MoneyPage() {
                       <button key={s} onClick={() => setOpenShiftName(s)} className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${openShiftName === s ? "bg-white text-ink-900 shadow-sm" : "text-slate-500"}`}>Shift {s}</button>
                     ))}
                   </div>
-                  <button className="btn-primary w-full" disabled={busy || countTotal(openCount) <= 0} onClick={openShift}>
-                    <Unlock size={16} /> {busy ? "Opening…" : `Open shift · float ${usd(countTotal(openCount))}`}
+                  <button className="btn-primary w-full" disabled={busy || countTotal(openCount, rate) <= 0} onClick={openShift}>
+                    <Unlock size={16} /> {busy ? "Opening…" : `Open shift · float ${usd(countTotal(openCount, rate))}`}
                   </button>
                   <p className="mt-2 text-xs text-slate-400">Sales made on this till attribute to this shift once it&apos;s open.</p>
                 </div>
-                <DenomCounter value={openCount} onChange={setOpenCount} />
+                <DenomCounter value={openCount} onChange={setOpenCount} rate={rate} />
               </div>
             </Card>
           )}
@@ -271,7 +287,7 @@ export default function MoneyPage() {
       )}
 
       {mv && current && <MovementModal type={mv} onClose={() => setMv(null)} onSubmit={submitMovement} drawer={current.drawer} drawerLimit={drawerLimit} />}
-      {closing && current && <CloseModal shift={current} onClose={() => setClosing(false)} onDone={() => { setClosing(false); reload(); }} />}
+      {closing && current && <CloseModal shift={current} rate={rate} onClose={() => setClosing(false)} onDone={() => { setClosing(false); reload(); }} />}
     </div>
   );
 }
@@ -380,12 +396,12 @@ function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit }: {
   );
 }
 
-function CloseModal({ shift, onClose, onDone }: { shift: ShiftView; onClose: () => void; onDone: () => void }) {
+function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView; rate: number; onClose: () => void; onDone: () => void }) {
   const [count, setCount] = useState<CashCount>(emptyCount());
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const expected = shift.drawer.expected;
-  const actual = countTotal(count);
+  const actual = countTotal(count, rate);
   const variance = Math.round((actual - expected) * 100) / 100;
 
   async function submit() {
@@ -409,7 +425,7 @@ function CloseModal({ shift, onClose, onDone }: { shift: ShiftView; onClose: () 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <p className="label">Count the drawer</p>
-          <DenomCounter value={count} onChange={setCount} />
+          <DenomCounter value={count} onChange={setCount} rate={rate} />
         </div>
         <div className="space-y-2">
           <div className="rounded-xl border border-slate-200 p-3 text-sm">

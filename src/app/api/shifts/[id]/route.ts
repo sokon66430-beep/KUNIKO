@@ -27,5 +27,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     movements,
     sales,
     drawerLimit: db.meta.business.cashDrawerLimit ?? 0,
+    exchangeRate: db.meta.business.exchangeRate ?? 4100,
   });
 }
