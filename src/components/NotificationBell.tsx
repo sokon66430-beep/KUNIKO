@@ -76,19 +76,21 @@ export function NotificationBell({ align = "right" }: { align?: "left" | "right"
 
   return (
     <div className="relative">
+      {/* Plain icon button (no boxed background/ring) so it matches the theme
+          toggle and sits cleanly in the header on both light and dark. */}
       <button
         type="button"
         onClick={openPanel}
         title="Notifications"
-        className="relative grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-ink-900"
+        className="relative grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-500/10 hover:text-slate-600"
       >
         <Bell size={18} />
         {unread > 0 ? (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+          <span className="absolute -right-1 -top-1 grid h-4 min-w-[16px] place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : hasActions ? (
-          <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-white" />
+          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-400" />
         ) : null}
       </button>
 
