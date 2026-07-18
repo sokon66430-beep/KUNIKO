@@ -239,6 +239,16 @@ export default function InventoryPage() {
         subtitle="Product master — stock, costs, reorder levels & supplier links"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {isOwner && (
+              <button
+                className="btn-ghost !py-2 text-sm"
+                disabled={recalcBusy}
+                onClick={recalcStock}
+                title="Rebuild on-hand from history: opening + receiving − sales − write-offs"
+              >
+                <Calculator size={16} /> {recalcBusy ? "Recalculating…" : "Recalculate"}
+              </button>
+            )}
             <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => fileRef.current?.click()}>
               <Upload size={16} /> {importing ? "Importing…" : "Import"}
             </button>
@@ -252,16 +262,6 @@ export default function InventoryPage() {
                 if (f) importExcel(f);
               }}
             />
-            {isOwner && (
-              <button
-                className="btn-ghost !py-2 text-sm"
-                disabled={recalcBusy}
-                onClick={recalcStock}
-                title="Rebuild on-hand from history: opening + receiving − sales − write-offs"
-              >
-                <Calculator size={16} /> {recalcBusy ? "Recalculating…" : "Recalculate"}
-              </button>
-            )}
             <a className="btn-ghost !py-2 text-sm" href="/api/products/export" title="Download inventory as Excel">
               <FileSpreadsheet size={16} /> Export
             </a>
