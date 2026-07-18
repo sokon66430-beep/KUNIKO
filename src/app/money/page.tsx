@@ -65,7 +65,7 @@ export default function MoneyPage() {
 
   // Movement modal
   const [mv, setMv] = useState<CashMovementType | null>(null);
-  async function submitMovement(payload: { amount: number; reason: string; notes?: string }) {
+  async function submitMovement(payload: { amountUsd: number; amountRiel: number; reason: string; notes?: string }) {
     if (!current) return;
     await api("/api/cash-movements", { method: "POST", body: JSON.stringify({ shiftId: current.id, type: mv, ...payload }) });
     setMv(null);

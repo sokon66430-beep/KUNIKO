@@ -61,6 +61,9 @@ export type Drawer = {
   expected: number;
   // Payment mix over the shift, for the dashboard.
   sales: { total: number; cash: number; card: number; ewallet: number };
+  // The riel-note portion of each movement type, kept in riel (not converted),
+  // so the drawer can show a total in both currencies.
+  riel: { cashIn: number; cashOut: number; drop: number; refunds: number };
   counts: { movements: number; drops: number; refunds: number };
 };
 
@@ -82,6 +85,7 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
 
   const mv = db.cashMovements.filter((m) => m.shiftId === shift.id);
   const sumOf = (t: string) => round2(mv.filter((m) => m.type === t).reduce((s, m) => s + m.amount, 0));
+  const rielOf = (t: string) => mv.filter((m) => m.type === t).reduce((s, m) => s + (Number(m.amountRiel) || 0), 0);
   const cashIn = sumOf("CASH_IN");
   const cashOut = sumOf("CASH_OUT");
   const drop = sumOf("DROP");
@@ -98,6 +102,7 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     refunds,
     expected,
     sales,
+    riel: { cashIn: rielOf("CASH_IN"), cashOut: rielOf("CASH_OUT"), drop: rielOf("DROP"), refunds: rielOf("REFUND") },
     counts: {
       movements: mv.length,
       drops: mv.filter((m) => m.type === "DROP").length,

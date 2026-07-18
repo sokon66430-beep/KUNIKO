@@ -29,6 +29,7 @@ import type { CashCount, CashMovementType } from "@/lib/types";
 export type Drawer = {
   opening: number; cashSales: number; cashIn: number; cashOut: number; drop: number; refunds: number; expected: number;
   sales: { total: number; cash: number; card: number; ewallet: number };
+  riel: { cashIn: number; cashOut: number; drop: number; refunds: number };
   counts: { movements: number; drops: number; refunds: number };
 };
 export type ShiftView = {
@@ -164,9 +165,9 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <StatCard label="Cash Sales" value={usd(d.cashSales)} sub={`${usd(d.sales.total)} all payments`} accent="brand" />
         <StatCard label="Card" value={usd(d.sales.card)} accent="violet" />
         <StatCard label="E-wallet" value={usd(d.sales.ewallet)} accent="violet" />
-        <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} accent="emerald" />
-        <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} accent="amber" />
-        <StatCard label="Safe Drops / Refunds" value={`-${usd(d.drop + d.refunds)}`} accent="amber" />
+        <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} sub={d.riel.cashIn > 0 ? `incl. ${khr(d.riel.cashIn)}` : undefined} accent="emerald" />
+        <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} sub={d.riel.cashOut > 0 ? `incl. ${khr(d.riel.cashOut)}` : undefined} accent="amber" />
+        <StatCard label="Safe Drops / Refunds" value={`-${usd(d.drop + d.refunds)}`} sub={d.riel.drop + d.riel.refunds > 0 ? `incl. ${khr(d.riel.drop + d.riel.refunds)}` : undefined} accent="amber" />
         <StatCard label="Expected Drawer" value={usd(d.expected)} accent={over ? "rose" : "emerald"} />
       </div>
 
@@ -284,69 +285,78 @@ function ReasonSelect({ label, options, sel, onSel, other, onOther }: {
 }
 
 export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate }: {
-  type: CashMovementType; onClose: () => void; onSubmit: (p: { amount: number; reason: string; notes?: string }) => Promise<void>;
+  type: CashMovementType; onClose: () => void;
+  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string }) => Promise<void>;
   drawer: Drawer; drawerLimit: number; rate: number;
 }) {
   const meta = MV_META[type];
   const recDrop = type === "DROP" && drawerLimit > 0 ? Math.max(0, Math.round((drawer.expected - drawerLimit) * 100) / 100) : 0;
-  const [amount, setAmount] = useState(recDrop > 0 ? String(recDrop) : "");
+  // Two separate amounts — dollars and riel — kept apart so the record keeps a
+  // total in each currency (not one merged, converted number).
+  const [usdAmount, setUsdAmount] = useState(recDrop > 0 ? String(recDrop) : "");
+  const [rielAmount, setRielAmount] = useState("");
   const [reasonSel, setReasonSel] = useState("");
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
-  const amt = Math.round((Number(amount) || 0) * 100) / 100;
 
-  // Tap-to-add note buttons — the amount is recorded in USD, so the riel notes
-  // add their USD value at the store rate. Tap several times to stack notes.
-  const QUICK = [
-    { label: "$100", usd: 100 },
-    { label: "$50", usd: 50 },
-    { label: khr(100000), usd: 100000 / (rate || 4100) },
-    { label: khr(50000), usd: 50000 / (rate || 4100) },
-  ];
-  const addQuick = (v: number) => setAmount(String(Math.round(((Number(amount) || 0) + v) * 100) / 100));
+  const amountUsd = Math.round((Number(usdAmount) || 0) * 100) / 100;
+  const amountRiel = Math.max(0, Math.floor(Number(rielAmount) || 0));
+  const totalUsd = Math.round((amountUsd + amountRiel / (rate || 4100)) * 100) / 100;
+
+  const addUsd = (v: number) => setUsdAmount(String(Math.round(((Number(usdAmount) || 0) + v) * 100) / 100));
+  const addRiel = (v: number) => setRielAmount(String((Math.floor(Number(rielAmount) || 0)) + v));
 
   async function go() {
     setBusy(true);
-    try { await onSubmit({ amount: amt, reason, notes: notes.trim() || undefined }); }
+    try { await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined }); }
     catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
   }
+
+  const chip = "rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-[0.97]";
 
   return (
     <Modal open onClose={onClose} size="lg" title={meta.title} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || amt <= 0 || !reason} onClick={go}>{busy ? "Saving…" : `Record ${usd(amt)}`}</button>
+        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>{busy ? "Saving…" : `Record ${usd(totalUsd)}`}</button>
       </div>
     }>
       <p className="mb-3 text-sm text-slate-500">{meta.hint}</p>
       {type === "DROP" && recDrop > 0 && (
         <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">Recommended drop to reach the {usd(drawerLimit)} limit: {usd(recDrop)}</p>
       )}
-      <label className="label">Amount ($)</label>
-      {/* Quick notes — tap to add, so the operations team doesn't have to type. */}
-      <div className="mb-2 flex flex-wrap gap-2">
-        {QUICK.map((q) => (
-          <button
-            key={q.label}
-            type="button"
-            onClick={() => addQuick(q.usd)}
-            className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-[0.97]"
-          >
-            + {q.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setAmount("")}
-          className="ml-auto rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-        >
-          Clear
-        </button>
+      {/* Dollars and riel are entered — and kept — separately. */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label">Amount in dollars ($)</label>
+          <div className="mb-2 flex flex-wrap gap-2">
+            <button type="button" onClick={() => addUsd(100)} className={chip}>+ $100</button>
+            <button type="button" onClick={() => addUsd(50)} className={chip}>+ $50</button>
+            <button type="button" onClick={() => setUsdAmount("")} className="ml-auto rounded-lg px-2.5 py-1.5 text-sm font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">Clear</button>
+          </div>
+          <input type="number" min={0} step="0.01" value={usdAmount} onChange={(e) => setUsdAmount(e.target.value)} placeholder="0.00" className="input" autoFocus />
+        </div>
+        <div>
+          <label className="label">Amount in riel (៛)</label>
+          <div className="mb-2 flex flex-wrap gap-2">
+            <button type="button" onClick={() => addRiel(100000)} className={chip}>+ {khr(100000)}</button>
+            <button type="button" onClick={() => addRiel(50000)} className={chip}>+ {khr(50000)}</button>
+            <button type="button" onClick={() => setRielAmount("")} className="ml-auto rounded-lg px-2.5 py-1.5 text-sm font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">Clear</button>
+          </div>
+          <input type="number" min={0} step="1" value={rielAmount} onChange={(e) => setRielAmount(e.target.value)} placeholder="0" className="input" />
+        </div>
       </div>
-      <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="input mb-3" autoFocus />
+      {/* The two currencies and the combined USD the drawer will use. */}
+      <div className="mb-3 mt-2 flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm ring-1 ring-slate-200">
+        <span className="font-semibold text-slate-500">Total</span>
+        <span className="font-bold text-ink-800">
+          {usd(amountUsd)}{amountRiel > 0 && <span className="text-slate-500"> + {khr(amountRiel)}</span>}
+          <span className="ml-1.5 text-slate-400">= {usd(totalUsd)}</span>
+        </span>
+      </div>
       <div className="mb-3">
         <ReasonSelect label="Reason" options={MV_REASONS[type]} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
       </div>

@@ -37,10 +37,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
 
   const type = body.type as CashMovementType;
-  const amount = Math.round((Number(body.amount) || 0) * 100) / 100;
+  // The amount is entered as two currencies: dollars and riel notes, kept
+  // separate. Legacy callers send a single `amount` (dollars) — treat as USD.
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const hasSplit = body.amountUsd != null || body.amountRiel != null;
+  const amountUsd = round2(Math.max(0, hasSplit ? Number(body.amountUsd) || 0 : Number(body.amount) || 0));
+  const amountRiel = hasSplit ? Math.max(0, Math.floor(Number(body.amountRiel) || 0)) : 0;
   const reason = String(body.reason || "").trim();
   if (!TYPES.includes(type)) return NextResponse.json({ error: "Unknown movement type" }, { status: 400 });
-  if (!(amount > 0)) return NextResponse.json({ error: "Enter an amount greater than zero" }, { status: 400 });
+  if (!(amountUsd > 0 || amountRiel > 0)) return NextResponse.json({ error: "Enter an amount greater than zero" }, { status: 400 });
   if (!reason) return NextResponse.json({ error: "A reason is required" }, { status: 400 });
 
   const actor = await currentActor();
@@ -48,6 +53,10 @@ export async function POST(req: Request) {
     const shift = db.shifts.find((s) => s.id === body.shiftId);
     if (!shift) return { error: "no_shift" as const };
     if (shift.status !== "open") return { error: "locked" as const };
+
+    // USD-equivalent total the drawer runs on = dollars + riel at the store rate.
+    const rate = db.meta.business?.exchangeRate || 4100;
+    const amount = round2(amountUsd + amountRiel / rate);
 
     const isSupervisor = canApproveCash(session.role);
     const now = new Date().toISOString();
@@ -57,6 +66,8 @@ export async function POST(req: Request) {
       posTerminalId: shift.posTerminalId,
       type,
       amount,
+      amountUsd,
+      amountRiel,
       reason,
       notes: body.notes ? String(body.notes) : undefined,
       attachment: typeof body.attachment === "string" && body.attachment ? body.attachment : undefined,
@@ -68,12 +79,13 @@ export async function POST(req: Request) {
       approvedAt: isSupervisor ? now : undefined,
     };
     db.cashMovements.push(m);
+    const money = `$${amountUsd.toFixed(2)}${amountRiel ? ` + ${amountRiel.toLocaleString()}៛` : ""} (= $${amount.toFixed(2)})`;
     logAudit(db, {
       actor,
       action: "Recorded",
       entityType: "Sale",
       entity: `${LABEL[type]} ${m.id}`,
-      detail: `${shift.posTerminalId} · Shift ${shift.shift} · ${LABEL[type]} ${amount.toFixed(2)} · ${reason}${
+      detail: `${shift.posTerminalId} · Shift ${shift.shift} · ${LABEL[type]} ${money} · ${reason}${
         isSupervisor ? " · auto-approved" : " · pending approval"
       }`,
     });

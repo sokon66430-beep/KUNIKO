@@ -530,7 +530,9 @@ export type CashMovement = {
   shiftId: string;
   posTerminalId: string;
   type: CashMovementType;
-  amount: number; // positive magnitude; the type decides the sign in the drawer
+  amount: number; // USD-equivalent total (usd part + riel/rate) — drives the drawer
+  amountUsd?: number; // the dollars part, as entered
+  amountRiel?: number; // the riel part, note face value (e.g. 100000) — kept separate
   reason: string;
   notes?: string;
   attachment?: string; // optional photo/receipt data-URL (cash out)
