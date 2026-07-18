@@ -132,7 +132,11 @@ export function hasCap(role: Role, cap: string, caps?: RoleCaps): boolean {
   return set === undefined ? (CAP_BASELINE[cap] ?? []).includes(role) : set;
 }
 
-// Roles the owner manages on the Permissions page (the owner always has full access).
+// Roles the owner manages on the Permissions page (the owner always has full
+// access). The legacy "manager" and "operations" roles are deliberately NOT
+// here: they duplicate Store Manager / Operation Manager, can no longer be
+// assigned from the employee form, and only cluttered the matrix. Accounts
+// still carrying them keep working through the baseline defaults.
 export const PERMISSION_ROLES: Role[] = [
   "store_crew",
   "store_manager",
@@ -141,8 +145,6 @@ export const PERMISSION_ROLES: Role[] = [
   "ops_manager",
   "procurement",
   "accountant",
-  "manager",
-  "operations",
 ];
 
 function matches(pathname: string, base: string): boolean {
