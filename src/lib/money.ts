@@ -19,10 +19,11 @@ import type { CashCount, DB, Sale, Shift } from "./types";
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // USD notes counted at the till, largest first. Loose coins are a single lump
-// (CashCount.coins) so a count stays fast.
-export const CASH_DENOMS = [100, 50, 20, 10, 5, 1];
-// Khmer riel notes counted alongside — the store takes both currencies.
-export const RIEL_DENOMS = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500];
+// (CashCount.coins) so a count stays fast. No $100 — the store doesn't take it.
+export const CASH_DENOMS = [50, 20, 10, 5, 1];
+// Khmer riel notes counted alongside — the store takes both currencies. No
+// 100,000៛ note (not handled here); the 100៛ note is counted at the bottom.
+export const RIEL_DENOMS = [50000, 20000, 10000, 5000, 2000, 1000, 500, 100];
 // Fallback KHR-per-USD if a store has no rate set.
 const DEFAULT_RATE = 4100;
 
