@@ -60,6 +60,7 @@ function compute(db: DB): Row[] {
   }
   const sold = new Map<string, number>();
   for (const s of db.sales) {
+    if (s.cancelled) continue; // a voided sale's stock was already put back
     for (const it of s.items) {
       sold.set(it.productId, (sold.get(it.productId) || 0) + it.qty);
     }

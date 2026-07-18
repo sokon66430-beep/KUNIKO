@@ -37,6 +37,7 @@ export async function GET(req: Request) {
   let txCount = 0;
 
   for (const sale of db.sales) {
+    if (sale.cancelled) continue; // voided invoices don't count
     if (!inRange(sale.createdAt)) continue;
     txCount++;
     for (const it of sale.items) {
@@ -118,6 +119,7 @@ export async function GET(req: Request) {
     let tx = 0;
     if (d) {
       for (const sale of db.sales) {
+        if (sale.cancelled) continue; // voided invoices don't count
         if (sale.createdAt.slice(0, 10) !== d) continue;
         tx++;
         for (const it of sale.items) {

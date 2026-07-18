@@ -32,6 +32,7 @@ export async function GET() {
   const map: Record<string, Row> = {};
 
   for (const sale of db.sales) {
+    if (sale.cancelled) continue; // voided invoices aren't real demand
     const t = new Date(sale.createdAt).getTime();
     if (!Number.isFinite(t)) continue;
     const ageDays = (now - t) / DAY;

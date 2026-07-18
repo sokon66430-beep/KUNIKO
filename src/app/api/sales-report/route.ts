@@ -35,6 +35,7 @@ export async function GET(req: Request) {
   let saleCount = 0;
 
   for (const sale of db.sales) {
+    if (sale.cancelled) continue; // voided invoices don't count
     if (!inRange(sale.createdAt)) continue;
     saleCount++;
     for (const it of sale.items) {

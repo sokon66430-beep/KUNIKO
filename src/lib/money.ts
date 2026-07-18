@@ -61,7 +61,7 @@ function bucket(method: string): "cash" | "card" | "ewallet" {
 }
 
 export function drawerFor(db: DB, shift: Shift): Drawer {
-  const shiftSales = db.sales.filter((s: Sale) => s.shiftId === shift.id);
+  const shiftSales = db.sales.filter((s: Sale) => s.shiftId === shift.id && !s.cancelled);
   const sales = { total: 0, cash: 0, card: 0, ewallet: 0 };
   for (const s of shiftSales) {
     sales.total = round2(sales.total + s.total);

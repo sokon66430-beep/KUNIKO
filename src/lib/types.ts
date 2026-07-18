@@ -436,6 +436,13 @@ export type Sale = {
   // route. Cash sales for a shift's drawer are the ones carrying its shiftId.
   posTerminalId?: string;
   shiftId?: string;
+  // A voided invoice. The sale row is KEPT for the audit trail but excluded from
+  // revenue, the drawer and reports; the stock it moved is put back and any
+  // loyalty it earned is reversed. See /api/sales/[id]/cancel.
+  cancelled?: boolean;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
   imported?: boolean; // true when brought in from a sales-history import (no stock change)
   // For imported day-sales: the source invoice numbers (from the report's Invoice
   // column) that make up this day. Lets a later import skip only the transactions

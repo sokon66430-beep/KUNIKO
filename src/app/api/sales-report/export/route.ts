@@ -25,6 +25,7 @@ export async function GET(req: Request) {
 
   const items = new Map<string, { category: string; sku: string; barcode: string; name: string; qty: number; revenue: number; cost: number }>();
   for (const sale of db.sales) {
+    if (sale.cancelled) continue; // voided invoices don't count
     if (!inRange(sale.createdAt)) continue;
     for (const it of sale.items) {
       const category = catOf.get(it.productId) || "Uncategorized";

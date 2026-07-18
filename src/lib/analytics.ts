@@ -63,7 +63,9 @@ function sum(sales: Sale[], pick: (s: Sale) => number) {
 
 export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string) {
   const { from, to, days } = rangeBounds(range, customDay);
-  const sales = db.sales.filter((s) => inRange(s, from, to));
+  // Cancelled (voided) invoices are kept on record but never count toward
+  // revenue, profit or any chart.
+  const sales = db.sales.filter((s) => !s.cancelled && inRange(s, from, to));
 
   const revenue = sum(sales, (s) => s.total);
   const netSales = sum(sales, (s) => s.subtotal - s.discount);
@@ -108,7 +110,7 @@ export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string) 
 
   // Today (always, regardless of range) for headline cards
   const todayFrom = startOfDay(new Date());
-  const todaySales = db.sales.filter((s) => inRange(s, todayFrom, new Date()));
+  const todaySales = db.sales.filter((s) => !s.cancelled && inRange(s, todayFrom, new Date()));
   const todayRevenue = sum(todaySales, (s) => s.total);
   const todayProfit = sum(todaySales, (s) => s.profit);
 

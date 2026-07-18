@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     const prodBySku = new Map(db.products.map((p) => [p.sku, p]));
     let sold = false;
     for (const sale of db.sales) {
+      if (sale.cancelled) continue; // voided invoices don't count
       const t = new Date(sale.createdAt).getTime();
       if (!Number.isFinite(t) || (now - t) / DAY > days) continue;
       for (const it of sale.items) {

@@ -26,7 +26,7 @@ export async function GET() {
       const openPOs = db.purchaseOrders.filter(
         (p) => p.status === "Open" || p.status === "Partial",
       ).length;
-      const salesTotal = db.sales.reduce((a, x) => a + x.total, 0);
+      const salesTotal = db.sales.reduce((a, x) => a + (x.cancelled ? 0 : x.total), 0);
       const staff = sys.users.filter((u) => u.storeId === st.id).length;
       return {
         id: st.id,
