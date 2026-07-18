@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Receipt as ReceiptIcon, Save } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Receipt as ReceiptIcon, Save, Upload, Image as ImageIcon, Trash2 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
@@ -48,6 +48,7 @@ export default function InvoiceSettingsPage() {
   const [headerNote, setHeaderNote] = useState("");
   const [footerNote, setFooterNote] = useState("");
   const [accent, setAccent] = useState<ReceiptAccent>("ink");
+  const [logo, setLogo] = useState<string>(""); // data-URL; "" = no logo
   const [showLogo, setShowLogo] = useState(false);
   const [showVat, setShowVat] = useState(true);
   const [showPickup, setShowPickup] = useState(true);
@@ -64,6 +65,7 @@ export default function InvoiceSettingsPage() {
     setHeaderNote(r.headerNote || "");
     setFooterNote(r.footerNote || "");
     setAccent(r.accent || "ink");
+    setLogo(data.logo || "");
     setShowLogo(!!r.showLogo);
     setShowVat(!!r.showVat); // default OFF — total just notes "Includes VAT x%"
     setShowPickup(r.showPickup !== false);
@@ -76,11 +78,11 @@ export default function InvoiceSettingsPage() {
       name,
       address,
       phone,
-      logo: data?.logo,
+      logo,
       vatRate: data?.vatRate,
       receipt: { headerNote, footerNote, accent, showLogo, showVat, showPickup },
     }),
-    [name, address, phone, data?.logo, data?.vatRate, headerNote, footerNote, accent, showLogo, showVat, showPickup],
+    [name, address, phone, logo, data?.vatRate, headerNote, footerNote, accent, showLogo, showVat, showPickup],
   );
 
   async function save() {
@@ -93,6 +95,7 @@ export default function InvoiceSettingsPage() {
           name,
           address,
           phone,
+          logo, // "" clears it
           receipt: { headerNote, footerNote, accent, showLogo, showVat, showPickup },
         }),
       });
@@ -162,8 +165,19 @@ export default function InvoiceSettingsPage() {
                 ))}
               </div>
             </div>
+            <div className="mt-4">
+              <p className="label">Store logo</p>
+              <LogoUpload
+                value={logo}
+                onChange={(v) => {
+                  setLogo(v);
+                  if (v) setShowLogo(true); // uploading a logo turns it on
+                }}
+              />
+            </div>
+
             <div className="mt-4 space-y-2">
-              {data?.logo && <Toggle label="Show store logo on the receipt" on={showLogo} onToggle={() => setShowLogo((v) => !v)} />}
+              {logo && <Toggle label="Show store logo on the receipt" on={showLogo} onToggle={() => setShowLogo((v) => !v)} />}
               <Toggle label="Break out VAT (subtotal + VAT lines) — off shows only ‘Includes VAT’" on={showVat} onToggle={() => setShowVat((v) => !v)} />
               <Toggle label="Show pickup number when there is one" on={showPickup} onToggle={() => setShowPickup((v) => !v)} />
             </div>
@@ -191,6 +205,74 @@ function Field({ label, full, children }: { label: string; full?: boolean; child
       <span className="label">{label}</span>
       {children}
     </label>
+  );
+}
+
+// Upload a logo for the receipt. Downscales the image client-side (max 400px,
+// keeps PNG transparency) and hands back a small data-URL.
+function LogoUpload({ value, onChange }: { value?: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  function pick(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || "");
+      if (file.type === "image/svg+xml") {
+        onChange(src);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 400;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+        onChange(c.toDataURL("image/png"));
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="grid h-16 w-28 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="Logo" className="max-h-14 max-w-[104px] object-contain" />
+        ) : (
+          <ImageIcon size={20} className="text-slate-300" />
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <button type="button" className="btn-ghost !py-1.5 text-xs" onClick={() => ref.current?.click()}>
+          <Upload size={14} /> {value ? "Replace logo" : "Upload logo"}
+        </button>
+        {value && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-rose-500 hover:underline"
+            onClick={() => onChange("")}
+          >
+            <Trash2 size={13} /> Remove
+          </button>
+        )}
+        <input
+          ref={ref}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) pick(f);
+            if (ref.current) ref.current.value = "";
+          }}
+        />
+        <p className="text-[11px] text-slate-400">PNG, JPG, SVG or WebP. Shown at the top of the receipt.</p>
+      </div>
+    </div>
   );
 }
 
