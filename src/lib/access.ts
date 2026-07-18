@@ -82,6 +82,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/audit", label: "Audit Trail" },
   { href: "/invoices", label: "Invoices" },
   { href: "/stores", label: "Stores & Employees" },
+  { href: "/invoice-settings", label: "Invoice Customization" },
   { href: "/settings", label: "Store Settings" },
 ];
 

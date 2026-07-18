@@ -206,6 +206,7 @@ export default function Sidebar() {
       { href: "/inventory-ledger", label: "Inventory Ledger", icon: BookOpen },
       { href: "/permissions", label: "Permissions", icon: ShieldCheck },
       { href: "/stores", label: "Stores & Employees", icon: Building2 },
+      { href: "/invoice-settings", label: "Invoice Customization", icon: ReceiptText },
       { href: "/settings", label: "Store Settings", icon: Settings },
     ],
   };

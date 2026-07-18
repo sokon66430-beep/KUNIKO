@@ -34,6 +34,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
+import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
 import { PosShiftModal } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
@@ -85,6 +86,8 @@ export default function PosPage() {
   // What actually sells — used to offer the obvious favourites rather than
   // making someone hunt for their own best sellers through the categories.
   const { data: salesReport } = useFetch<{ byItem: { productId: string; qty: number }[] }>("/api/sales-report");
+  // Store profile + receipt styling for the printed receipt (Invoice Customization).
+  const { data: business } = useFetch<ReceiptBusiness>("/api/business");
 
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
@@ -1122,7 +1125,7 @@ export default function PosPage() {
       )}
 
       {/* Receipt modal */}
-      {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}
+      {receipt && <ReceiptModal sale={receipt} business={business ?? undefined} onClose={() => setReceipt(null)} />}
 
       {/* Toast — clears itself (see the effect above) and, while a modal is
           open, sits ABOVE it rather than across its buttons: this is the till,
@@ -1210,7 +1213,7 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ros
   );
 }
 
-function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
+function ReceiptModal({ sale, business, onClose }: { sale: Sale; business?: ReceiptBusiness; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
@@ -1235,88 +1238,8 @@ function ReceiptModal({ sale, onClose }: { sale: Sale; onClose: () => void }) {
           </div>
         )}
 
-        <div className="rounded-xl border border-dashed border-slate-200 p-4">
-          <div className="mb-2 text-center">
-            <p className="font-bold text-ink-900">Monakom Pro Store</p>
-            <p className="text-[11px] text-slate-400">St. 271, Phnom Penh · 023 900 100</p>
-          </div>
-          <div className="space-y-1 border-t border-dashed border-slate-200 pt-2 text-sm">
-            {sale.items.map((it) => (
-              <div
-                key={`${it.productId}-${it.markdownCode || "full"}-${it.unitId || "base"}`}
-                className="flex justify-between gap-2"
-              >
-                {/* A case reads as "2× Case", not "48× Coca Cola" — the customer
-                    bought two things off the shelf, whatever stock counts. */}
-                <span className="min-w-0 truncate text-slate-600">
-                  {it.unitName ? `${it.unitQty}× ${it.name} ${it.unitName}` : `${it.qty}× ${it.name}`}
-                  {it.markdownPercent != null && (
-                    <span className="ml-1 font-bold text-amber-600">-{it.markdownPercent}%</span>
-                  )}
-                  {it.unitName && (
-                    <span className="block text-[11px] text-slate-400">
-                      {it.conversion} {it.name.length > 18 ? "per" : `per ${it.unitName.toLowerCase()}`} · {it.qty} total
-                    </span>
-                  )}
-                </span>
-                <span className="shrink-0 font-semibold text-ink-800">{usd(it.price * it.qty)}</span>
-              </div>
-            ))}
-          </div>
-          {/* Name each deal on the receipt — the customer should be able to see
-              what they got and why, not just a lump discount. */}
-          {sale.promotions?.length ? (
-            <div className="mt-2 space-y-1 border-t border-dashed border-slate-200 pt-2">
-              {sale.promotions.map((p) => (
-                <div key={p.code} className="flex items-start justify-between gap-2 text-[12px]">
-                  <span className="min-w-0 text-emerald-700">
-                    {p.name}
-                    <span className="block text-[11px] text-slate-400">
-                      {p.detail}
-                      {p.freeQty > 0 && ` · ${p.freeQty} free`}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-semibold text-emerald-700">- {usd(p.discount)}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {/* Order matters: `subtotal` is the ex-VAT value of what's actually
-              PAID, so it has to come after the discount or the receipt reads as
-              if the numbers don't add up (items − discount = total, and
-              subtotal + VAT = total). */}
-          <div className="mt-2 space-y-1 border-t border-dashed border-slate-200 pt-2 text-sm">
-            {sale.discount > 0 && <Row label="Items" value={usd(sale.total + sale.discount)} />}
-            {sale.discount > 0 && <Row label="Discount" value={`- ${usd(sale.discount)}`} tone="rose" />}
-            <Row label="Subtotal (ex VAT)" value={usd(sale.subtotal)} />
-            <Row label="VAT" value={usd(sale.tax)} />
-            <div className="flex justify-between pt-1 text-base font-bold text-ink-900">
-              <span>Total</span>
-              <span>{usd(sale.total)}</span>
-            </div>
-            <p className="text-right text-[11px] text-slate-400">{riel(sale.total)}</p>
-            {sale.tendered != null && (
-              <div className="mt-1 space-y-1 border-t border-dashed border-slate-200 pt-2">
-                <Row label="Cash received" value={usd(sale.tendered)} />
-                <div className="flex justify-between font-bold text-emerald-700">
-                  <span>Change</span>
-                  <span>{usd(sale.change || 0)}</span>
-                </div>
-                <p className="text-right text-[11px] text-slate-400">{riel(sale.change || 0)}</p>
-              </div>
-            )}
-          </div>
-          <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-xs text-slate-500">
-            <span>Paid by {sale.paymentMethod}</span>
-            <Badge tone="emerald">{sale.customerName || "Walk-in"}</Badge>
-          </div>
-          {sale.queueNumber != null && (
-            <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-sm">
-              <span className="font-semibold text-ink-800">Pickup Number</span>
-              <span className="text-lg font-extrabold tabular-nums text-ink-900">{formatQueue(sale.queueNumber)}</span>
-            </div>
-          )}
-        </div>
+        {/* The receipt itself — styled from the store's Invoice Customization. */}
+        <ReceiptCard sale={sale} business={business} />
 
         <button onClick={onClose} className="btn-primary mt-4 w-full">
           New Sale

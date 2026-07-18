@@ -44,6 +44,19 @@ export async function PATCH(req: Request) {
         allowStackWithMarkdown: !!body.promotionSettings.allowStackWithMarkdown,
       };
     }
+    // Invoice Customization — how the customer receipt is styled.
+    if (body.receipt && typeof body.receipt === "object") {
+      const r = body.receipt;
+      const ACCENTS = ["brand", "emerald", "violet", "amber", "rose", "ink"];
+      b.receipt = {
+        headerNote: String(r.headerNote || "").slice(0, 120),
+        footerNote: String(r.footerNote || "").slice(0, 120),
+        showLogo: !!r.showLogo,
+        showVat: r.showVat !== false,
+        showPickup: r.showPickup !== false,
+        accent: ACCENTS.includes(r.accent) ? r.accent : "ink",
+      };
+    }
     if (Array.isArray(body.approvers)) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers

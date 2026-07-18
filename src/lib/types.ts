@@ -398,6 +398,18 @@ export type PromotionSettings = {
   allowStackWithMarkdown: boolean;
 };
 
+// Invoice Customization — how the owner styles the customer receipt. All
+// optional; sensible defaults apply when unset.
+export type ReceiptAccent = "brand" | "emerald" | "violet" | "amber" | "rose" | "ink";
+export type ReceiptSettings = {
+  headerNote?: string; // a welcome line under the store name
+  footerNote?: string; // a thank-you line at the very bottom
+  showLogo?: boolean; // print the store logo on top
+  showVat?: boolean; // show the ex-VAT subtotal + VAT breakdown (default on)
+  showPickup?: boolean; // repeat the pickup number on the receipt (default on)
+  accent?: ReceiptAccent; // colour for the store name + total ("their style")
+};
+
 export type PaymentMethod = "Cash" | "KHQR" | "Card" | "ABA" | "Wing";
 
 export type Sale = {
@@ -837,6 +849,7 @@ export type DB = {
       poNotes: string[]; // standing notes printed on every PO
       approvers?: Approver[]; // who may approve edits to submitted receipts
       promotionSettings?: PromotionSettings; // how deals may interact (see lib/promotions)
+      receipt?: ReceiptSettings; // how the customer receipt is styled (Invoice Customization)
       // Cash drawer ceiling per till: when the expected drawer exceeds this, the
       // money screen prompts a safe drop. In dollars; 0 = no limit.
       cashDrawerLimit?: number;
