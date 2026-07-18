@@ -95,17 +95,6 @@ export function DenomCounter({ value, onChange, rate }: { value: CashCount; onCh
           {value.denoms.map((d) => (
             <CountRow key={d.denom} label={`$${d.denom}`} labelWidth="w-16" count={d.count} onCount={(n) => setUsd(d.denom, n)} value={d.denom * d.count} />
           ))}
-          {/* Loose coins are a single lump so a count stays fast. */}
-          <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
-            <span className="w-16 shrink-0 text-sm font-semibold text-slate-600">Coins</span>
-            <span className="text-slate-300">$</span>
-            <input
-              type="number" min={0} step="0.01" value={value.coins || ""} placeholder="0.00"
-              onChange={(e) => onChange({ ...value, coins: Math.max(0, Number(e.target.value) || 0) })}
-              className="h-10 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            />
-            <span className="ml-auto w-20 text-right text-sm font-bold tabular-nums text-ink-800">{usd(value.coins || 0)}</span>
-          </div>
         </CurrencyPanel>
         <CurrencyPanel title={`Khmer Riel · ÷ ${rate.toLocaleString()}`}>
           {(value.riel || []).map((d) => (
