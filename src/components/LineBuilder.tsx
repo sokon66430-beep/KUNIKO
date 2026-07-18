@@ -23,10 +23,19 @@ export type Suggestion = {
 };
 
 // Sales signal per product (from /api/product-velocity): units sold in the last
-// 3 / 7 / 30 days, a per-weekday tally (Mon..Sun) over the last 4 weeks, and the
-// ABC class by 90-day revenue.
-type Velocity = { d3: number; d7: number; d30: number; dow: number[]; abc?: AbcClass };
-const DOW_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+// 3 / 7 / 30 days, a rolling last-7-days series (oldest → newest, last = today),
+// and the ABC class by 90-day revenue.
+type Velocity = { d3: number; d7: number; d30: number; last7: number[]; abc?: AbcClass };
+type VelocityData = { days: string[]; velocity: Record<string, Velocity> };
+
+// Single-letter weekday (Sun..Sat) for a yyyy-mm-dd key. Read in UTC so the
+// letter matches the calendar date itself, never the viewer's timezone.
+const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
+function weekdayLetter(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return "";
+  return WEEKDAY[new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()];
+}
 
 // Average units sold per day — 30-day rate, falling back to 7-day.
 function ratePerDay(v?: Velocity): number {
@@ -71,14 +80,14 @@ function ShelfFlag({ shelf }: { shelf: number | null }) {
 
 // Compact sales-performance readout for one order line: ABC class, shelf-life
 // flag and days-of-cover on top; then 30/7/3-day units sold, on-hand, and a tiny
-// Mon..Sun bar chart (today highlighted).
-function SalesMini({ v, product }: { v?: Velocity; product: Product }) {
+// bar chart of the last 7 days (oldest → today, today highlighted).
+function SalesMini({ v, product, days }: { v?: Velocity; product: Product; days: string[] }) {
   const d3 = v?.d3 ?? 0;
   const d7 = v?.d7 ?? 0;
   const d30 = v?.d30 ?? 0;
-  const dow = v?.dow ?? [0, 0, 0, 0, 0, 0, 0];
-  const max = Math.max(1, ...dow);
-  const todayIdx = (new Date().getDay() + 6) % 7; // Mon=0 .. Sun=6
+  const series = v?.last7 ?? [0, 0, 0, 0, 0, 0, 0];
+  const max = Math.max(1, ...series);
+  const todayIdx = series.length - 1; // the rolling window always ends on today
   const shelf = effectiveShelfLifeDays(product);
   const rate = ratePerDay(v);
   const cover = rate > 0 ? product.stock / rate : null; // days of stock left
@@ -107,8 +116,8 @@ function SalesMini({ v, product }: { v?: Velocity; product: Product }) {
           Sold <b className="text-ink-700">30d {d30}</b> · 7d {d7} · 3d {d3}
         </span>
         <span className="text-slate-400">on hand {product.stock}</span>
-        <span className="flex items-end gap-[3px]" title="Units sold per weekday (last 4 weeks)">
-          {dow.map((n, i) => (
+        <span className="flex items-end gap-[3px]" title="Units sold on each of the last 7 days (today at the right)">
+          {series.map((n, i) => (
             <span key={i} className="flex w-3 flex-col items-center">
               <span className="text-[9px] leading-none text-slate-400">{n}</span>
               <span
@@ -118,7 +127,7 @@ function SalesMini({ v, product }: { v?: Velocity; product: Product }) {
               <span
                 className={`text-[9px] leading-none ${i === todayIdx ? "font-bold text-brand-600" : "text-slate-400"}`}
               >
-                {DOW_LABELS[i]}
+                {weekdayLetter(days[i] ?? "")}
               </span>
             </span>
           ))}
@@ -144,7 +153,9 @@ export function LineBuilder({
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<Product[] | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const { data: velocity } = useFetch<Record<string, Velocity>>("/api/product-velocity");
+  const { data: velocityData } = useFetch<VelocityData>("/api/product-velocity");
+  const velocity = velocityData?.velocity;
+  const days = velocityData?.days ?? [];
   // How many days of sales the recommendation should cover — the user picks.
   const [coverDays, setCoverDays] = useState(7);
   const scanRef = useRef<HTMLInputElement>(null);
@@ -514,7 +525,7 @@ export function LineBuilder({
                       <Trash2 size={18} />
                     </button>
                   </div>
-                  <SalesMini v={velocity?.[l.product.id]} product={l.product} />
+                  <SalesMini v={velocity?.[l.product.id]} product={l.product} days={days} />
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5">
                       <button
@@ -594,7 +605,7 @@ export function LineBuilder({
                       <p className="text-xs text-slate-400">
                         {l.product.sku} · {l.product.supplier}
                       </p>
-                      <SalesMini v={velocity?.[l.product.id]} product={l.product} />
+                      <SalesMini v={velocity?.[l.product.id]} product={l.product} days={days} />
                     </td>
                     <td className="px-3 py-2 text-right text-slate-500">{usd(l.product.cost)}</td>
                     <td className="px-3 py-2 align-top">
