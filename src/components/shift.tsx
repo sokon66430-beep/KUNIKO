@@ -8,7 +8,7 @@
 // till and the money page can never drift apart on how the drawer is counted or
 // what "expected" means.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   PlusCircle,
   MinusCircle,
@@ -48,9 +48,40 @@ export const emptyCount = (): CashCount => ({
 
 export const khr = (n: number) => `${n.toLocaleString("en-US")}៛`; // riel symbol ៛
 
-// A quick denomination counter — USD notes + loose coins on the left, Khmer riel
-// notes on the right (the store takes both). The live total is in USD, with
-// riel converted at the store rate.
+// One row of the counter: a denomination label, a "× count" input, and the USD
+// value it comes to. Shared by both currency panels so every row lines up.
+function CountRow({ label, labelWidth, count, onCount, value }: {
+  label: string; labelWidth: string; count: number; onCount: (n: number) => void; value: number;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-1.5">
+      <span className={`${labelWidth} shrink-0 text-sm font-semibold text-slate-500`}>{label}</span>
+      <span className="text-slate-300">×</span>
+      <input
+        type="number"
+        min={0}
+        value={count || ""}
+        onChange={(e) => onCount(Number(e.target.value))}
+        placeholder="0"
+        className="h-10 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+      />
+      <span className="ml-auto w-20 text-right text-sm font-bold tabular-nums text-ink-800">{usd(value)}</span>
+    </div>
+  );
+}
+
+function CurrencyPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{title}</p>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+// The denomination counter — US Dollars and Khmer riel in two clean, self-
+// contained panels (each row aligned: note · × count · USD value). The live
+// grand total is in USD, riel converted at the store rate.
 export function DenomCounter({ value, onChange, rate }: { value: CashCount; onChange: (c: CashCount) => void; rate: number }) {
   const total = countTotal(value, rate);
   const setUsd = (denom: number, count: number) =>
@@ -58,45 +89,33 @@ export function DenomCounter({ value, onChange, rate }: { value: CashCount; onCh
   const setRiel = (denom: number, count: number) =>
     onChange({ ...value, riel: (value.riel || []).map((d) => (d.denom === denom ? { ...d, count: Math.max(0, Math.floor(count) || 0) } : d)) });
   return (
-    <div className="rounded-xl border border-slate-200 p-3">
-      <div className="grid gap-x-5 gap-y-1.5 sm:grid-cols-2">
-        {/* USD */}
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">US Dollars</p>
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <CurrencyPanel title="US Dollars">
           {value.denoms.map((d) => (
-            <div key={d.denom} className="flex items-center gap-2">
-              <span className="w-10 text-sm font-semibold text-slate-500">${d.denom}</span>
-              <span className="text-slate-400">×</span>
-              <input type="number" min={0} value={d.count || ""} onChange={(e) => setUsd(d.denom, Number(e.target.value))}
-                className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400" />
-              <span className="ml-auto text-xs font-semibold tabular-nums text-ink-800">{usd(d.denom * d.count)}</span>
-            </div>
+            <CountRow key={d.denom} label={`$${d.denom}`} labelWidth="w-16" count={d.count} onCount={(n) => setUsd(d.denom, n)} value={d.denom * d.count} />
           ))}
-          <div className="flex items-center gap-2">
-            <span className="w-10 text-sm font-semibold text-slate-500">Coins</span>
-            <span className="text-slate-400">$</span>
-            <input type="number" min={0} step="0.01" value={value.coins || ""} onChange={(e) => onChange({ ...value, coins: Math.max(0, Number(e.target.value) || 0) })}
-              className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400" />
-            <span className="ml-auto text-xs font-semibold tabular-nums text-ink-800">{usd(value.coins || 0)}</span>
+          {/* Loose coins are a single lump so a count stays fast. */}
+          <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+            <span className="w-16 shrink-0 text-sm font-semibold text-slate-600">Coins</span>
+            <span className="text-slate-300">$</span>
+            <input
+              type="number" min={0} step="0.01" value={value.coins || ""} placeholder="0.00"
+              onChange={(e) => onChange({ ...value, coins: Math.max(0, Number(e.target.value) || 0) })}
+              className="h-10 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            />
+            <span className="ml-auto w-20 text-right text-sm font-bold tabular-nums text-ink-800">{usd(value.coins || 0)}</span>
           </div>
-        </div>
-        {/* Riel */}
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Khmer Riel (÷ {rate.toLocaleString()})</p>
+        </CurrencyPanel>
+        <CurrencyPanel title={`Khmer Riel · ÷ ${rate.toLocaleString()}`}>
           {(value.riel || []).map((d) => (
-            <div key={d.denom} className="flex items-center gap-2">
-              <span className="w-16 text-[13px] font-semibold text-slate-500">{khr(d.denom)}</span>
-              <span className="text-slate-400">×</span>
-              <input type="number" min={0} value={d.count || ""} onChange={(e) => setRiel(d.denom, Number(e.target.value))}
-                className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-center text-sm outline-none focus:border-brand-400" />
-              <span className="ml-auto text-xs font-semibold tabular-nums text-ink-800">{usd((d.denom * d.count) / (rate || 4100))}</span>
-            </div>
+            <CountRow key={d.denom} label={khr(d.denom)} labelWidth="w-20" count={d.count} onCount={(n) => setRiel(d.denom, n)} value={(d.denom * d.count) / (rate || 4100)} />
           ))}
-        </div>
+        </CurrencyPanel>
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-dashed border-slate-200 pt-2">
-        <span className="text-sm font-bold uppercase tracking-wide text-slate-500">Counted total (USD)</span>
-        <span className="text-lg font-extrabold tabular-nums text-brand-600">{usd(total)}</span>
+      <div className="flex items-center justify-between rounded-2xl bg-brand-50 px-5 py-3.5 ring-1 ring-brand-100">
+        <span className="text-sm font-bold uppercase tracking-[0.08em] text-brand-700">Counted total (USD)</span>
+        <span className="text-2xl font-extrabold tabular-nums text-brand-600">{usd(total)}</span>
       </div>
     </div>
   );
@@ -235,7 +254,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title={`Close Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
+    <Modal open onClose={onClose} size="2xl" title={`Close Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn-primary" disabled={busy || (variance !== 0 && !reason.trim())} onClick={submit}>
@@ -243,18 +262,18 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
         </button>
       </div>
     }>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
         <div>
           <p className="label">Count the drawer</p>
           <DenomCounter value={count} onChange={setCount} rate={rate} />
         </div>
-        <div className="space-y-2">
-          <div className="rounded-xl border border-slate-200 p-3 text-sm">
+        <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
             <Row label="Expected cash" value={usd(expected)} />
             <Row label="Counted cash" value={usd(actual)} />
-            <div className="mt-1 flex items-center justify-between border-t border-dashed border-slate-200 pt-2">
+            <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2.5">
               <span className="font-bold text-slate-600">Variance</span>
-              <VarianceTag v={variance} />
+              <span className="text-base"><VarianceTag v={variance} /></span>
             </div>
           </div>
           {variance !== 0 && (
