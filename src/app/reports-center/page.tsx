@@ -17,6 +17,8 @@ import {
   Sparkles,
   Boxes,
   TicketPercent,
+  Search,
+  X,
 } from "lucide-react";
 import { useFetch } from "@/lib/client";
 import type {
@@ -67,6 +69,9 @@ export default function ReportsCenterPage() {
   const { data: promotions } = useFetch<Promotion[]>("/api/promotions");
   const { data: markdowns } = useFetch<Markdown[]>("/api/markdowns");
   const { data: products } = useFetch<Product[]>("/api/products");
+
+  // Find a report by name — filters the cards as you type.
+  const [q, setQ] = useState("");
 
   // Receiving report can be narrowed to one supplier.
   const [grnSupplier, setGrnSupplier] = useState("All");
@@ -190,15 +195,42 @@ export default function ReportsCenterPage() {
     },
   ];
 
+  // Match on the report's name or what it covers, so "margin" finds
+  // Sales & Profit and "supplier" finds Purchase Orders and Receiving.
+  const query = q.trim().toLowerCase();
+  const shown = cards.filter(
+    (c) => !query || c.title.toLowerCase().includes(query) || c.desc.toLowerCase().includes(query),
+  );
+
   return (
     <div>
       <PageHeader
         title="Reports"
         subtitle="Every report in one place — open the full view or download as Excel, PDF or CSV"
+        actions={
+          <div className="flex w-72 items-center gap-2 rounded-xl bg-white px-3 py-2.5 ring-1 ring-slate-200 focus-within:ring-brand-400">
+            <Search size={16} className="shrink-0 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search reports…"
+              className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+            />
+            {q && (
+              <button onClick={() => setQ("")} className="shrink-0 text-slate-400 hover:text-slate-600" title="Clear">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        }
       />
 
+      {shown.length === 0 && (
+        <p className="py-16 text-center text-sm text-slate-400">No report matches “{q.trim()}”.</p>
+      )}
+
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((c) => (
+        {shown.map((c) => (
           <Card key={c.title} className="flex flex-col p-5">
             <div className="flex items-start justify-between">
               <div className={`grid h-11 w-11 place-items-center rounded-xl ${TINT[c.accent]}`}>
