@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { profitFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
+import { issueQueueTicket } from "@/lib/queue";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
 import { consumptionPlan, recipeCosting, recipeFor } from "@/lib/recipes";
@@ -329,6 +330,21 @@ export async function POST(req: Request) {
       change,
       createdAt: now,
     };
+
+    // Pickup number: only when the cashier asked for one at the till (body.queue).
+    // Issued centrally so every terminal shares the sequence — see lib/queue.
+    if (body.queue) {
+      const ticket = issueQueueTicket(db, {
+        saleId,
+        receiptNo: invoiceNo,
+        posTerminalId: typeof body.posTerminalId === "string" ? body.posTerminalId : undefined,
+        cashier: actor,
+        at: now,
+      });
+      sale.queueNumber = ticket.number;
+      sale.queueTicketId = ticket.id;
+    }
+
     db.meta.nextInvoice += 1;
     db.sales.push(sale);
     return { sale };

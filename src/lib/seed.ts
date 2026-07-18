@@ -223,6 +223,7 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
     promotions: [],
     promotionUsages: [],
     auditLog,
+    queue: [],
     meta: {
       nextInvoice: 100001,
       nextPR: 100002,
@@ -238,6 +239,8 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
       nextPromotionUsage: 1,
       nextWriteOff: 100001,
       nextAudit: withDemo ? 4 : 1,
+      nextQueueId: 1,
+      queue: { current: 0, updatedAt: new Date().toISOString() },
       business,
     },
   };

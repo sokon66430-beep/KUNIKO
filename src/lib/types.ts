@@ -424,12 +424,42 @@ export type Sale = {
   tendered?: number;
   change?: number;
   createdAt: string;
+  // Customer pickup (queue) number, when the cashier asked for one at checkout.
+  // Purely for calling the customer — separate from invoiceNo/id, which stay the
+  // unique transaction identifiers. queueNumber cycles 1..99; queueTicketId ties
+  // back to the QueueTicket record.
+  queueNumber?: number;
+  queueTicketId?: string;
   imported?: boolean; // true when brought in from a sales-history import (no stock change)
   // For imported day-sales: the source invoice numbers (from the report's Invoice
   // column) that make up this day. Lets a later import skip only the transactions
   // already on record — e.g. a night shift's after-midnight invoices — instead of
   // rejecting the whole overlapping day.
   sourceInvoices?: string[];
+};
+
+// ---------------------------------------------------------------------------
+// Queue numbers: a centralized customer-pickup ticket per store.
+//
+// One counter per store (db.meta.queue), shared by every POS terminal — the
+// number is issued by the server inside the sale transaction, so 2–4 tills can
+// never hand out the same one. Display is 3 digits (001..099) and the counter
+// wraps back to 001 after 099. This is ONLY for calling the customer; the
+// receipt number and transaction id stay separate and unique.
+// ---------------------------------------------------------------------------
+export type QueueStatus = "waiting" | "cancelled";
+
+export type QueueTicket = {
+  id: string; // Q-000001 — internal unique id (distinct from the queue number)
+  number: number; // 1..99, shown zero-padded to 3 digits
+  saleId: string;
+  receiptNo: string; // the sale's invoiceNo
+  posTerminalId?: string; // which till issued it
+  cashier: string; // who took the payment
+  status: QueueStatus;
+  createdAt: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -677,6 +707,7 @@ export type DB = {
   promotions: Promotion[];
   promotionUsages: PromotionUsage[];
   auditLog: AuditEvent[];
+  queue: QueueTicket[];
   meta: {
     nextInvoice: number;
     nextPR: number;
@@ -692,6 +723,11 @@ export type DB = {
     nextPromotion: number;
     nextPromotionUsage: number;
     nextAudit: number;
+    nextQueueId: number;
+    // The store's shared pickup-number counter. `current` is the last number
+    // issued (0 before any); the next sale that asks for a number gets
+    // (current % 99) + 1, wrapping 099 → 001.
+    queue: { current: number; updatedAt: string };
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().
     supplierTaxInitialized?: boolean;
