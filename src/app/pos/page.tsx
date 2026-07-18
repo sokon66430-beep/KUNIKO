@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   Sparkles,
   Star,
+  Wallet,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
@@ -556,6 +557,9 @@ export default function PosPage() {
         subtitle="Ring up a sale — stock and loyalty update automatically"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <a className="btn-ghost !py-2 text-sm" href="/money" title="Cash shifts & drawer control">
+              <Wallet size={16} /> Cash Drawer
+            </a>
             <button className="btn-ghost !py-2 text-sm" onClick={() => setReportOpen(true)}>
               <BarChart3 size={16} /> Sales Report
             </button>

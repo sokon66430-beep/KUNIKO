@@ -224,6 +224,8 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
     promotionUsages: [],
     auditLog,
     queue: [],
+    shifts: [],
+    cashMovements: [],
     meta: {
       nextInvoice: 100001,
       nextPR: 100002,
@@ -241,6 +243,8 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
       nextAudit: withDemo ? 4 : 1,
       nextQueueId: 1,
       queue: { current: 0, updatedAt: new Date().toISOString() },
+      nextShift: 1,
+      nextCashMovement: 1,
       business,
     },
   };

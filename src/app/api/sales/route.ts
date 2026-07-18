@@ -6,6 +6,7 @@ import { profitFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
 import { issueQueueTicket } from "@/lib/queue";
+import { openShiftForTerminal } from "@/lib/money";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
 import { consumptionPlan, recipeCosting, recipeFor } from "@/lib/recipes";
@@ -330,6 +331,17 @@ export async function POST(req: Request) {
       change,
       createdAt: now,
     };
+
+    // Money management: attribute the sale to the till and its OPEN shift, so a
+    // cash sale lands in the right drawer. Never blocks a sale — if no shift is
+    // open the sale still goes through, just unattributed (the shift/terminal
+    // stay undefined). See lib/money.drawerFor.
+    const posTerminalId = typeof body.posTerminalId === "string" ? body.posTerminalId.trim() : "";
+    if (posTerminalId) {
+      sale.posTerminalId = posTerminalId;
+      const openShift = openShiftForTerminal(db, posTerminalId);
+      if (openShift) sale.shiftId = openShift.id;
+    }
 
     // Pickup number: only when the cashier asked for one at the till (body.queue).
     // Issued centrally so every terminal shares the sequence — see lib/queue.

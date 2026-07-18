@@ -53,6 +53,13 @@ function backfill(db: DB): DB {
   if (!db.queue) db.queue = [];
   if (db.meta.nextQueueId == null) db.meta.nextQueueId = 1;
   if (!db.meta.queue) db.meta.queue = { current: 0, updatedAt: new Date().toISOString() };
+  // Money management — cash shifts + drawer movements. Stores predating it get
+  // empty books and a sensible default drawer ceiling.
+  if (!db.shifts) db.shifts = [];
+  if (!db.cashMovements) db.cashMovements = [];
+  if (db.meta.nextShift == null) db.meta.nextShift = 1;
+  if (db.meta.nextCashMovement == null) db.meta.nextCashMovement = 1;
+  if (db.meta.business && db.meta.business.cashDrawerLimit == null) db.meta.business.cashDrawerLimit = 500;
   if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
   if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;
   // Deals don't combine or stack until the owner says so — see lib/promotions.

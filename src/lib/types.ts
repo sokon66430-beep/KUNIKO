@@ -430,6 +430,12 @@ export type Sale = {
   // back to the QueueTicket record.
   queueNumber?: number;
   queueTicketId?: string;
+  // Money management: the till this sale rang up on, and the open cash shift it
+  // belongs to (stamped server-side from the terminal's open shift). Both
+  // optional so a sale never fails just because no shift is open — see the sales
+  // route. Cash sales for a shift's drawer are the ones carrying its shiftId.
+  posTerminalId?: string;
+  shiftId?: string;
   imported?: boolean; // true when brought in from a sales-history import (no stock change)
   // For imported day-sales: the source invoice numbers (from the report's Invoice
   // column) that make up this day. Lets a later import skip only the transactions
@@ -460,6 +466,72 @@ export type QueueTicket = {
   createdAt: string;
   cancelledAt?: string;
   cancelledBy?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Money management: cash shifts and drawer control.
+//
+// Every money record links Store (the store file) · POS terminal · Shift ·
+// Cashier · Timestamp, so accountability is complete. A shift is a cashier's
+// session on one till: opened with a counted float, it accrues cash sales and
+// manual movements (in / out / drop / refund), and is closed by counting the
+// drawer against the expected figure. Once a supervisor approves the close the
+// shift is LOCKED — no edit, no delete — until a manager reopens it (audited).
+// ---------------------------------------------------------------------------
+export type ShiftName = "A" | "B" | "C";
+export type ShiftStatus = "open" | "pending_close" | "closed";
+
+// A counted stack of cash: how many of each note/coin denomination. `coins` is a
+// single lump for loose change under $1, so the count stays quick at the till.
+export type CashCount = {
+  denoms: { denom: number; count: number }[]; // e.g. [{denom:100,count:2}, …]
+  coins?: number; // total value of loose coins, in dollars
+};
+
+export type Shift = {
+  id: string; // SH-000001
+  posTerminalId: string;
+  shift: ShiftName;
+  cashier: string; // display name
+  cashierId: string; // session uid
+  status: ShiftStatus;
+  openedAt: string;
+  openedBy: string;
+  openingFloat: number;
+  openingCount?: CashCount;
+  openingNote?: string;
+  // Filled in at close.
+  submittedAt?: string; // cashier submitted the count for review
+  closedAt?: string; // supervisor approved → locked
+  closedBy?: string; // supervisor who approved
+  expectedCash?: number; // computed at submit (opening + cash sales − movements)
+  actualCash?: number; // counted
+  closingCount?: CashCount;
+  variance?: number; // actual − expected (negative = short)
+  varianceReason?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenNote?: string;
+};
+
+export type CashMovementType = "CASH_IN" | "CASH_OUT" | "DROP" | "REFUND";
+export type CashMovementStatus = "pending" | "approved";
+
+export type CashMovement = {
+  id: string; // CM-000001
+  shiftId: string;
+  posTerminalId: string;
+  type: CashMovementType;
+  amount: number; // positive magnitude; the type decides the sign in the drawer
+  reason: string;
+  notes?: string;
+  attachment?: string; // optional photo/receipt data-URL (cash out)
+  at: string;
+  createdBy: string;
+  cashierId: string;
+  status: CashMovementStatus;
+  approvedBy?: string;
+  approvedAt?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -708,6 +780,8 @@ export type DB = {
   promotionUsages: PromotionUsage[];
   auditLog: AuditEvent[];
   queue: QueueTicket[];
+  shifts: Shift[];
+  cashMovements: CashMovement[];
   meta: {
     nextInvoice: number;
     nextPR: number;
@@ -728,6 +802,8 @@ export type DB = {
     // issued (0 before any); the next sale that asks for a number gets
     // (current % 99) + 1, wrapping 099 → 001.
     queue: { current: number; updatedAt: string };
+    nextShift: number;
+    nextCashMovement: number;
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().
     supplierTaxInitialized?: boolean;
@@ -751,6 +827,9 @@ export type DB = {
       poNotes: string[]; // standing notes printed on every PO
       approvers?: Approver[]; // who may approve edits to submitted receipts
       promotionSettings?: PromotionSettings; // how deals may interact (see lib/promotions)
+      // Cash drawer ceiling per till: when the expected drawer exceeds this, the
+      // money screen prompts a safe drop. In dollars; 0 = no limit.
+      cashDrawerLimit?: number;
     };
   };
 };

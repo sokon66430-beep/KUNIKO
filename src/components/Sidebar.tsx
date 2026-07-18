@@ -34,6 +34,7 @@ import {
   Store,
   Tag,
   Ticket,
+  Wallet,
   TicketPercent,
   ReceiptText,
   ShieldCheck,
@@ -51,6 +52,7 @@ const OPERATIONS = {
   items: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/pos", label: "Point of Sale", icon: ShoppingCart },
+    { href: "/money", label: "Money Management", icon: Wallet },
     { href: "/queue", label: "Pickup Queue", icon: Ticket },
     { href: "/inventory", label: "Inventory", icon: Package },
     { href: "/stock-count", label: "Stock Count", icon: ClipboardCheck },

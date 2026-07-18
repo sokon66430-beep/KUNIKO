@@ -55,6 +55,7 @@ export const DEFAULT_ROLE_DENIED: Partial<Record<Role, string[]>> = {
 // reach it, so a denied role always has somewhere safe to land.
 export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/pos", label: "Point of Sale" },
+  { href: "/money", label: "Money Management" },
   { href: "/queue", label: "Pickup Queue" },
   { href: "/inventory", label: "Inventory" },
   { href: "/stock-count", label: "Stock Count" },
@@ -206,6 +207,25 @@ export function canManageStaff(role: Role): boolean {
 // Same set as staff management — store leadership and above.
 export function canManageQueue(role: Role): boolean {
   return canManageStaff(role);
+}
+
+// Money management roles.
+//   Cashier  — any signed-in till user: open a shift, count, request a drop.
+//   Supervisor — approve cash movements & variances, approve a shift close.
+//   Manager  — reopen a locked shift (always audited) and change cash settings.
+// Supervisor mirrors staff management (store leadership and above); manager is
+// the higher tier that can undo a locked shift.
+export function canApproveCash(role: Role): boolean {
+  return canManageStaff(role);
+}
+export function canReopenShift(role: Role): boolean {
+  return (
+    role === "owner" ||
+    role === "ops_manager" ||
+    role === "area_manager" ||
+    role === "store_manager" ||
+    role === "manager"
+  );
 }
 
 // Cross-store, elevated roles — only an owner may create or assign these. Area
