@@ -7,7 +7,6 @@
 import type { Sale, ReceiptSettings } from "@/lib/types";
 import { usd, riel } from "@/lib/format";
 import { formatQueue } from "@/lib/queue";
-import { Badge } from "@/components/ui";
 
 export type ReceiptBusiness = {
   name?: string;
@@ -115,11 +114,6 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
             <p className="text-right text-[11px] text-slate-400">{riel(sale.change || 0)}</p>
           </div>
         )}
-      </div>
-
-      <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-xs text-slate-500">
-        <span>Paid by {sale.paymentMethod}</span>
-        <Badge tone="emerald">{sale.customerName || "Walk-in"}</Badge>
       </div>
 
       {showPickup && sale.queueNumber != null && (
