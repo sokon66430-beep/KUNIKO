@@ -32,10 +32,22 @@ function customDayBounds(day: string): { from: Date; to: Date; days: number } | 
   return { from, to, days: 1 };
 }
 
-export function rangeBounds(range: RangeKey, customDay?: string): { from: Date; to: Date; days: number } {
+export function rangeBounds(
+  range: RangeKey,
+  customDay?: string,
+  customTo?: string,
+): { from: Date; to: Date; days: number } {
   if (customDay) {
     const c = customDayBounds(customDay);
-    if (c) return c;
+    if (c) {
+      // A second date turns the single day into an inclusive from–to window.
+      const e = customTo ? customDayBounds(customTo) : null;
+      if (e && e.from.getTime() >= c.from.getTime()) {
+        const days = Math.round((e.from.getTime() - c.from.getTime()) / 86_400_000) + 1;
+        return { from: c.from, to: e.to, days };
+      }
+      return c;
+    }
   }
   const to = new Date();
   const from = startOfDay(new Date());
@@ -61,8 +73,8 @@ function sum(sales: Sale[], pick: (s: Sale) => number) {
   return round2(sales.reduce((acc, s) => acc + pick(s), 0));
 }
 
-export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string) {
-  const { from, to, days } = rangeBounds(range, customDay);
+export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string, customTo?: string) {
+  const { from, to, days } = rangeBounds(range, customDay, customTo);
   // Cancelled (voided) invoices are kept on record but never count toward
   // revenue, profit or any chart.
   const sales = db.sales.filter((s) => !s.cancelled && inRange(s, from, to));

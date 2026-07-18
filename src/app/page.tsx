@@ -115,9 +115,13 @@ function CategoryMix({ categories }: { categories: { name: string; value: number
 export default function DashboardPage() {
   const [range, setRange] = useState<RangeKey>("30d");
   // A specific day picked from the calendar. When set, it overrides the preset
-  // range and the dashboard reports just that day.
+  // range and the dashboard reports just that day — and an optional second
+  // date stretches it into a from–to range.
   const [customDate, setCustomDate] = useState<string | null>(null);
-  const url = customDate ? `/api/stats?date=${customDate}` : `/api/stats?range=${range}`;
+  const [customTo, setCustomTo] = useState<string | null>(null);
+  const url = customDate
+    ? `/api/stats?date=${customDate}${customTo ? `&to=${customTo}` : ""}`
+    : `/api/stats?range=${range}`;
   const { data, loading, error } = useFetch<Stats>(url);
   const { role, caps } = useAccess();
   const showProfit = role == null || canSeeProfit(role, caps);
@@ -135,7 +139,8 @@ export default function DashboardPage() {
                   key={r.key}
                   onClick={() => {
                     setRange(r.key);
-                    setCustomDate(null); // a preset clears any picked day
+                    setCustomDate(null); // a preset clears any picked day/range
+                    setCustomTo(null);
                   }}
                   className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
                     range === r.key && !customDate ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
@@ -145,13 +150,29 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
-            {/* Pick any specific day from the calendar. */}
+            {/* Pick any specific day from the calendar — then, optionally, a
+                second date to report a from–to range instead of one day. */}
             <DatePicker
               value={customDate ?? ""}
-              max={localDayKey(new Date())}
-              onChange={(v) => setCustomDate(v || null)}
+              max={customTo ?? localDayKey(new Date())}
+              onChange={(v) => {
+                setCustomDate(v || null);
+                if (!v) setCustomTo(null); // clearing the start clears the range
+              }}
               allowClear
             />
+            {customDate && (
+              <>
+                <span className="text-xs font-medium text-slate-400">to</span>
+                <DatePicker
+                  value={customTo ?? ""}
+                  min={customDate}
+                  max={localDayKey(new Date())}
+                  onChange={(v) => setCustomTo(v || null)}
+                  allowClear
+                />
+              </>
+            )}
           </div>
         }
       />
@@ -174,7 +195,13 @@ export default function DashboardPage() {
               leaves a gap that reads as something failed to load. */}
           <div className={`grid grid-cols-2 gap-4 ${showProfit ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
             <StatCard
-              label={customDate ? `Sales · ${niceDay(customDate)}` : SALES_LABEL[range]}
+              label={
+                customDate
+                  ? customTo && customTo !== customDate
+                    ? `Sales · ${niceDay(customDate)} – ${niceDay(customTo)}`
+                    : `Sales · ${niceDay(customDate)}`
+                  : SALES_LABEL[range]
+              }
               value={usd(data.revenue)}
               sub={`${riel(data.revenue)} · ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
               icon={<DollarSign size={18} />}

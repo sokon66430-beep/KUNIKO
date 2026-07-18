@@ -13,10 +13,12 @@ export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const raw = params.get("range") as RangeKey | null;
   const range: RangeKey = raw && VALID.includes(raw) ? raw : "30d";
-  // A specific day picked from the calendar overrides the preset range.
-  const dateParam = params.get("date");
-  const customDay = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
-  const stats = buildStats(db, range, customDay);
+  // A specific day picked from the calendar overrides the preset range; an
+  // optional `to` date extends it into an inclusive from–to window.
+  const valid = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+  const customDay = valid(params.get("date"));
+  const customTo = valid(params.get("to"));
+  const stats = buildStats(db, range, customDay, customTo);
 
   const session = await getSession();
   if (!session || (await profitFor(session.role))) return NextResponse.json(stats);
