@@ -38,6 +38,8 @@ import {
   ShieldCheck,
   BookOpen,
   Search,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -187,7 +189,7 @@ export default function Sidebar() {
   // buyer's rail without them refreshing or opening the bell.
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [menuOrder, setMenuOrder] = useState<string[]>([]); // owner-set order (Menu Layout)
-  const { theme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -223,6 +225,21 @@ export default function Sidebar() {
 
   const dark = theme === "dark";
   const t = palette(dark, storeMenuOpen);
+
+  // Dark / light switch, shown in the header next to the bell.
+  const themeToggle = (
+    <button
+      type="button"
+      onClick={() => setTheme(dark ? "light" : "dark")}
+      title={dark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition ${
+        dark ? "text-slate-300 hover:bg-white/10 hover:text-white" : "text-slate-500 hover:bg-slate-100 hover:text-ink-900"
+      }`}
+    >
+      {dark ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const isOwner = session?.user.role === "owner";
@@ -281,6 +298,7 @@ export default function Sidebar() {
             {session?.user.storeName || "Retail Ordering"}
           </p>
         </div>
+        {themeToggle}
         <NotificationBell align="left" />
       </div>
 
@@ -471,6 +489,7 @@ export default function Sidebar() {
           <Menu size={22} />
         </button>
         <div className="flex items-center gap-2.5">
+          {themeToggle}
           <NotificationBell />
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white">
             <span className="text-[15px] font-black leading-none tracking-tight">S</span>

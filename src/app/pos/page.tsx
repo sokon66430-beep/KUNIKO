@@ -866,9 +866,11 @@ export default function PosPage() {
           )}
         </div>
 
-        {/* Cart — order-1 on desktop puts it on the LEFT. */}
+        {/* Cart — order-1 on desktop puts it on the LEFT. Sticky and full-height
+            on desktop so it stays put and always shows a tall, stable panel
+            (not a short card that grows/shrinks with the basket). */}
         <div className="lg:order-1 lg:sticky lg:top-6 lg:self-start">
-          <div className="card flex max-h-[calc(100vh-7rem)] flex-col">
+          <div className="card flex max-h-[calc(100vh-7rem)] flex-col lg:h-[calc(100vh-7rem)]">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
               <div className="flex items-center gap-2">
                 <ShoppingCart size={18} className="text-brand-600" />

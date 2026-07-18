@@ -2,11 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Sun, Moon, Upload, Trash2, ImageIcon, Plus, Copy } from "lucide-react";
+import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
-import { useTheme } from "@/components/theme";
 import { confirmDialog } from "@/components/confirm";
 import { SearchSelect } from "@/components/SearchSelect";
 
@@ -115,8 +114,6 @@ export default function SettingsPage() {
       )}
 
       {error && <ErrorBox message={error} />}
-
-      <AppearanceCard />
 
       <ChangePasswordCard />
 
@@ -301,56 +298,6 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function AppearanceCard() {
-  const { theme, setTheme } = useTheme();
-  const options: { key: "light" | "dark"; label: string; icon: any; hint: string }[] = [
-    { key: "light", label: "Light", icon: Sun, hint: "Bright, white background" },
-    { key: "dark", label: "Dark", icon: Moon, hint: "Dark, easy on the eyes" },
-  ];
-  return (
-    <Card className="mb-6">
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
-        {theme === "dark" ? <Moon size={16} className="text-brand-600" /> : <Sun size={16} className="text-brand-600" />}{" "}
-        Appearance
-      </h3>
-      <p className="mb-4 text-xs text-slate-500">
-        Switch the whole app between light and dark. Your choice is saved on this device.
-      </p>
-      <div className="grid max-w-md gap-3 sm:grid-cols-2">
-        {options.map((o) => {
-          const active = theme === o.key;
-          return (
-            <button
-              key={o.key}
-              type="button"
-              onClick={() => setTheme(o.key)}
-              className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
-                active
-                  ? "border-brand-500 bg-brand-50/60 ring-2 ring-brand-500/20"
-                  : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <span
-                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
-                  active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                <o.icon size={17} />
-              </span>
-              <span className="min-w-0">
-                <span className={`block text-sm font-bold ${active ? "text-brand-700" : "text-ink-900"}`}>
-                  {o.label}
-                </span>
-                <span className="block text-[11px] text-slate-500">{o.hint}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </Card>
   );
 }
 
