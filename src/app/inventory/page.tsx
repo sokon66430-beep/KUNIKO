@@ -380,10 +380,10 @@ export default function InventoryPage() {
               return (
                 <div
                   key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                  className="flex items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
                 >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-ink-900">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-ink-900">
                       {p.name}
                       <span className="ml-2 text-xs font-normal text-slate-400">
                         {p.sku}
@@ -396,7 +396,7 @@ export default function InventoryPage() {
                       <span className="text-emerald-600">{margin.toFixed(0)}% GP</span>
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex shrink-0 items-center gap-3">
                     {/* The balance is always the base count. The packaging
                         breakdown underneath is for the human counting the
                         shelf, who thinks in cases. */}
