@@ -501,7 +501,7 @@ export default function Sidebar() {
   return (
     <>
       <div
-        className={`fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b px-4 py-3 backdrop-blur lg:hidden ${
+        className={`fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b px-3 py-2.5 backdrop-blur lg:hidden ${
           dark ? "border-white/10 bg-ink-900/95" : "border-slate-200 bg-white/95"
         }`}
       >
@@ -513,13 +513,17 @@ export default function Sidebar() {
         >
           <Menu size={22} />
         </button>
-        <div className="flex items-center gap-2.5">
+        {/* Tight cluster — toggle · bell · brand — so the top bar doesn't read as
+            scattered on a phone / Sunmi L3. */}
+        <div className="flex items-center gap-0.5">
           {themeToggle}
           <NotificationBell />
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white">
-            <span className="text-[15px] font-black leading-none tracking-tight">S</span>
+          <div className="ml-1 flex items-center gap-1.5">
+            <div className="grid h-7 w-7 place-items-center rounded-lg bg-brand-600 text-white">
+              <span className="text-[14px] font-black leading-none tracking-tight">S</span>
+            </div>
+            <span className={`text-[15px] font-extrabold tracking-tight ${dark ? "text-white" : "text-ink-900"}`}>Stookii</span>
           </div>
-          <span className={`font-extrabold tracking-tight ${dark ? "text-white" : "text-ink-900"}`}>Stookii</span>
         </div>
       </div>
 

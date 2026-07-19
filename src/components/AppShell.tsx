@@ -47,14 +47,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <ThemeProvider>
       <div className="flex min-h-screen">
         <Sidebar />
-        <main className="flex-1 min-w-0 pt-[57px] lg:pt-0 lg:pl-[264px]">
+        <main className="flex-1 min-w-0 pt-[54px] lg:pt-0 lg:pl-[264px]">
           {readOnly && (
             <div className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-800">
               <Eye size={14} />
               View-only access (Management / Board) — you can see everything but can&apos;t make changes.
             </div>
           )}
-          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
+          <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
             <Suspense>{children}</Suspense>
           </div>
         </main>
