@@ -584,20 +584,9 @@ export default function PosPage() {
   return (
     <div className={`${tillMode ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""} ${lines.length > 0 ? "pb-24 lg:pb-0" : ""}`.trim() || undefined}>
       {tillMode ? (
-        // On a till: no page title, no exports/imports/report — just the two
-        // buttons a cashier needs. The slim status bar lives up in the TillBar.
-        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
-          <button
-            className="btn-ghost !py-2 text-sm"
-            onClick={() => openShift()}
-            title="Shift summary, cash drawer & close shift — without leaving the till"
-          >
-            <Wallet size={16} /> Cash Drawer
-          </button>
-          <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
-            <ReceiptText size={16} /> Invoices
-          </button>
-        </div>
+        // On a till there's no top toolbar — Cash Drawer & Invoices live down in
+        // the SHIFT quick-actions block, next to Safe Drop / Survey / Close.
+        null
       ) : (
         <PageHeader
           title="Point of Sale"
@@ -923,6 +912,29 @@ export default function PosPage() {
                   one tap from the till instead of opening the Cash Drawer first.
                   Each opens the shift screen straight into that action. */}
               <div className="mt-5 border-t border-slate-100 pt-4">
+                {/* On a till, Cash Drawer & Invoices live here (moved off the top
+                    toolbar) with the shift quick actions. */}
+                {tillMode && (
+                  <>
+                    <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Till</p>
+                    <div className="mb-4 grid grid-cols-2 gap-2.5">
+                      <button
+                        onClick={() => openShift()}
+                        className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                      >
+                        <Wallet size={18} className="text-brand-600" />
+                        <span className="text-[12.5px] font-bold text-ink-900">Cash Drawer</span>
+                      </button>
+                      <button
+                        onClick={() => setInvoicesOpen(true)}
+                        className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                      >
+                        <ReceiptText size={18} className="text-violet-600" />
+                        <span className="text-[12.5px] font-bold text-ink-900">Invoices</span>
+                      </button>
+                    </div>
+                  </>
+                )}
                 <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Shift</p>
                 <div className="grid grid-cols-3 gap-2.5">
                   <button
