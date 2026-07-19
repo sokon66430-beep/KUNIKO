@@ -26,9 +26,11 @@ import {
   Vault,
   Scale,
   Lock,
+  MonitorCheck,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
+import { ManagerGate } from "@/components/ManagerGate";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
@@ -95,7 +97,9 @@ export default function PosPage() {
   const { data: business } = useFetch<ReceiptBusiness>("/api/business");
   // On a till (Till Mode device), the page drops its title, exports and reports —
   // just the sale, the cash drawer and invoices.
-  const { tillMode } = useTillMode();
+  const { tillMode, setTillMode } = useTillMode();
+  // Owner-gated switch to turn this device into a till, right from the POS.
+  const [tillGate, setTillGate] = useState(false);
 
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
@@ -629,6 +633,14 @@ export default function PosPage() {
                   if (f) importSales(f);
                 }}
               />
+              {/* Turn this device into a locked till — owner password required. */}
+              <button
+                className="btn-ghost !py-2 text-sm ring-1 ring-brand-200 text-brand-700"
+                onClick={() => setTillGate(true)}
+                title="Lock this device to the POS screen only"
+              >
+                <MonitorCheck size={16} /> Till Mode
+              </button>
             </div>
           }
         />
@@ -1204,6 +1216,19 @@ export default function PosPage() {
 
       {/* Receipt modal */}
       {receipt && <ReceiptModal sale={receipt} business={business ?? undefined} onClose={() => setReceipt(null)} />}
+
+      {/* Turn this device into a locked till — owner password required. */}
+      {tillGate && (
+        <ManagerGate
+          title="Turn on Till Mode"
+          hint="Lock this device to the POS screen only. Whoever signs in here afterwards sees just the sale screen. Only the owner can switch it off again."
+          actionLabel="Turn on Till Mode"
+          ownerOnly
+          codeLabel="Owner password"
+          onClose={() => setTillGate(false)}
+          onOk={() => { setTillGate(false); setTillMode(true); }}
+        />
+      )}
 
       {/* Toast — clears itself (see the effect above) and, while a modal is
           open, sits ABOVE it rather than across its buttons: this is the till,
