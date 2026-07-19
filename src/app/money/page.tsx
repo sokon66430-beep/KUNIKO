@@ -8,6 +8,7 @@ import { PageHeader, StatCard, Card, Spinner, ErrorBox, Table, THead, Th, TBody,
 import { usd, num, dateTime } from "@/lib/format";
 import { countTotal } from "@/lib/money";
 import { canApproveCash, canReopenShift } from "@/lib/access";
+import { DatePicker } from "@/components/DatePicker";
 import type { CashCount, CashMovementType } from "@/lib/types";
 import {
   DenomCounter,
@@ -219,13 +220,18 @@ function ReportTab() {
   const [date, setDate] = useState("");
   const url = useMemo(() => `/api/cash-report${date ? `?date=${date}` : ""}`, [date]);
   const { data, loading } = useFetch<any>(url);
+  // A cash report for a future day makes no sense — cap the picker at today.
+  const today = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  })();
 
   return (
     <div className="space-y-6">
       <Card>
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-sm font-semibold text-slate-600">Day</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input w-48" />
+          <DatePicker value={date} onChange={setDate} max={today} allowClear />
           {date && <button className="btn-ghost !py-1.5 text-xs" onClick={() => setDate("")}>All time</button>}
         </div>
       </Card>
