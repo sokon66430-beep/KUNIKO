@@ -117,8 +117,8 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
         .sp-root { background: radial-gradient(120% 120% at 50% 34%, var(--sp-bg1) 0%, var(--sp-bg2) 100%); }
 
         .sp-lockup { display: flex; flex-direction: column; align-items: center; gap: clamp(18px, 3.5vmin, 28px); }
-        /* Stage is only as big as the mark — the icon ring overflows it (they're
-           absolutely centred), so there's no empty space padding the wordmark. */
+        /* Stage is only as big as the mark; the icon ring overflows it (icons are
+           absolutely centred) so no empty space pads the wordmark. */
         .sp-stage { position: relative; width: clamp(120px, 30vmin, 148px); aspect-ratio: 1; overflow: visible; }
 
         /* retail elements: fan in at the ring, then rush to centre and merge */
