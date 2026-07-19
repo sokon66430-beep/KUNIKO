@@ -83,7 +83,10 @@ function ShellInner({ children }: { children: ReactNode }) {
         {/* Fixed frame under the till bar — the screen never pans; only the
             content inside scrolls, and only if it's taller than the screen. */}
         <main className="fixed inset-x-0 bottom-0 top-[52px] overflow-hidden">
-          <div className="mx-auto h-full max-w-6xl overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 lg:px-10">
+          {/* On a wide till the frame itself never scrolls (the product list
+              scrolls inside its own column). On a narrow device the frame scrolls
+              as a fallback so nothing is unreachable — the page is still pinned. */}
+          <div className="mx-auto flex h-full max-w-6xl flex-col overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 lg:overflow-hidden lg:px-10">
             {pathname === "/pos" ? <Suspense>{children}</Suspense> : null}
           </div>
         </main>

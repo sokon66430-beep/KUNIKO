@@ -582,7 +582,7 @@ export default function PosPage() {
   const cartCount = lines.reduce((s, l) => s + l.qty, 0);
 
   return (
-    <div className={lines.length > 0 ? "pb-24 lg:pb-0" : undefined}>
+    <div className={`${tillMode ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""} ${lines.length > 0 ? "pb-24 lg:pb-0" : ""}`.trim() || undefined}>
       {tillMode ? (
         // On a till: no page title, no exports/imports/report — just the two
         // buttons a cashier needs. The slim status bar lives up in the TillBar.
@@ -723,7 +723,7 @@ export default function PosPage() {
       {/* Cart on the LEFT, product grid on the RIGHT (like a menu-first till).
           Only the desktop order is swapped — on mobile the products stay on top
           with the sticky checkout bar below. */}
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+      <div className={`grid gap-6 lg:grid-cols-[380px_1fr] ${tillMode ? "lg:min-h-0 lg:flex-1 lg:grid-rows-1" : ""}`}>
         {/* Scan-first till. Anything WITH a barcode is scan-only, so it never
             clutters the screen. Products with NO barcode can't be scanned (fresh
             food, made-to-order drinks…), so they're laid out here by category for
@@ -731,8 +731,8 @@ export default function PosPage() {
         {/* min-w-0 so the swipeable category row scrolls INSIDE this column
             instead of stretching the grid and overflowing the page.
             order-2 on desktop puts the products on the RIGHT. */}
-        <div className="min-w-0 lg:order-2">
-          <div className="mb-4 flex items-center gap-2">
+        <div className={`min-w-0 lg:order-2 ${tillMode ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""}`}>
+          <div className={`mb-4 flex items-center gap-2 ${tillMode ? "lg:shrink-0" : ""}`}>
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -773,6 +773,9 @@ export default function PosPage() {
             </button>
           </div>
 
+          {/* On a till this is the ONLY thing that scrolls — the frame, header
+              and cart stay pinned so the screen never moves. */}
+          <div className={tillMode ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-1" : ""}>
           {searching ? (
             /* Search results — for a damaged/missing barcode the cashier can
                still find the item by name or Item ID. */
@@ -947,13 +950,14 @@ export default function PosPage() {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Cart — order-1 on desktop puts it on the LEFT. Sticky and full-height
             on desktop so it stays put and always shows a tall, stable panel
             (not a short card that grows/shrinks with the basket). */}
-        <div className="lg:order-1 lg:sticky lg:top-6 lg:self-start">
-          <div className="card flex max-h-[calc(100vh-7rem)] flex-col lg:h-[calc(100vh-7rem)]">
+        <div className={`lg:order-1 ${tillMode ? "lg:h-full lg:min-h-0" : "lg:sticky lg:top-6 lg:self-start"}`}>
+          <div className={`card flex flex-col ${tillMode ? "max-h-full lg:h-full lg:min-h-0" : "max-h-[calc(100vh-7rem)] lg:h-[calc(100vh-7rem)]"}`}>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
               <div className="flex items-center gap-2">
                 <ShoppingCart size={18} className="text-brand-600" />
