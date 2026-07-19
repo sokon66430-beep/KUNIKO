@@ -109,7 +109,10 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8">
+        {/* Pinned like a cash register: the frame is fixed and this content
+            never bounces/pans (overscroll-none) — it only scrolls internally if a
+            screen is genuinely taller than the till. */}
+        <div className="flex-1 overflow-y-auto overscroll-none px-5 py-6 sm:px-8">
           <div className="mx-auto max-w-4xl">
             {error && <ErrorBox message={error} />}
             {loading && !data ? (
