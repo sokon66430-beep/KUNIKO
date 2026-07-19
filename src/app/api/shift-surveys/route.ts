@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { drawerFor, countTotal } from "@/lib/money";
+import { findManagerByCode } from "@/lib/managerAuth";
 import type { CashCount, ShiftSurvey } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,16 @@ export async function POST(req: Request) {
   const count = body.count as CashCount | undefined;
   if (!count) return NextResponse.json({ error: "A counted drawer is required" }, { status: 400 });
 
+  // Manager-only function: a store manager / assistant store manager (or owner)
+  // must approve. Verify the code before recording anything.
+  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId });
+  if (!mgr) {
+    return NextResponse.json(
+      { error: "Manager code not recognised — only a store manager or assistant store manager can run a shift survey." },
+      { status: 403 },
+    );
+  }
+
   const actor = await currentActor();
   const result = await mutateDB((db) => {
     const shift = db.shifts.find((s) => s.id === body.shiftId);
@@ -52,7 +63,7 @@ export async function POST(req: Request) {
       posTerminalId: shift.posTerminalId,
       shift: shift.shift,
       at: new Date().toISOString(),
-      by: session.name,
+      by: mgr.name,
       byId: session.uid,
       expected,
       counted,

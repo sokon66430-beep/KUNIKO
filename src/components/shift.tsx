@@ -444,6 +444,11 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
   const [count, setCount] = useState<CashCount>(emptyCount());
   const { data: business } = useFetch<any>("/api/business");
   const [busy, setBusy] = useState(false);
+  // Shift Survey is a manager-only function: a store manager / assistant store
+  // manager must enter their code to unlock it. Held for the save so the server
+  // can re-verify (a client gate alone can be bypassed).
+  const [mgr, setMgr] = useState<{ name: string } | null>(null);
+  const [mgrCode, setMgrCode] = useState("");
   const d = shift.drawer;
   const expected = d.expected;
   const counted = countTotal(count, rate);
@@ -453,7 +458,7 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
   async function saveAndPrint() {
     setBusy(true);
     try {
-      const survey = await api("/api/shift-surveys", { method: "POST", body: JSON.stringify({ shiftId: shift.id, count }) });
+      const survey = await api("/api/shift-surveys", { method: "POST", body: JSON.stringify({ shiftId: shift.id, count, managerCode: mgrCode }) });
       // Close the survey first, then print — the print dialog blocks the thread,
       // so closing beforehand keeps the till clean behind the slip.
       onClose();
@@ -463,6 +468,25 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
     } finally {
       setBusy(false);
     }
+  }
+
+  // Gate: no count UI until a manager code is accepted.
+  if (!mgr) {
+    return (
+      <ManagerGate
+        title="Shift Survey — manager only"
+        hint="A store manager or assistant store manager must approve this shift survey. Enter your manager code to continue."
+        actionLabel="Unlock survey"
+        codeLabel="Manager code"
+        verify={async (code) => {
+          const r = await api<{ ok: boolean; name: string }>("/api/verify-manager", { method: "POST", body: JSON.stringify({ code }) });
+          setMgrCode(code);
+          return { name: r.name };
+        }}
+        onOk={(m) => setMgr(m)}
+        onClose={onClose}
+      />
+    );
   }
 
   return (
