@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "@/components/PwaRegister";
-import { SplashIntro } from "@/components/SplashIntro";
+import { SplashScreen } from "@/components/SplashScreen";
 // Plus Jakarta Sans, self-hosted — a clean geometric sans with real character.
 // Bundled with the app (no Google Fonts fetch), so it renders everywhere.
 import "@fontsource-variable/plus-jakarta-sans";
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <PwaRegister />
-        <SplashIntro />
+        <SplashScreen />
         <AppShell>{children}</AppShell>
       </body>
     </html>
