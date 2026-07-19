@@ -12,6 +12,10 @@ import { canAccessPage, isReadOnly } from "@/lib/access";
 import { setViewOnly } from "@/lib/client";
 import type { Role } from "@/lib/auth";
 
+// Pages a locked till may show: the POS itself and the read-only Money
+// Management page (drawer/safe/reports). Everything else bounces back to /pos.
+const TILL_PATHS = ["/pos", "/money"];
+
 // The login page renders bare (no sidebar); everything else gets the app shell.
 // The Suspense boundary lets pages use useSearchParams() (request-time data)
 // without breaking the production build.
@@ -54,12 +58,13 @@ function ShellInner({ children }: { children: ReactNode }) {
     };
   }, [pathname, router]);
 
-  // Till Mode: this DEVICE is a cash register — confine it to the POS screen no
-  // matter who signs in or what URL they try.
+  // Till Mode: this DEVICE is a cash register — confine it to the POS screen (and
+  // the read-only Money Management page) no matter who signs in or what URL they
+  // try.
   useEffect(() => {
     if (!ready || !tillMode) return;
     if (pathname === "/login" || pathname === "/register") return;
-    if (pathname !== "/pos") router.replace("/pos");
+    if (!TILL_PATHS.includes(pathname)) router.replace("/pos");
   }, [ready, tillMode, pathname, router]);
 
   // On a till the screen is PINNED — lock the page so it can't be scrolled or
@@ -83,11 +88,11 @@ function ShellInner({ children }: { children: ReactNode }) {
         {/* Fixed frame under the till bar — the screen never pans; only the
             content inside scrolls, and only if it's taller than the screen. */}
         <main className="fixed inset-x-0 bottom-0 top-[52px] overflow-hidden">
-          {/* On a wide till the frame itself never scrolls (the product list
-              scrolls inside its own column). On a narrow device the frame scrolls
-              as a fallback so nothing is unreachable — the page is still pinned. */}
-          <div className="mx-auto flex h-full max-w-6xl flex-col overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 lg:overflow-hidden lg:px-10">
-            {pathname === "/pos" ? <Suspense>{children}</Suspense> : null}
+          {/* The POS fits the fixed frame (its product list scrolls inside its own
+              column); Money Management is a normal page, so the frame scrolls for
+              it. Either way the page itself stays pinned. */}
+          <div className={`mx-auto flex h-full max-w-6xl flex-col overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 lg:px-10 ${pathname === "/pos" ? "lg:overflow-hidden" : ""}`}>
+            {TILL_PATHS.includes(pathname) ? <Suspense>{children}</Suspense> : null}
           </div>
         </main>
         <ConfirmHost />

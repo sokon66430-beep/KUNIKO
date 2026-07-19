@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { Wallet, Unlock, Lock, ClipboardCheck, BarChart3, Vault } from "lucide-react";
+import Link from "next/link";
+import { Wallet, Unlock, Lock, ClipboardCheck, BarChart3, Vault, ChevronLeft } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
+import { useTillMode } from "@/lib/tillmode";
 import { confirmDialog } from "@/components/confirm";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Table, THead, Th, TBody, Tr, Td, EmptyState } from "@/components/ui";
 import { usd, num, dateTime } from "@/lib/format";
@@ -25,6 +27,7 @@ const TERMINAL_KEY = "stookii_pos_terminal";
 
 export default function MoneyPage() {
   const role = useRole();
+  const { tillMode } = useTillMode();
   const isSupervisor = role ? canApproveCash(role) : false;
   const isManager = role ? canReopenShift(role) : false;
   const { data, loading, error, reload } = useFetch<ShiftsData>("/api/shifts");
@@ -95,6 +98,15 @@ export default function MoneyPage() {
 
   return (
     <div>
+      {/* On a locked till there's no sidebar, so give a clear way back to the POS. */}
+      {tillMode && (
+        <Link
+          href="/pos"
+          className="mb-3 inline-flex items-center gap-1 rounded-lg py-1.5 pl-1.5 pr-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-ink-900"
+        >
+          <ChevronLeft size={18} /> Point of Sale
+        </Link>
+      )}
       <PageHeader
         title="Money Management"
         subtitle="Cash shifts, drawer control and accountability — per POS terminal"
