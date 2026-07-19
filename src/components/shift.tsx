@@ -171,8 +171,8 @@ function CashStat({ label, sign, usdAmount, rielAmount }: {
 // The live shift summary — the "shift survey" the cashier reads at a glance:
 // where the drawer stands right now (opening float, what's sold, cash movements
 // and the expected cash to count). The action buttons underneath run the drawer.
-export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onChanged, initialMoves }: {
-  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void; onChanged?: () => void; initialMoves?: boolean;
+export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onChanged, initialMoves, showActions = true }: {
+  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void; onChanged?: () => void; initialMoves?: boolean; showActions?: boolean;
 }) {
   const d = shift.drawer;
   const over = drawerLimit > 0 && d.expected > drawerLimit;
@@ -250,13 +250,17 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
-        <button className="btn-ghost" onClick={() => onMovement("BANK_DEPOSIT")}><Landmark size={16} /> Bank Transfer</button>
-        <button className="btn-ghost" onClick={() => setMoves(true)}><ArrowLeftRight size={16} /> Cash movements</button>
-        <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Shift survey</button>
-        <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
-      </div>
+      {/* The actions live on the POS front (the till's Shift tiles + Cash Drawer
+          screen). The Money Management page is a read-only view, so it hides them. */}
+      {showActions && (
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
+          <button className="btn-ghost" onClick={() => onMovement("BANK_DEPOSIT")}><Landmark size={16} /> Bank Transfer</button>
+          <button className="btn-ghost" onClick={() => setMoves(true)}><ArrowLeftRight size={16} /> Cash movements</button>
+          <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Shift survey</button>
+          <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
+        </div>
+      )}
 
       {survey && <SurveyModal shift={shift} rate={rate} onClose={() => setSurvey(false)} />}
       {moves && <CashMovementsModal shift={shift} onClose={() => setMoves(false)} onChanged={onChanged} />}
