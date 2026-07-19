@@ -602,7 +602,7 @@ export default function PosPage() {
                 onClick={() => openShift()}
                 title="Shift summary, cash drawer & close shift — without leaving the till"
               >
-                <Wallet size={16} /> Cash Drawer
+                <Wallet size={16} /> Cash Management
               </button>
               <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
                 <ReceiptText size={16} /> Invoices
@@ -927,7 +927,7 @@ export default function PosPage() {
                         className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
                       >
                         <Wallet size={18} className="text-brand-600" />
-                        <span className="text-[12.5px] font-bold text-ink-900">Cash Drawer</span>
+                        <span className="text-[12.5px] font-bold text-ink-900">Cash Management</span>
                       </button>
                       <button
                         onClick={() => setInvoicesOpen(true)}
