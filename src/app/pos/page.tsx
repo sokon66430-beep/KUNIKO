@@ -598,13 +598,13 @@ export default function PosPage() {
           subtitle="Ring up a sale — stock and loyalty update automatically"
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Link
+                href="/money"
                 className="btn-ghost !py-2 text-sm"
-                onClick={() => openShift()}
-                title="Shift summary, cash drawer & close shift — without leaving the till"
+                title="Cash drawer, store safe & reports"
               >
-                <Wallet size={16} /> Cash Management
-              </button>
+                <Wallet size={16} /> Money Management
+              </Link>
               <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
                 <ReceiptText size={16} /> Invoices
               </button>
@@ -923,13 +923,13 @@ export default function PosPage() {
                   <>
                     <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Till</p>
                     <div className="mb-4 grid grid-cols-2 gap-2.5">
-                      <button
-                        onClick={() => openShift()}
+                      <Link
+                        href="/money"
                         className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
                       >
                         <Wallet size={18} className="text-brand-600" />
-                        <span className="text-[12.5px] font-bold text-ink-900">Cash Management</span>
-                      </button>
+                        <span className="text-[12.5px] font-bold text-ink-900">Money Management</span>
+                      </Link>
                       <button
                         onClick={() => setInvoicesOpen(true)}
                         className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
@@ -979,19 +979,6 @@ export default function PosPage() {
                   </button>
                 </div>
 
-                {/* Management shortcuts — compact tiles in a grid that grows as
-                    more functions are added. Available on a locked till too (the
-                    Money Management page is read-only). */}
-                <p className="mb-2.5 mt-4 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Manage</p>
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  <Link
-                    href="/money"
-                    className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
-                  >
-                    <Wallet size={18} className="text-emerald-600" />
-                    <span className="text-[12.5px] font-bold text-ink-900">Money Management</span>
-                  </Link>
-                </div>
               </div>
             </div>
           )}
