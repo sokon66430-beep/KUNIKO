@@ -971,17 +971,21 @@ export default function PosPage() {
                   </button>
                 </div>
 
-                {/* Full Money Management (drawer control + reports). Hidden on a
-                    locked till, which stays on the POS screen. */}
+                {/* Management shortcuts — compact tiles in a grid that grows as
+                    more functions are added. Hidden on a locked till (POS only). */}
                 {!tillMode && (
-                  <Link
-                    href="/money"
-                    className="card mt-2.5 flex items-center justify-center gap-2 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
-                  >
-                    <Wallet size={17} className="text-emerald-600" />
-                    <span className="text-[12.5px] font-bold text-ink-900">Money Management</span>
-                    <span className="text-[11px] font-semibold text-slate-400">— drawer, safe &amp; reports</span>
-                  </Link>
+                  <>
+                    <p className="mb-2.5 mt-4 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Manage</p>
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                      <Link
+                        href="/money"
+                        className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                      >
+                        <Wallet size={18} className="text-emerald-600" />
+                        <span className="text-[12.5px] font-bold text-ink-900">Money Management</span>
+                      </Link>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
