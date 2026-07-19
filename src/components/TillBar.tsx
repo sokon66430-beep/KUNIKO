@@ -96,8 +96,10 @@ export function TillBar() {
       {gate && (
         <ManagerGate
           title="Exit Till Mode"
-          hint="A manager code is needed to turn this device back into the full system."
+          hint="Only the owner can turn this device back into the full system. Enter the owner password."
           actionLabel="Exit Till Mode"
+          ownerOnly
+          codeLabel="Owner password"
           onClose={() => setGate(false)}
           onOk={() => { setGate(false); setTillMode(false); router.push("/"); }}
         />

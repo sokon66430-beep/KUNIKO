@@ -522,7 +522,7 @@ function TillModeCard() {
       <p className="mb-3 text-xs leading-relaxed text-slate-500">
         Turn <b>this device</b> into a locked cash register. Whoever signs in on it afterwards — anyone on the operation
         team, on their own login — sees <b>only the Point of Sale screen</b>: no sidebar, settings, reports or exports.
-        Leaving Till Mode needs a manager code. Your other devices (office, back room) are unaffected.
+        Only the <b>owner password</b> can switch Till Mode on or off. Your other devices (office, back room) are unaffected.
       </p>
       {tillMode ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
@@ -536,8 +536,10 @@ function TillModeCard() {
       {gate && (
         <ManagerGate
           title="Turn on Till Mode"
-          hint="A manager code locks this device to the POS screen. Set the till name on the checkout screen first if needed."
+          hint="The owner password locks this device to the POS screen. Set the till name on the checkout screen first if needed."
           actionLabel="Turn on Till Mode"
+          ownerOnly
+          codeLabel="Owner password"
           onClose={() => setGate(false)}
           onOk={() => { setGate(false); setTillMode(true); router.push("/pos"); }}
         />

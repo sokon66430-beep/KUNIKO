@@ -13,12 +13,16 @@ export function ManagerGate({
   title,
   hint,
   actionLabel,
+  ownerOnly,
+  codeLabel = "Manager code",
   onOk,
   onClose,
 }: {
   title: string;
   hint: string;
   actionLabel: string;
+  ownerOnly?: boolean; // require the OWNER's password rather than any manager
+  codeLabel?: string;
   onOk: (mgr: { name: string }) => void;
   onClose: () => void;
 }) {
@@ -33,11 +37,11 @@ export function ManagerGate({
     try {
       const r = await api<{ ok: boolean; name: string }>("/api/verify-manager", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, ownerOnly: !!ownerOnly }),
       });
       onOk({ name: r.name });
     } catch (e: any) {
-      setErr(e.message || "Manager code not recognised.");
+      setErr(e.message || "Not recognised.");
     } finally {
       setBusy(false);
     }
@@ -59,14 +63,14 @@ export function ManagerGate({
       }
     >
       <p className="mb-3 text-sm text-slate-500">{hint}</p>
-      <label className="label">Manager code</label>
+      <label className="label">{codeLabel}</label>
       <input
         type="password"
         className="input tracking-widest"
         value={code}
         onChange={(e) => setCode(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && go()}
-        placeholder="Enter manager code"
+        placeholder={`Enter ${codeLabel.toLowerCase()}`}
         autoFocus
       />
       {err && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{err}</p>}
