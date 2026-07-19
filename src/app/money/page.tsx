@@ -108,7 +108,7 @@ export default function MoneyPage() {
         </Link>
       )}
       <PageHeader
-        title="Money Management"
+        title="Cash Management"
         subtitle="Cash shifts, drawer control and accountability — per POS terminal"
         actions={
           <div className="flex items-center gap-2">

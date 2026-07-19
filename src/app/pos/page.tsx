@@ -603,7 +603,7 @@ export default function PosPage() {
                 className="btn-ghost !py-2 text-sm"
                 title="Cash drawer, store safe & reports"
               >
-                <Wallet size={16} /> Money Management
+                <Wallet size={16} /> Cash Management
               </Link>
               <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
                 <ReceiptText size={16} /> Invoices
@@ -928,7 +928,7 @@ export default function PosPage() {
                         className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
                       >
                         <Wallet size={18} className="text-brand-600" />
-                        <span className="text-[12.5px] font-bold text-ink-900">Money Management</span>
+                        <span className="text-[12.5px] font-bold text-ink-900">Cash Management</span>
                       </Link>
                       <button
                         onClick={() => setInvoicesOpen(true)}

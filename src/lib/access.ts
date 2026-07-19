@@ -56,7 +56,7 @@ export const DEFAULT_ROLE_DENIED: Partial<Record<Role, string[]>> = {
 // reach it, so a denied role always has somewhere safe to land.
 export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/pos", label: "Point of Sale" },
-  { href: "/money", label: "Money Management" },
+  { href: "/money", label: "Cash Management" },
   { href: "/queue", label: "Pickup Queue" },
   { href: "/inventory", label: "Inventory" },
   { href: "/stock-count", label: "Stock Count" },
