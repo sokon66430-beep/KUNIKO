@@ -58,6 +58,9 @@ export type Drawer = {
   cashOut: number;
   drop: number;
   refunds: number;
+  // Cash deposited to the store's bank this shift — leaves the till like a safe
+  // drop, but kept separate so a drop (→ safe) and a deposit (→ bank) don't mix.
+  bankDeposit: number;
   // Cash handed back for CANCELLED invoices this shift. Informational only:
   // a cancelled sale is already excluded from cashSales, so expected drops by
   // itself — this figure just shows the money that went back.
@@ -67,8 +70,8 @@ export type Drawer = {
   sales: { total: number; cash: number; card: number; ewallet: number };
   // The riel-note portion of each movement type, kept in riel (not converted),
   // so the drawer can show a total in both currencies.
-  riel: { cashIn: number; cashOut: number; drop: number; refunds: number };
-  counts: { movements: number; drops: number; refunds: number };
+  riel: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
+  counts: { movements: number; drops: number; refunds: number; bankDeposits: number };
 };
 
 // How each payment method buckets on the dashboard. Cash is its own; ABA/Card
@@ -103,8 +106,11 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
   const cashOut = sumOf("CASH_OUT");
   const drop = sumOf("DROP");
   const refunds = sumOf("REFUND");
+  // Cash deposited to the bank leaves the till, just like a safe drop — but kept
+  // as its own figure so a drop (→ safe) and a deposit (→ bank) never get mixed.
+  const bankDeposit = sumOf("BANK_DEPOSIT");
 
-  const expected = round2(shift.openingFloat + sales.cash + cashIn - cashOut - drop - refunds);
+  const expected = round2(shift.openingFloat + sales.cash + cashIn - cashOut - drop - refunds - bankDeposit);
 
   return {
     opening: round2(shift.openingFloat),
@@ -113,14 +119,16 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     cashOut,
     drop,
     refunds,
+    bankDeposit,
     refundedCancelled,
     expected,
     sales,
-    riel: { cashIn: rielOf("CASH_IN"), cashOut: rielOf("CASH_OUT"), drop: rielOf("DROP"), refunds: rielOf("REFUND") },
+    riel: { cashIn: rielOf("CASH_IN"), cashOut: rielOf("CASH_OUT"), drop: rielOf("DROP"), refunds: rielOf("REFUND"), bankDeposit: rielOf("BANK_DEPOSIT") },
     counts: {
       movements: mv.length,
       drops: mv.filter((m) => m.type === "DROP").length,
       refunds: mv.filter((m) => m.type === "REFUND").length,
+      bankDeposits: mv.filter((m) => m.type === "BANK_DEPOSIT").length,
     },
   };
 }

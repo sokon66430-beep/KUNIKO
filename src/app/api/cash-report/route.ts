@@ -121,6 +121,42 @@ export async function GET(req: Request) {
     { usd: 0, riel: 0, usdEquivalent: 0, count: 0 },
   );
 
+  // --- Bank Deposit report ---------------------------------------------------
+  // Cash deposited to the store's bank under the same filters, DOLLARS and RIEL
+  // kept separate, each stamped with the bank and the deposit-slip reference so
+  // it can be matched against the bank statement.
+  let bankMoves = db.cashMovements.filter((m) => m.type === "BANK_DEPOSIT");
+  if (shiftId) bankMoves = bankMoves.filter((m) => m.shiftId === shiftId);
+  if (day) bankMoves = bankMoves.filter((m) => storeToday(new Date(m.at)) === day);
+  if (terminal) bankMoves = bankMoves.filter((m) => m.posTerminalId === terminal);
+  if (cashier) bankMoves = bankMoves.filter((m) => m.createdBy === cashier);
+  if (shiftName) bankMoves = bankMoves.filter((m) => shiftById.get(m.shiftId)?.shift === shiftName);
+  bankMoves.sort((a, b) => b.at.localeCompare(a.at));
+
+  const bankDeposits = bankMoves.map((m) => ({
+    id: m.id,
+    at: m.at,
+    posTerminalId: m.posTerminalId,
+    shift: shiftById.get(m.shiftId)?.shift ?? "—",
+    by: m.createdBy,
+    reason: m.reason,
+    bank: m.bank ?? "",
+    reference: m.reference ?? "",
+    usd: round2(m.amountUsd ?? m.amount),
+    riel: m.amountRiel ?? 0,
+    usdEquivalent: round2(m.amount),
+    status: m.status,
+  }));
+  const bankTotals = bankDeposits.reduce(
+    (t, d) => ({
+      usd: round2(t.usd + d.usd),
+      riel: t.riel + d.riel,
+      usdEquivalent: round2(t.usdEquivalent + d.usdEquivalent),
+      count: t.count + 1,
+    }),
+    { usd: 0, riel: 0, usdEquivalent: 0, count: 0 },
+  );
+
   return NextResponse.json({
     day: day ?? null,
     terminals: [...new Set(db.shifts.map((s) => s.posTerminalId))].sort(),
@@ -129,6 +165,8 @@ export async function GET(req: Request) {
     totals,
     drops,
     dropTotals,
+    bankDeposits,
+    bankTotals,
     cashierPerformance: [...perf.values()].sort((a, b) => b.salesTotal - a.salesTotal),
   });
 }

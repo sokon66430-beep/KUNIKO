@@ -71,6 +71,13 @@ export async function PATCH(req: Request) {
         }))
         .slice(0, 20);
     }
+    // The one bank account the store deposits cash into (used by Bank Deposit at
+    // the till). Name + optional account number; empty name clears it.
+    if (body.bankAccount && typeof body.bankAccount === "object") {
+      const name = String(body.bankAccount.name || "").trim().slice(0, 60);
+      const number = String(body.bankAccount.number || "").trim().slice(0, 40);
+      b.bankAccount = name ? { name, number: number || undefined } : undefined;
+    }
     if (Array.isArray(body.approvers)) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers

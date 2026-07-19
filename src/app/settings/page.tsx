@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy, MonitorCheck, Lock } from "lucide-react";
+import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy, MonitorCheck, Lock, Landmark } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
 import { ManagerGate } from "@/components/ManagerGate";
@@ -78,6 +78,7 @@ export default function SettingsPage() {
           invoiceTo: form.invoiceTo,
           poNotes: form.poNotes,
           approvers: form.approvers,
+          bankAccount: form.bankAccount ?? { name: "" },
           logo: form.logo ?? "",
         }),
       });
@@ -197,6 +198,36 @@ export default function SettingsPage() {
               <div>
                 <label className="label">Authorized by</label>
                 <input className="input" value={form.authorizedBy} onChange={(e) => set("authorizedBy", e.target.value)} />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
+              <Landmark size={16} className="text-brand-600" /> Bank deposit account
+            </h3>
+            <p className="mb-4 text-xs text-slate-500">
+              The one bank account the store deposits its cash into. Set it once here and every{" "}
+              <span className="font-semibold">Bank Deposit</span> at the till records this bank automatically — no picking each time.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Bank name</label>
+                <input
+                  className="input"
+                  value={form.bankAccount?.name || ""}
+                  onChange={(e) => set("bankAccount", { ...(form.bankAccount || {}), name: e.target.value })}
+                  placeholder="e.g. ABA Bank"
+                />
+              </div>
+              <div>
+                <label className="label">Account number (optional)</label>
+                <input
+                  className="input"
+                  value={form.bankAccount?.number || ""}
+                  onChange={(e) => set("bankAccount", { ...(form.bankAccount || {}), number: e.target.value })}
+                  placeholder="e.g. 000 123 456"
+                />
               </div>
             </div>
           </Card>

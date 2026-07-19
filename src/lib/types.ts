@@ -534,7 +534,7 @@ export type Shift = {
   reopenNote?: string;
 };
 
-export type CashMovementType = "CASH_IN" | "CASH_OUT" | "DROP" | "REFUND";
+export type CashMovementType = "CASH_IN" | "CASH_OUT" | "DROP" | "REFUND" | "BANK_DEPOSIT";
 export type CashMovementStatus = "pending" | "approved";
 
 export type CashMovement = {
@@ -548,6 +548,8 @@ export type CashMovement = {
   reason: string;
   notes?: string;
   attachment?: string; // optional photo/receipt data-URL (cash out)
+  bank?: string; // BANK_DEPOSIT only — which bank the cash was deposited to (snapshot)
+  reference?: string; // BANK_DEPOSIT only — deposit slip / transaction reference no.
   at: string;
   createdBy: string;
   cashierId: string;
@@ -883,6 +885,9 @@ export type DB = {
       // Cash drawer ceiling per till: when the expected drawer exceeds this, the
       // money screen prompts a safe drop. In dollars; 0 = no limit.
       cashDrawerLimit?: number;
+      // The one bank account the store deposits its cash into. Set once here so a
+      // Bank Deposit at the till doesn't ask which bank every time.
+      bankAccount?: { name: string; number?: string };
     };
   };
 };

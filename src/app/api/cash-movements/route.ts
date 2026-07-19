@@ -8,12 +8,13 @@ import type { CashMovement, CashMovementType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const TYPES: CashMovementType[] = ["CASH_IN", "CASH_OUT", "DROP", "REFUND"];
+const TYPES: CashMovementType[] = ["CASH_IN", "CASH_OUT", "DROP", "REFUND", "BANK_DEPOSIT"];
 const LABEL: Record<CashMovementType, string> = {
   CASH_IN: "Cash In",
   CASH_OUT: "Cash Out",
   DROP: "Safe Drop",
   REFUND: "Cash Refund",
+  BANK_DEPOSIT: "Bank Deposit",
 };
 
 export async function GET(req: Request) {
@@ -58,6 +59,12 @@ export async function POST(req: Request) {
     const rate = db.meta.business?.exchangeRate || 4100;
     const amount = round2(amountUsd + amountRiel / rate);
 
+    // A bank deposit snapshots the store's one fixed bank (set in Settings) and
+    // keeps the deposit slip / transaction reference for matching the statement.
+    const isDeposit = type === "BANK_DEPOSIT";
+    const bank = isDeposit ? (db.meta.business?.bankAccount?.name || "").trim() || undefined : undefined;
+    const reference = isDeposit ? String(body.reference || "").trim() || undefined : undefined;
+
     const isSupervisor = canApproveCash(session.role);
     const now = new Date().toISOString();
     const m: CashMovement = {
@@ -71,6 +78,8 @@ export async function POST(req: Request) {
       reason,
       notes: body.notes ? String(body.notes) : undefined,
       attachment: typeof body.attachment === "string" && body.attachment ? body.attachment : undefined,
+      bank,
+      reference,
       at: now,
       createdBy: session.name,
       cashierId: session.uid,
@@ -80,12 +89,13 @@ export async function POST(req: Request) {
     };
     db.cashMovements.push(m);
     const money = `$${amountUsd.toFixed(2)}${amountRiel ? ` + ${amountRiel.toLocaleString()}៛` : ""} (= $${amount.toFixed(2)})`;
+    const bankNote = isDeposit ? ` · ${bank || "bank"}${reference ? ` · ref ${reference}` : ""}` : "";
     logAudit(db, {
       actor,
       action: "Recorded",
       entityType: "Sale",
       entity: `${LABEL[type]} ${m.id}`,
-      detail: `${shift.posTerminalId} · Shift ${shift.shift} · ${LABEL[type]} ${money} · ${reason}${
+      detail: `${shift.posTerminalId} · Shift ${shift.shift} · ${LABEL[type]} ${money}${bankNote} · ${reason}${
         isSupervisor ? " · auto-approved" : " · pending approval"
       }`,
     });

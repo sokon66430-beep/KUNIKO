@@ -22,6 +22,7 @@ import {
   Printer,
   ArrowLeftRight,
   Inbox,
+  Landmark,
 } from "lucide-react";
 import { api, useFetch } from "@/lib/client";
 import { Badge, StatCard, Modal } from "@/components/ui";
@@ -32,10 +33,11 @@ import type { CashCount, CashMovementType } from "@/lib/types";
 
 export type Drawer = {
   opening: number; cashSales: number; cashIn: number; cashOut: number; drop: number; refunds: number;
+  bankDeposit: number;
   refundedCancelled: number; expected: number;
   sales: { total: number; cash: number; card: number; ewallet: number };
-  riel: { cashIn: number; cashOut: number; drop: number; refunds: number };
-  counts: { movements: number; drops: number; refunds: number };
+  riel: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
+  counts: { movements: number; drops: number; refunds: number; bankDeposits: number };
 };
 export type ShiftView = {
   id: string; posTerminalId: string; shift: "A" | "B" | "C"; cashier: string; cashierId: string;
@@ -175,6 +177,7 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} sub={d.riel.cashIn > 0 ? `incl. ${khr(d.riel.cashIn)}` : undefined} accent="emerald" />
         <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} sub={d.riel.cashOut > 0 ? `incl. ${khr(d.riel.cashOut)}` : undefined} accent="amber" />
         <StatCard label="Safe Drops" value={`-${usd(d.drop + d.refunds)}`} sub={d.riel.drop + d.riel.refunds > 0 ? `incl. ${khr(d.riel.drop + d.riel.refunds)}` : undefined} accent="amber" />
+        <StatCard label="Bank Deposit" value={`-${usd(d.bankDeposit)}`} sub={d.riel.bankDeposit > 0 ? `incl. ${khr(d.riel.bankDeposit)}` : undefined} accent="violet" />
         <StatCard label="Expected Drawer" value={usd(d.expected)} accent={over ? "rose" : "emerald"} />
       </div>
 
@@ -192,6 +195,7 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <button className="btn-ghost" onClick={() => onMovement("CASH_IN")}><PlusCircle size={16} /> Cash In</button>
         <button className="btn-ghost" onClick={() => onMovement("CASH_OUT")}><MinusCircle size={16} /> Cash Out</button>
         <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
+        <button className="btn-ghost" onClick={() => onMovement("BANK_DEPOSIT")}><Landmark size={16} /> Bank Deposit</button>
         <button className="btn-ghost" onClick={() => setMoves(true)}><ArrowLeftRight size={16} /> Cash movements</button>
         <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Shift survey</button>
         <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
@@ -330,6 +334,41 @@ function printDropSlip(mv: any, shift: ShiftView, business: any) {
   openSlip("SAFE DROP", mv?.id || "", inner, business);
 }
 
+// Bank-deposit slip — cash moved from the till to the store's bank account.
+// Dollars and riel deposited are recorded separately, with the bank and the
+// deposit-slip reference so it can be matched against the bank statement.
+function printBankDepositSlip(mv: any, shift: ShiftView, business: any) {
+  const usdPart = Math.round((mv?.amountUsd ?? mv?.amount ?? 0) * 100) / 100;
+  const rielPart = mv?.amountRiel ?? 0;
+  const bank = mv?.bank || business?.bankAccount?.name || "";
+  const acct = business?.bankAccount?.number || "";
+  const inner = `
+  <hr>
+  <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(mv?.at))}</span></div>
+  <div class="ln"><span>Shift</span><span>${slipEsc(shift.shift)} · ${slipEsc(shift.posTerminalId)}</span></div>
+  <div class="ln"><span>Deposited by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
+  ${mv?.id ? `<div class="ln"><span>Record</span><span>${slipEsc(mv.id)}</span></div>` : ""}
+  <hr>
+  <div class="sec">DEPOSITED TO BANK</div>
+  ${bank ? `<div class="ln"><span>Bank</span><span>${slipEsc(bank)}</span></div>` : ""}
+  ${acct ? `<div class="ln"><span>Account</span><span>${slipEsc(acct)}</span></div>` : ""}
+  ${mv?.reference ? `<div class="ln"><span>Slip / ref no.</span><span>${slipEsc(mv.reference)}</span></div>` : ""}
+  <hr>
+  <div class="ln big"><span>Dollars</span><span>${slipMoney(usdPart)}</span></div>
+  <div class="ln big"><span>Riel</span><span>${slipRiel(rielPart)}</span></div>
+  <hr>
+  <div class="ln"><span>Total (USD equivalent)</span><span>${slipMoney(mv?.amount ?? usdPart)}</span></div>
+  ${mv?.reason ? `<div class="ln"><span>Reason</span><span>${slipEsc(mv.reason)}</span></div>` : ""}
+  ${mv?.notes ? `<div class="sub">Note: ${slipEsc(mv.notes)}</div>` : ""}
+  <div class="sig">
+    <div class="row">Deposited by</div>
+    <div class="row">Received by (bank)</div>
+  </div>
+  <hr>
+  <div class="ctr sub">Bank deposit record — keep with the deposit slip.</div>`;
+  openSlip("BANK DEPOSIT", mv?.id || "", inner, business);
+}
+
 // Shift-close slip — the counted drawer submitted for approval.
 function printCloseSlip(shift: any, business: any) {
   const { usdLines, coinLine, rielLines } = denomLines(shift.closingCount);
@@ -443,6 +482,7 @@ const MV_LOG: Record<CashMovementType, { label: string; cls: string; sign: strin
   CASH_OUT: { label: "Cash Out", cls: "bg-amber-50 text-amber-700 ring-amber-200", sign: "−" },
   DROP: { label: "Safe Drop", cls: "bg-violet-50 text-violet-700 ring-violet-200", sign: "−" },
   REFUND: { label: "Refund", cls: "bg-rose-50 text-rose-700 ring-rose-200", sign: "−" },
+  BANK_DEPOSIT: { label: "Bank Deposit", cls: "bg-sky-50 text-sky-700 ring-sky-200", sign: "−" },
 };
 
 // The Cash Movements log — every individual cash event captured at the till, not
@@ -536,6 +576,7 @@ const MV_META: Record<CashMovementType, { title: string; hint: string }> = {
   CASH_OUT: { title: "Cash Out", hint: "Store expense, emergency purchase, petty cash." },
   DROP: { title: "Safe Drop", hint: "Move excess cash from the drawer to the store safe." },
   REFUND: { title: "Cash Refund", hint: "Cash returned to a customer." },
+  BANK_DEPOSIT: { title: "Bank Deposit", hint: "Take cash out of the till and deposit it into the store's bank account." },
 };
 
 // Preset reasons per movement type — a dropdown, not free text, so the reason
@@ -546,6 +587,7 @@ const MV_REASONS: Record<CashMovementType, string[]> = {
   CASH_OUT: ["Supplier / delivery payment", "Store supplies", "Petty cash", "Utility / bill payment", "Other"],
   DROP: ["Over cash limit", "Scheduled safe drop", "End-of-shift drop", "Other"],
   REFUND: ["Customer refund", "Wrong charge", "Damaged / returned product", "Other"],
+  BANK_DEPOSIT: ["Daily cash deposit", "End-of-shift deposit", "Over cash limit", "Scheduled bank run", "Other"],
 };
 
 const VARIANCE_REASONS = [
@@ -624,9 +666,59 @@ export function SafeDropReport({ shiftId }: { shiftId: string }) {
   );
 }
 
+// Bank Deposit report — how much this shift has been deposited to the bank, with
+// DOLLARS and RIEL kept SEPARATE, plus a line-by-line list (bank · slip ref) so
+// each deposit can be matched against the bank statement. Shown beside the
+// deposit form so the running total is always in view.
+export function BankDepositReport({ shiftId }: { shiftId: string }) {
+  const { data, loading } = useFetch<any>(`/api/cash-report?shiftId=${shiftId}`);
+  const t = data?.bankTotals;
+  const deposits: any[] = data?.bankDeposits ?? [];
+  const count = t?.count ?? 0;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <Landmark size={13} /> Deposited this shift
+        </p>
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="rounded-xl bg-brand-50 px-3 py-2.5 ring-1 ring-brand-100">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-brand-500">In Dollars</p>
+            <p className="text-lg font-extrabold tabular-nums text-brand-700">{usd(t?.usd ?? 0)}</p>
+          </div>
+          <div className="rounded-xl bg-violet-50 px-3 py-2.5 ring-1 ring-violet-100">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500">In Riel</p>
+            <p className="text-lg font-extrabold tabular-nums text-violet-700">{khr(t?.riel ?? 0)}</p>
+          </div>
+        </div>
+        <div className="mt-2.5 flex items-center justify-between border-t border-dashed border-slate-200 pt-2.5 text-xs">
+          <span className="text-slate-500">{count} deposit{count === 1 ? "" : "s"} · USD equivalent</span>
+          <span className="font-bold tabular-nums text-ink-800">{usd(t?.usdEquivalent ?? 0)}</span>
+        </div>
+      </div>
+      {loading && !data ? (
+        <p className="px-1 py-2 text-sm text-slate-400">Loading…</p>
+      ) : deposits.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-400">No bank deposits yet this shift.</p>
+      ) : (
+        <div className="max-h-56 space-y-1.5 overflow-y-auto pr-0.5">
+          {deposits.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <span className="w-12 shrink-0 text-xs font-semibold text-slate-400">{timeOnly(d.at)}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-500">{d.reference ? `Ref ${d.reference}` : d.reason || "Deposit"}</span>
+              <span className="w-16 shrink-0 text-right font-bold tabular-nums text-brand-700">{d.usd > 0 ? usd(d.usd) : "—"}</span>
+              <span className="w-20 shrink-0 text-right font-bold tabular-nums text-violet-700">{d.riel > 0 ? khr(d.riel) : "—"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate, shift }: {
   type: CashMovementType; onClose: () => void;
-  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string }) => Promise<any>;
+  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string; reference?: string }) => Promise<any>;
   drawer: Drawer; drawerLimit: number; rate: number; shift?: ShiftView;
 }) {
   const { data: business } = useFetch<any>("/api/business");
@@ -640,7 +732,14 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [notes, setNotes] = useState("");
+  const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // A Bank Deposit prints a slip and uses the store's one fixed bank (Settings).
+  const isDeposit = type === "BANK_DEPOSIT";
+  const bankName = (business?.bankAccount?.name || "").trim();
+  const bankNumber = (business?.bankAccount?.number || "").trim();
+  const prints = type === "DROP" || isDeposit;
 
   const amountUsd = Math.round((Number(usdAmount) || 0) * 100) / 100;
   const amountRiel = Math.max(0, Math.floor(Number(rielAmount) || 0));
@@ -652,14 +751,15 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   async function go() {
     setBusy(true);
     try {
-      const created = await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined });
-      // A safe drop prints a slip recording the drop (dollars & riel separate,
-      // date & time). Fall back to what was entered if the server didn't echo it.
-      if (type === "DROP" && shift) {
+      const created = await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined, reference: isDeposit ? reference.trim() || undefined : undefined });
+      // Safe drops and bank deposits print a slip (dollars & riel separate, date
+      // & time). Fall back to what was entered if the server didn't echo it.
+      if (prints && shift) {
         const mv = created && typeof created === "object"
           ? created
-          : { amountUsd, amountRiel, amount: totalUsd, reason, notes: notes.trim() || undefined, at: new Date().toISOString(), createdBy: "" };
-        printDropSlip(mv, shift, business);
+          : { amountUsd, amountRiel, amount: totalUsd, reason, notes: notes.trim() || undefined, reference: reference.trim() || undefined, bank: bankName || undefined, at: new Date().toISOString(), createdBy: "" };
+        if (isDeposit) printBankDepositSlip(mv, shift, business);
+        else printDropSlip(mv, shift, business);
       }
     } catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
@@ -667,14 +767,32 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
 
   const chip = "rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-[0.97]";
 
-  // On a Safe Drop, show the running Safe Drop report beside the form.
-  const showReport = type === "DROP" && !!shift;
+  // On a Safe Drop or Bank Deposit, show the running report beside the form.
+  const showReport = prints && !!shift;
 
   const form = (
     <>
       <p className="mb-3 text-sm text-slate-500">{meta.hint}</p>
       {type === "DROP" && recDrop > 0 && (
         <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">Recommended drop to reach the {usd(drawerLimit)} limit: {usd(recDrop)}</p>
+      )}
+      {/* Bank Deposit uses the store's one fixed bank (Settings) — shown here so
+          staff never have to pick it, plus the deposit-slip reference. */}
+      {isDeposit && (
+        <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-3">
+          <div className="flex items-center gap-2 text-sm">
+            <Landmark size={15} className="shrink-0 text-sky-600" />
+            {bankName ? (
+              <span className="font-semibold text-sky-800">Depositing to {bankName}{bankNumber ? ` · ${bankNumber}` : ""}</span>
+            ) : (
+              <span className="font-semibold text-amber-700">No bank account set — add one in Settings so deposits record which bank.</span>
+            )}
+          </div>
+          <div className="mt-2.5">
+            <label className="label">Deposit slip / reference no. (optional)</label>
+            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. bank slip / transaction ID" className="input" />
+          </div>
+        </div>
       )}
       {/* Dollars and riel are entered — and kept — separately. */}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -718,15 +836,17 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>
-          {type === "DROP" && <Printer size={16} />}
-          {busy ? "Saving…" : type === "DROP" ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
+          {prints && <Printer size={16} />}
+          {busy ? "Saving…" : prints ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
         </button>
       </div>
     }>
       {showReport ? (
         <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
           <div>{form}</div>
-          <div className="lg:sticky lg:top-0 lg:self-start"><SafeDropReport shiftId={shift!.id} /></div>
+          <div className="lg:sticky lg:top-0 lg:self-start">
+            {isDeposit ? <BankDepositReport shiftId={shift!.id} /> : <SafeDropReport shiftId={shift!.id} />}
+          </div>
         </div>
       ) : form}
     </Modal>
