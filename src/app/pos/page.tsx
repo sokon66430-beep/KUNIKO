@@ -523,6 +523,12 @@ export default function PosPage() {
   }, []);
 
   async function commitSale(opts?: { paymentRef?: string; tendered?: number; tenderedUsd?: number; tenderedRiel?: number }) {
+    // A real sale is only ever recorded on a locked till (see handleCharge). This
+    // is the last line of defence so no payment path can commit a sale otherwise.
+    if (!tillMode) {
+      setTillGate(true);
+      return;
+    }
     const sale = await api<Sale>("/api/sales", {
       method: "POST",
       body: JSON.stringify({
@@ -563,6 +569,13 @@ export default function PosPage() {
 
   async function handleCharge() {
     if (lines.length === 0) return;
+    // Real sales are only rung up on a locked till: every sale must attribute to a
+    // shift's drawer, and an owner/manager browsing the POS in the full app must
+    // not be able to record a sale by accident. Prompt to turn Till Mode on.
+    if (!tillMode) {
+      setTillGate(true);
+      return;
+    }
     // Digital payment: show the KHQR, wait for the customer to pay, then commit.
     if (payment === "KHQR") {
       setKhqrOpen(true);
@@ -1174,18 +1187,27 @@ export default function PosPage() {
                 </div>
               </div>
 
-              <button
-                onClick={handleCharge}
-                disabled={lines.length === 0 || submitting}
-                className="btn-primary w-full py-3 text-base"
-              >
-                {payment === "KHQR" && <QrCode size={18} />}
-                {submitting
-                  ? "Processing…"
-                  : payment === "KHQR"
-                  ? `Pay by KHQR · ${usd(total)}`
-                  : `Charge ${usd(total)}`}
-              </button>
+              {!tillMode ? (
+                <button onClick={() => setTillGate(true)} className="btn-primary w-full py-3 text-base">
+                  <MonitorCheck size={18} /> Turn on Till Mode to sell
+                </button>
+              ) : (
+                <button
+                  onClick={handleCharge}
+                  disabled={lines.length === 0 || submitting}
+                  className="btn-primary w-full py-3 text-base"
+                >
+                  {payment === "KHQR" && <QrCode size={18} />}
+                  {submitting
+                    ? "Processing…"
+                    : payment === "KHQR"
+                    ? `Pay by KHQR · ${usd(total)}`
+                    : `Charge ${usd(total)}`}
+                </button>
+              )}
+              {!tillMode && (
+                <p className="mt-2 text-center text-xs text-slate-400">Real sales are only recorded on a locked till.</p>
+              )}
             </div>
           </div>
         </div>
@@ -1206,10 +1228,16 @@ export default function PosPage() {
               </p>
               <p className="text-lg font-extrabold leading-tight text-ink-900">{usd(total)}</p>
             </div>
-            <button onClick={handleCharge} disabled={submitting} className="btn-primary min-w-[9rem] py-3 text-base">
-              {payment === "KHQR" && <QrCode size={18} />}
-              {submitting ? "Processing…" : payment === "KHQR" ? "Pay KHQR" : "Charge"}
-            </button>
+            {!tillMode ? (
+              <button onClick={() => setTillGate(true)} className="btn-primary min-w-[9rem] py-3 text-base">
+                <MonitorCheck size={18} /> Till Mode
+              </button>
+            ) : (
+              <button onClick={handleCharge} disabled={submitting} className="btn-primary min-w-[9rem] py-3 text-base">
+                {payment === "KHQR" && <QrCode size={18} />}
+                {submitting ? "Processing…" : payment === "KHQR" ? "Pay KHQR" : "Charge"}
+              </button>
+            )}
           </div>
         </div>
       )}
