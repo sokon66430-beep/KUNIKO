@@ -11,10 +11,11 @@ import type { CashMovement, CashMovementType } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 const TYPES: CashMovementType[] = ["CASH_IN", "CASH_OUT", "DROP", "REFUND", "BANK_DEPOSIT"];
-// Movements that take cash OUT of the drawer. You can never remove more than is
-// physically there, so these are capped at the drawer's available cash — the
-// guard that stops an impossible entry (a fat-fingered $2,332,436 safe drop).
-const OUTFLOWS: CashMovementType[] = ["CASH_OUT", "DROP", "REFUND", "BANK_DEPOSIT"];
+// Movements that take cash OUT of the till drawer. You can never remove more
+// than is physically there, so these are capped at the drawer's available cash
+// — the guard that stops an impossible entry (a fat-fingered $2,332,436 drop).
+// A bank deposit is NOT here: it takes cash from the SAFE, capped separately.
+const OUTFLOWS: CashMovementType[] = ["CASH_OUT", "DROP", "REFUND"];
 const LABEL: Record<CashMovementType, string> = {
   CASH_IN: "Cash In",
   CASH_OUT: "Cash Out",
@@ -65,10 +66,15 @@ export async function POST(req: Request) {
     const rate = db.meta.business?.exchangeRate || 4100;
     const amount = round2(amountUsd + amountRiel / rate);
 
-    // Guard: you can't take out more cash than the drawer holds. Reject any
-    // outflow bigger than the available cash (a small epsilon covers rounding).
-    // This is what makes an impossible entry impossible, not just discouraged.
-    if (OUTFLOWS.includes(type)) {
+    // Guard: you can't take out more cash than is there. Drawer outflows are
+    // capped at the till's cash; a bank transfer is capped at the SAFE balance
+    // (the money that was safe-dropped). Epsilon covers rounding.
+    if (type === "BANK_DEPOSIT") {
+      const inSafe = round2(drawerFor(db, shift).safe.usdEquivalent);
+      if (amount > inSafe + 0.005) {
+        return { error: "insufficient_safe" as const, available: Math.max(0, inSafe), tried: amount };
+      }
+    } else if (OUTFLOWS.includes(type)) {
       const available = round2(drawerFor(db, shift).expected);
       if (amount > available + 0.005) {
         return { error: "insufficient" as const, available: Math.max(0, available), tried: amount };
@@ -120,8 +126,14 @@ export async function POST(req: Request) {
 
   if ("error" in result) {
     if (result.error === "no_shift") return NextResponse.json({ error: "Open a shift first" }, { status: 400 });
+    if (result.error === "insufficient_safe") {
+      return NextResponse.json(
+        { error: `Can't transfer $${result.tried.toFixed(2)} to the bank — only $${result.available.toFixed(2)} is in the safe. Do a safe drop first.` },
+        { status: 400 },
+      );
+    }
     if (result.error === "insufficient") {
-      const verb = type === "BANK_DEPOSIT" ? "deposit" : type === "DROP" ? "drop" : type === "REFUND" ? "refund" : "take out";
+      const verb = type === "DROP" ? "drop" : type === "REFUND" ? "refund" : "take out";
       return NextResponse.json(
         { error: `Can't ${verb} $${result.tried.toFixed(2)} — only $${result.available.toFixed(2)} is in the drawer.` },
         { status: 400 },

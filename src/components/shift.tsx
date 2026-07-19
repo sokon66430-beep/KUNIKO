@@ -10,8 +10,6 @@
 
 import { useState, type ReactNode } from "react";
 import {
-  PlusCircle,
-  MinusCircle,
   Vault,
   RotateCcw,
   Lock,
@@ -36,6 +34,7 @@ import type { CashCount, CashMovementType } from "@/lib/types";
 export type Drawer = {
   opening: number; cashSales: number; cashIn: number; cashOut: number; drop: number; refunds: number;
   bankDeposit: number;
+  safe: { dropUsd: number; dropRiel: number; txUsd: number; txRiel: number; usd: number; riel: number; usdEquivalent: number };
   refundedCancelled: number; expected: number;
   sales: { total: number; cash: number; card: number; ewallet: number };
   usd: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
@@ -145,7 +144,7 @@ export function Row({ label, value }: { label: string; value: string }) {
 // (violet). If a currency wasn't used it shows a muted zero so the split reads
 // the same on every card. Matches StatCard's frame so the row stays aligned.
 function CashStat({ label, sign, usdAmount, rielAmount }: {
-  label: string; sign: "+" | "−"; usdAmount: number; rielAmount: number;
+  label: string; sign: "+" | "−" | ""; usdAmount: number; rielAmount: number;
 }) {
   const s = (n: number) => (n > 0 ? sign : "");
   return (
@@ -196,16 +195,27 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
         </div>
       )}
 
+      {/* The TILL — what should be in the drawer right now. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Opening Float" value={usd(d.opening)} accent="violet" />
         <StatCard label="Cash Sales" value={usd(d.cashSales)} sub={`${usd(d.sales.total)} all payments`} accent="brand" />
         <StatCard label="Card" value={usd(d.sales.card)} accent="violet" />
         <StatCard label="E-wallet" value={usd(d.sales.ewallet)} accent="violet" />
-        <CashStat label="Cash In" sign="+" usdAmount={d.usd.cashIn} rielAmount={d.riel.cashIn} />
-        <CashStat label="Cash Out" sign="−" usdAmount={d.usd.cashOut} rielAmount={d.riel.cashOut} />
         <CashStat label="Safe Drops" sign="−" usdAmount={d.usd.drop + d.usd.refunds} rielAmount={d.riel.drop + d.riel.refunds} />
-        <CashStat label="Bank Deposit" sign="−" usdAmount={d.usd.bankDeposit} rielAmount={d.riel.bankDeposit} />
         <StatCard label="Expected Drawer" value={usd(d.expected)} sub="dollars + riel, USD value" accent={over ? "rose" : "emerald"} />
+      </div>
+
+      {/* The SAFE — money safe-dropped here, minus what's been transferred to the
+          bank. Bank transfers come out of this, not the till drawer. */}
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+        <p className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+          <Vault size={13} /> Store safe
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <CashStat label="Safe Drops (all)" sign="+" usdAmount={d.safe.dropUsd} rielAmount={d.safe.dropRiel} />
+          <CashStat label="Transferred to bank" sign="−" usdAmount={d.safe.txUsd} rielAmount={d.safe.txRiel} />
+          <CashStat label="In Safe now" sign="" usdAmount={d.safe.usd} rielAmount={d.safe.riel} />
+        </div>
       </div>
 
       {/* Refunds are NOT a button: cash goes back when an invoice is CANCELLED
@@ -219,10 +229,8 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
       )}
 
       <div className="flex flex-wrap gap-2">
-        <button className="btn-ghost" onClick={() => onMovement("CASH_IN")}><PlusCircle size={16} /> Cash In</button>
-        <button className="btn-ghost" onClick={() => onMovement("CASH_OUT")}><MinusCircle size={16} /> Cash Out</button>
         <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
-        <button className="btn-ghost" onClick={() => onMovement("BANK_DEPOSIT")}><Landmark size={16} /> Bank Deposit</button>
+        <button className="btn-ghost" onClick={() => onMovement("BANK_DEPOSIT")}><Landmark size={16} /> Bank Transfer</button>
         <button className="btn-ghost" onClick={() => setMoves(true)}><ArrowLeftRight size={16} /> Cash movements</button>
         <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Shift survey</button>
         <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
@@ -393,7 +401,7 @@ function printBankDepositSlip(mv: any, shift: ShiftView, business: any) {
   </div>
   <hr>
   <div class="ctr sub">Bank deposit record — keep with the deposit slip.</div>`;
-  openSlip("BANK DEPOSIT", mv?.id || "", inner, business);
+  openSlip("BANK TRANSFER", mv?.id || "", inner, business);
 }
 
 // Shift-close slip — the counted drawer submitted for approval.
@@ -509,7 +517,7 @@ const MV_LOG: Record<CashMovementType, { label: string; cls: string; sign: strin
   CASH_OUT: { label: "Cash Out", cls: "bg-amber-50 text-amber-700 ring-amber-200", sign: "−" },
   DROP: { label: "Safe Drop", cls: "bg-violet-50 text-violet-700 ring-violet-200", sign: "−" },
   REFUND: { label: "Refund", cls: "bg-rose-50 text-rose-700 ring-rose-200", sign: "−" },
-  BANK_DEPOSIT: { label: "Bank Deposit", cls: "bg-sky-50 text-sky-700 ring-sky-200", sign: "−" },
+  BANK_DEPOSIT: { label: "Bank Transfer", cls: "bg-sky-50 text-sky-700 ring-sky-200", sign: "−" },
 };
 
 // The Cash Movements log — every individual cash event captured at the till, not
@@ -552,13 +560,12 @@ export function CashMovementsModal({ shift, onClose, onChanged }: { shift: Shift
 
       {/* This-shift cash picture — the totals every movement rolls up into. */}
       {scope === "shift" && (
-        <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard label="Opening" value={usd(d.opening)} accent="violet" />
           <StatCard label="Cash Sales" value={usd(d.cashSales)} accent="brand" />
-          <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} accent="emerald" />
-          <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} accent="amber" />
-          <StatCard label="Drops" value={`-${usd(d.drop)}`} accent="amber" />
-          <StatCard label="Expected" value={usd(d.expected)} accent="emerald" />
+          <StatCard label="Safe Drops" value={`-${usd(d.drop)}`} accent="amber" />
+          <StatCard label="Expected Drawer" value={usd(d.expected)} accent="emerald" />
+          <StatCard label="In Safe" value={usd(d.safe.usdEquivalent)} accent="violet" />
         </div>
       )}
 
@@ -569,7 +576,7 @@ export function CashMovementsModal({ shift, onClose, onChanged }: { shift: Shift
         <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-10 text-center">
           <Inbox size={22} className="text-slate-300" />
           <p className="text-sm font-medium text-slate-500">No cash movements {scope === "shift" ? "this shift" : "yet"}.</p>
-          <p className="text-xs text-slate-400">Cash in, cash out, safe drops and refunds show up here.</p>
+          <p className="text-xs text-slate-400">Safe drops and bank transfers show up here.</p>
         </div>
       ) : (
         <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-0.5">
@@ -638,7 +645,7 @@ const MV_META: Record<CashMovementType, { title: string; hint: string }> = {
   CASH_OUT: { title: "Cash Out", hint: "Store expense, emergency purchase, petty cash." },
   DROP: { title: "Safe Drop", hint: "Move excess cash from the drawer to the store safe." },
   REFUND: { title: "Cash Refund", hint: "Cash returned to a customer." },
-  BANK_DEPOSIT: { title: "Bank Deposit", hint: "Take cash out of the till and deposit it into the store's bank account." },
+  BANK_DEPOSIT: { title: "Bank Transfer", hint: "Transfer cash from the store safe to the bank account (the money must already be in the safe from a safe drop)." },
 };
 
 // Preset reasons per movement type — a dropdown, not free text, so the reason
@@ -741,7 +748,7 @@ export function BankDepositReport({ shiftId }: { shiftId: string }) {
     <div className="space-y-3">
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-          <Landmark size={13} /> Deposited this shift
+          <Landmark size={13} /> Transferred to bank this shift
         </p>
         <div className="grid grid-cols-2 gap-2.5">
           <div className="rounded-xl bg-brand-50 px-3 py-2.5 ring-1 ring-brand-100">
@@ -807,12 +814,15 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const amountRiel = Math.max(0, Math.floor(Number(rielAmount) || 0));
   const totalUsd = Math.round((amountUsd + amountRiel / (rate || 4100)) * 100) / 100;
 
-  // Everything except Cash In takes money OUT of the drawer — you can't remove
-  // more than is there. Block the submit (the server enforces this too) so an
-  // impossible amount like a $2,332,436 drop can never be recorded.
+  // You can't take out more than is there. A bank transfer draws from the SAFE
+  // (safe-dropped cash); every other outflow draws from the till drawer. Block
+  // the submit (the server enforces this too) so an impossible amount can never
+  // be recorded, and so a transfer can't exceed the safe.
   const isOutflow = type !== "CASH_IN";
-  const available = Math.round((drawer.expected || 0) * 100) / 100;
+  const fromSafe = isDeposit;
+  const available = Math.round(((fromSafe ? drawer.safe?.usdEquivalent : drawer.expected) || 0) * 100) / 100;
   const exceeds = isOutflow && totalUsd > available + 0.005;
+  const holdLabel = fromSafe ? "safe" : "drawer";
 
   const addUsd = (v: number) => setUsdAmount(String(Math.round(((Number(usdAmount) || 0) + v) * 100) / 100));
   const addRiel = (v: number) => setRielAmount(String((Math.floor(Number(rielAmount) || 0)) + v));
@@ -892,15 +902,19 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
           <span className="ml-1.5 text-slate-400">= {usd(totalUsd)}</span>
         </span>
       </div>
-      {/* Can't take out more than the drawer holds — block it with a clear reason. */}
+      {/* Can't take out more than is there — a transfer is capped by the safe,
+          every other outflow by the drawer. Block it with a clear reason. */}
       {isOutflow && (
         exceeds ? (
           <div className="mb-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-800">
             <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-            <span>That&apos;s more than the drawer holds. Only <b>{usd(available)}</b> is in the drawer to take out.</span>
+            <span>
+              That&apos;s more than the {holdLabel} holds. Only <b>{usd(available)}</b> is in the {holdLabel}
+              {fromSafe ? " to transfer — do a safe drop first." : " to take out."}
+            </span>
           </div>
         ) : (
-          <p className="mb-3 -mt-1 text-right text-xs text-slate-400">In the drawer: {usd(available)}</p>
+          <p className="mb-3 -mt-1 text-right text-xs text-slate-400">In the {holdLabel}: {usd(available)}</p>
         )
       )}
       <div className="mb-3">

@@ -58,9 +58,12 @@ export type Drawer = {
   cashOut: number;
   drop: number;
   refunds: number;
-  // Cash deposited to the store's bank this shift — leaves the till like a safe
-  // drop, but kept separate so a drop (→ safe) and a deposit (→ bank) don't mix.
+  // Cash transferred from the SAFE to the bank this shift. Does NOT touch the
+  // till drawer (the money came from the safe, not the till).
   bankDeposit: number;
+  // The store SAFE: all safe drops (gross), all bank transfers (gross), and the
+  // net balance sitting in the safe. Store-wide, spans shifts.
+  safe: { dropUsd: number; dropRiel: number; txUsd: number; txRiel: number; usd: number; riel: number; usdEquivalent: number };
   // Cash handed back for CANCELLED invoices this shift. Informational only:
   // a cancelled sale is already excluded from cashSales, so expected drops by
   // itself — this figure just shows the money that went back.
@@ -112,11 +115,30 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
   const cashOut = sumOf("CASH_OUT");
   const drop = sumOf("DROP");
   const refunds = sumOf("REFUND");
-  // Cash deposited to the bank leaves the till, just like a safe drop — but kept
-  // as its own figure so a drop (→ safe) and a deposit (→ bank) never get mixed.
   const bankDeposit = sumOf("BANK_DEPOSIT");
 
-  const expected = round2(shift.openingFloat + sales.cash + cashIn - cashOut - drop - refunds - bankDeposit);
+  // A bank deposit takes cash from the SAFE (money that was safe-dropped), not
+  // from the till — so it does NOT reduce the drawer. Only safe drops, refunds
+  // (and legacy cash in/out) move the till.
+  const expected = round2(shift.openingFloat + sales.cash + cashIn - cashOut - drop - refunds);
+
+  // The store SAFE balance: everything safe-dropped (from any shift) minus what
+  // has been transferred to the bank. This is the cash sitting in the safe,
+  // available to transfer — dollars and riel kept separate. Store-wide, so it
+  // spans shifts (the safe isn't reset when a shift closes).
+  const all = db.cashMovements;
+  const sumAll = (t: string) => round2(all.filter((m) => m.type === t).reduce((s, m) => s + m.amount, 0));
+  const usdAll = (t: string) => round2(all.filter((m) => m.type === t).reduce((s, m) => s + (Number(m.amountUsd ?? m.amount) || 0), 0));
+  const rielAll = (t: string) => all.filter((m) => m.type === t).reduce((s, m) => s + (Number(m.amountRiel) || 0), 0);
+  const safe = {
+    dropUsd: usdAll("DROP"),
+    dropRiel: rielAll("DROP"),
+    txUsd: usdAll("BANK_DEPOSIT"),
+    txRiel: rielAll("BANK_DEPOSIT"),
+    usd: round2(usdAll("DROP") - usdAll("BANK_DEPOSIT")),
+    riel: rielAll("DROP") - rielAll("BANK_DEPOSIT"),
+    usdEquivalent: round2(sumAll("DROP") - sumAll("BANK_DEPOSIT")),
+  };
 
   return {
     opening: round2(shift.openingFloat),
@@ -126,6 +148,7 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     drop,
     refunds,
     bankDeposit,
+    safe,
     refundedCancelled,
     expected,
     sales,
