@@ -513,17 +513,15 @@ export default function Sidebar() {
         >
           <Menu size={22} />
         </button>
-        {/* Tight cluster — toggle · bell · brand — so the top bar doesn't read as
-            scattered on a phone / Sunmi L3. */}
-        <div className="flex items-center gap-0.5">
+        {/* One consistent gap between every element so the cluster reads evenly
+            spaced on a phone / Sunmi L3. */}
+        <div className="flex items-center gap-2">
           {themeToggle}
           <NotificationBell />
-          <div className="ml-1 flex items-center gap-1.5">
-            <div className="grid h-7 w-7 place-items-center rounded-lg bg-brand-600 text-white">
-              <span className="text-[14px] font-black leading-none tracking-tight">S</span>
-            </div>
-            <span className={`text-[15px] font-extrabold tracking-tight ${dark ? "text-white" : "text-ink-900"}`}>Stookii</span>
+          <div className="grid h-7 w-7 place-items-center rounded-lg bg-brand-600 text-white">
+            <span className="text-[14px] font-black leading-none tracking-tight">S</span>
           </div>
+          <span className={`text-[15px] font-extrabold tracking-tight ${dark ? "text-white" : "text-ink-900"}`}>Stookii</span>
         </div>
       </div>
 
