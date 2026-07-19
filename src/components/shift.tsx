@@ -36,6 +36,7 @@ export type Drawer = {
   bankDeposit: number;
   refundedCancelled: number; expected: number;
   sales: { total: number; cash: number; card: number; ewallet: number };
+  usd: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
   riel: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
   counts: { movements: number; drops: number; refunds: number; bankDeposits: number };
 };
@@ -137,6 +138,29 @@ export function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// A cash-movement stat that shows DOLLARS and RIEL as two separate amounts —
+// never merged into one converted figure. Dollars on top (dark), riel beneath
+// (violet). If a currency wasn't used it shows a muted zero so the split reads
+// the same on every card. Matches StatCard's frame so the row stays aligned.
+function CashStat({ label, sign, usdAmount, rielAmount }: {
+  label: string; sign: "+" | "−"; usdAmount: number; rielAmount: number;
+}) {
+  const s = (n: number) => (n > 0 ? sign : "");
+  return (
+    <div className="stat card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
+      <div className="flex h-9 items-start">
+        <p className="line-clamp-2 text-[11px] font-bold uppercase leading-tight tracking-[0.08em] text-slate-500 sm:text-[11.5px] sm:tracking-[0.1em]">{label}</p>
+      </div>
+      <p className="mt-3 whitespace-nowrap text-[clamp(1rem,13cqi,1.6rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-ink-900 sm:mt-4">
+        {s(usdAmount)}{usd(usdAmount)}
+      </p>
+      <p className={`mt-1.5 whitespace-nowrap text-[clamp(0.8rem,9cqi,1.05rem)] font-bold leading-none tabular-nums ${rielAmount > 0 ? "text-violet-600" : "text-slate-300"}`}>
+        {s(rielAmount)}{khr(rielAmount)}
+      </p>
+    </div>
+  );
+}
+
 // The live shift summary — the "shift survey" the cashier reads at a glance:
 // where the drawer stands right now (opening float, what's sold, cash movements
 // and the expected cash to count). The action buttons underneath run the drawer.
@@ -174,11 +198,11 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <StatCard label="Cash Sales" value={usd(d.cashSales)} sub={`${usd(d.sales.total)} all payments`} accent="brand" />
         <StatCard label="Card" value={usd(d.sales.card)} accent="violet" />
         <StatCard label="E-wallet" value={usd(d.sales.ewallet)} accent="violet" />
-        <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} sub={d.riel.cashIn > 0 ? `incl. ${khr(d.riel.cashIn)}` : undefined} accent="emerald" />
-        <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} sub={d.riel.cashOut > 0 ? `incl. ${khr(d.riel.cashOut)}` : undefined} accent="amber" />
-        <StatCard label="Safe Drops" value={`-${usd(d.drop + d.refunds)}`} sub={d.riel.drop + d.riel.refunds > 0 ? `incl. ${khr(d.riel.drop + d.riel.refunds)}` : undefined} accent="amber" />
-        <StatCard label="Bank Deposit" value={`-${usd(d.bankDeposit)}`} sub={d.riel.bankDeposit > 0 ? `incl. ${khr(d.riel.bankDeposit)}` : undefined} accent="violet" />
-        <StatCard label="Expected Drawer" value={usd(d.expected)} accent={over ? "rose" : "emerald"} />
+        <CashStat label="Cash In" sign="+" usdAmount={d.usd.cashIn} rielAmount={d.riel.cashIn} />
+        <CashStat label="Cash Out" sign="−" usdAmount={d.usd.cashOut} rielAmount={d.riel.cashOut} />
+        <CashStat label="Safe Drops" sign="−" usdAmount={d.usd.drop + d.usd.refunds} rielAmount={d.riel.drop + d.riel.refunds} />
+        <CashStat label="Bank Deposit" sign="−" usdAmount={d.usd.bankDeposit} rielAmount={d.riel.bankDeposit} />
+        <StatCard label="Expected Drawer" value={usd(d.expected)} sub="dollars + riel, USD value" accent={over ? "rose" : "emerald"} />
       </div>
 
       {/* Refunds are NOT a button: cash goes back when an invoice is CANCELLED

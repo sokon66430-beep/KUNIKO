@@ -68,6 +68,9 @@ export type Drawer = {
   expected: number;
   // Payment mix over the shift, for the dashboard.
   sales: { total: number; cash: number; card: number; ewallet: number };
+  // The pure-dollar portion of each movement type (the riel part is separate,
+  // below), so the drawer can show dollars and riel side by side, never merged.
+  usd: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
   // The riel-note portion of each movement type, kept in riel (not converted),
   // so the drawer can show a total in both currencies.
   riel: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
@@ -102,6 +105,9 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
   const mv = db.cashMovements.filter((m) => m.shiftId === shift.id);
   const sumOf = (t: string) => round2(mv.filter((m) => m.type === t).reduce((s, m) => s + m.amount, 0));
   const rielOf = (t: string) => mv.filter((m) => m.type === t).reduce((s, m) => s + (Number(m.amountRiel) || 0), 0);
+  // The pure DOLLAR part of each movement (not the riel converted in). Older
+  // pre-split movements carry only `amount` (all-USD), so fall back to that.
+  const usdOf = (t: string) => round2(mv.filter((m) => m.type === t).reduce((s, m) => s + (Number(m.amountUsd ?? m.amount) || 0), 0));
   const cashIn = sumOf("CASH_IN");
   const cashOut = sumOf("CASH_OUT");
   const drop = sumOf("DROP");
@@ -123,6 +129,9 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     refundedCancelled,
     expected,
     sales,
+    // Pure-dollar and pure-riel parts of each movement, kept apart so the drawer
+    // can show dollars and riel as two separate amounts (never merged into one).
+    usd: { cashIn: usdOf("CASH_IN"), cashOut: usdOf("CASH_OUT"), drop: usdOf("DROP"), refunds: usdOf("REFUND"), bankDeposit: usdOf("BANK_DEPOSIT") },
     riel: { cashIn: rielOf("CASH_IN"), cashOut: rielOf("CASH_OUT"), drop: rielOf("DROP"), refunds: rielOf("REFUND"), bankDeposit: rielOf("BANK_DEPOSIT") },
     counts: {
       movements: mv.length,
