@@ -29,6 +29,7 @@ import {
   Lock,
   MonitorCheck,
   ArrowLeftRight,
+  Landmark,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
@@ -947,6 +948,13 @@ export default function PosPage() {
                   >
                     <Vault size={18} className="text-amber-500" />
                     <span className="text-[12.5px] font-bold text-ink-900">Safe Drop</span>
+                  </button>
+                  <button
+                    onClick={() => openShift("transfer")}
+                    className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                  >
+                    <Landmark size={18} className="text-sky-600" />
+                    <span className="text-[12.5px] font-bold text-ink-900">Bank Transfer</span>
                   </button>
                   <button
                     onClick={() => openShift("movements")}

@@ -28,7 +28,7 @@ import {
 
 // Optionally jump straight to a shift action when opened (from a POS quick
 // button) instead of landing on the drawer overview.
-export type ShiftAction = "DROP" | "survey" | "close" | "movements";
+export type ShiftAction = "DROP" | "transfer" | "survey" | "close" | "movements";
 
 export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: string; initialAction?: ShiftAction; onClose: () => void }) {
   // On a till the fixed bar sits at the top; sit this screen just below it so its
@@ -78,6 +78,7 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
     if (fired.current || !initialAction || !current) return;
     fired.current = true;
     if (initialAction === "DROP") setMv("DROP");
+    else if (initialAction === "transfer") setMv("BANK_DEPOSIT");
     else if (initialAction === "survey") setSurvey(true);
     else if (initialAction === "close") setClosing(true);
   }, [initialAction, current]);
@@ -118,7 +119,7 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
               <Spinner label="Loading shift…" />
             ) : current ? (
               // Live shift: summary + drawer actions + close & count.
-              <DrawerView shift={current} drawerLimit={drawerLimit} rate={rate} onMovement={setMv} onClose={() => setClosing(true)} onChanged={reload} initialMoves={initialAction === "movements"} />
+              <DrawerView shift={current} drawerLimit={drawerLimit} rate={rate} onMovement={setMv} onClose={() => setClosing(true)} onChanged={reload} initialMoves={initialAction === "movements"} showActions={false} />
             ) : pending ? (
               // Already counted and submitted — waiting on a supervisor to approve.
               <div className="space-y-5">
