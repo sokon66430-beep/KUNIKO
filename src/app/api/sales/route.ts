@@ -299,9 +299,21 @@ export async function POST(req: Request) {
     const method = body.paymentMethod || "Cash";
     let tendered: number | undefined;
     let change: number | undefined;
+    let cashUsd: number | undefined;
+    let cashRiel: number | undefined;
     if (method === "Cash" && body.tendered != null) {
+      const rate = db.meta.business?.exchangeRate || 4100;
+      // The client sends how much was received in each currency. Older callers
+      // send only the combined USD `tendered` — treat that as all dollars.
+      const tUsd = round2(Math.max(0, Number(body.tenderedUsd ?? body.tendered) || 0));
+      const tRiel = Math.max(0, Math.floor(Number(body.tenderedRiel) || 0));
       tendered = round2(Math.max(0, Number(body.tendered) || 0));
       change = round2(Math.max(0, tendered - total));
+      // Change is handed back in dollars, so every riel note stays in the till
+      // and the dollar side absorbs the change (it can go negative when the
+      // customer pays mostly riel and takes dollar change). Net value = total.
+      cashRiel = tRiel;
+      cashUsd = round2(tUsd - change);
     }
 
     const sale: Sale = {
@@ -329,6 +341,8 @@ export async function POST(req: Request) {
       paymentRef: body.paymentRef || undefined,
       tendered,
       change,
+      cashUsd,
+      cashRiel,
       createdAt: now,
     };
 

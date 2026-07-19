@@ -32,10 +32,12 @@ import { CASH_DENOMS, RIEL_DENOMS, countTotal } from "@/lib/money";
 import type { CashCount, CashMovementType } from "@/lib/types";
 
 export type Drawer = {
-  opening: number; cashSales: number; cashIn: number; cashOut: number; drop: number; refunds: number;
+  opening: number; openingUsd: number; openingRiel: number;
+  cashSales: number; cashSalesUsd: number; cashSalesRiel: number;
+  cashIn: number; cashOut: number; drop: number; refunds: number;
   bankDeposit: number;
   safe: { dropUsd: number; dropRiel: number; txUsd: number; txRiel: number; usd: number; riel: number; usdEquivalent: number };
-  refundedCancelled: number; expected: number;
+  refundedCancelled: number; expected: number; expectedUsd: number; expectedRiel: number;
   sales: { total: number; cash: number; card: number; ewallet: number };
   usd: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
   riel: { cashIn: number; cashOut: number; drop: number; refunds: number; bankDeposit: number };
@@ -139,25 +141,29 @@ export function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-// A cash-movement stat that shows DOLLARS and RIEL as two separate amounts —
-// never merged into one converted figure. Dollars on top (dark), riel beneath
-// (violet). If a currency wasn't used it shows a muted zero so the split reads
-// the same on every card. Matches StatCard's frame so the row stays aligned.
+// A cash stat that shows DOLLARS and RIEL as two separate amounts — never merged
+// into one converted figure. Two rows of EQUAL size, values right-aligned so the
+// dollar and riel figures line up cleanly. USD dark, KHR violet; a currency not
+// used reads as a muted zero so every card lines up the same.
 function CashStat({ label, sign, usdAmount, rielAmount }: {
   label: string; sign: "+" | "−" | ""; usdAmount: number; rielAmount: number;
 }) {
-  const s = (n: number) => (n > 0 ? sign : "");
+  const pfx = (n: number) => (n !== 0 && sign ? sign : "");
   return (
-    <div className="stat card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
+    <div className="stat card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-5">
       <div className="flex h-9 items-start">
         <p className="line-clamp-2 text-[11px] font-bold uppercase leading-tight tracking-[0.08em] text-slate-500 sm:text-[11.5px] sm:tracking-[0.1em]">{label}</p>
       </div>
-      <p className="mt-3 whitespace-nowrap text-[clamp(1rem,13cqi,1.6rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-ink-900 sm:mt-4">
-        {s(usdAmount)}{usd(usdAmount)}
-      </p>
-      <p className={`mt-1.5 whitespace-nowrap text-[clamp(0.8rem,9cqi,1.05rem)] font-bold leading-none tabular-nums ${rielAmount > 0 ? "text-violet-600" : "text-slate-300"}`}>
-        {s(rielAmount)}{khr(rielAmount)}
-      </p>
+      <div className="mt-1.5 space-y-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">USD</span>
+          <span className="whitespace-nowrap text-lg font-extrabold tabular-nums text-ink-900 sm:text-xl">{pfx(usdAmount)}{usd(usdAmount)}</span>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">KHR</span>
+          <span className={`whitespace-nowrap text-lg font-extrabold tabular-nums sm:text-xl ${rielAmount !== 0 ? "text-violet-600" : "text-slate-300"}`}>{pfx(rielAmount)}{khr(rielAmount)}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -176,11 +182,6 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
   // Cash movements log — every individual cash event, not just the totals. Can
   // open straight away when reached from the till's Cash Movements quick tile.
   const [moves, setMoves] = useState(!!initialMoves);
-  // We run on two currencies, so every USD total also shows its riel value
-  // (converted at the store rate) underneath — readable in both.
-  const rielEq = (v: number) => (
-    <span className="font-bold text-violet-600">{khr(Math.round((v || 0) * (rate || 4100)))}</span>
-  );
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -200,15 +201,30 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
         </div>
       )}
 
-      {/* The TILL — what should be in the drawer right now. Every dollar total
-          also shows its riel value underneath (we run on two currencies). */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Opening Float" value={usd(d.opening)} sub={rielEq(d.opening)} accent="violet" />
-        <StatCard label="Cash Sales" value={usd(d.cashSales)} sub={rielEq(d.cashSales)} accent="brand" />
-        <StatCard label="Card" value={usd(d.sales.card)} sub={rielEq(d.sales.card)} accent="violet" />
-        <StatCard label="E-wallet" value={usd(d.sales.ewallet)} sub={rielEq(d.sales.ewallet)} accent="violet" />
+      {/* The TILL — what should be in the drawer right now, real dollars and real
+          riel shown separately (we run on two currencies). Card & e-wallet are
+          electronic, so they're dollars only. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <CashStat label="Opening Float" sign="" usdAmount={d.openingUsd} rielAmount={d.openingRiel} />
+        <CashStat label="Cash Sales" sign="" usdAmount={d.cashSalesUsd} rielAmount={d.cashSalesRiel} />
         <CashStat label="Safe Drops" sign="−" usdAmount={d.usd.drop + d.usd.refunds} rielAmount={d.riel.drop + d.riel.refunds} />
-        <StatCard label="Expected Drawer" value={usd(d.expected)} sub={rielEq(d.expected)} accent={over ? "rose" : "emerald"} />
+        <StatCard label="Card" value={usd(d.sales.card)} accent="violet" />
+        <StatCard label="E-wallet" value={usd(d.sales.ewallet)} accent="violet" />
+        <div className={`stat card p-4 sm:p-5 ${over ? "ring-1 ring-rose-200" : ""}`}>
+          <div className="flex h-9 items-start justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Expected Drawer</p>
+          </div>
+          <div className="mt-1.5 space-y-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">USD</span>
+              <span className={`whitespace-nowrap text-lg font-extrabold tabular-nums sm:text-xl ${over ? "text-rose-600" : "text-emerald-700"}`}>{usd(d.expectedUsd)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">KHR</span>
+              <span className={`whitespace-nowrap text-lg font-extrabold tabular-nums sm:text-xl ${d.expectedRiel !== 0 ? "text-violet-600" : "text-slate-300"}`}>{khr(d.expectedRiel)}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* The SAFE — money safe-dropped here, minus what's been transferred to the

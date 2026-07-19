@@ -520,7 +520,7 @@ export default function PosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function commitSale(opts?: { paymentRef?: string; tendered?: number }) {
+  async function commitSale(opts?: { paymentRef?: string; tendered?: number; tenderedUsd?: number; tenderedRiel?: number }) {
     const sale = await api<Sale>("/api/sales", {
       method: "POST",
       body: JSON.stringify({
@@ -543,6 +543,8 @@ export default function PosPage() {
         paymentMethod: payment,
         paymentRef: opts?.paymentRef,
         tendered: opts?.tendered,
+        tenderedUsd: opts?.tenderedUsd,
+        tenderedRiel: opts?.tenderedRiel,
         // Ask the server for a pickup number only when the cashier turned it on.
         queue: wantQueue,
         posTerminalId: terminal,
@@ -1225,10 +1227,10 @@ export default function PosPage() {
           total={total}
           busy={submitting}
           onCancel={() => setCashOpen(false)}
-          onConfirm={async (tendered) => {
+          onConfirm={async (tendered, split) => {
             setSubmitting(true);
             try {
-              await commitSale({ tendered });
+              await commitSale({ tendered, tenderedUsd: split.usd, tenderedRiel: split.riel });
             } catch (e: any) {
               setToast(e.message);
             } finally {
@@ -1591,7 +1593,7 @@ function CashModal({
   total: number;
   busy: boolean;
   onCancel: () => void;
-  onConfirm: (tendered: number) => void;
+  onConfirm: (tendered: number, split: { usd: number; riel: number }) => void;
 }) {
   // Customers here pay in both currencies, often in the same handful of notes,
   // so the till counts each and settles the bill against the combined value.
@@ -1613,7 +1615,7 @@ function CashModal({
 
   function confirm() {
     if (!enough || busy) return;
-    onConfirm(tendered);
+    onConfirm(tendered, { usd: usdNum, riel: rielNum });
   }
 
   const usdChips = USD_NOTES.filter((n) => n >= total).slice(0, 4);

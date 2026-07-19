@@ -435,6 +435,12 @@ export type Sale = {
   // here, so the books stay in one currency.
   tendered?: number;
   change?: number;
+  // The NET cash this sale added to the till, kept per currency so the drawer can
+  // report real dollars and real riel separately (change is given in dollars, so
+  // riel notes stay and the dollar part absorbs the change). cashUsd can be
+  // negative when a customer pays mostly riel and takes dollar change.
+  cashUsd?: number; // net US$ into the drawer
+  cashRiel?: number; // net riel (face value) into the drawer
   createdAt: string;
   // Customer pickup (queue) number, when the cashier asked for one at checkout.
   // Purely for calling the customer — separate from invoiceNo/id, which stay the

@@ -53,7 +53,13 @@ export function openShifts(db: DB): Shift[] {
 
 export type Drawer = {
   opening: number;
+  // Opening float split into the real dollar notes and riel notes counted.
+  openingUsd: number;
+  openingRiel: number;
   cashSales: number;
+  // Cash sales split by the currency the customer actually paid (net into till).
+  cashSalesUsd: number;
+  cashSalesRiel: number;
   cashIn: number;
   cashOut: number;
   drop: number;
@@ -69,6 +75,10 @@ export type Drawer = {
   // itself — this figure just shows the money that went back.
   refundedCancelled: number;
   expected: number;
+  // Expected drawer split into real dollars and riel (always add back to
+  // `expected` at the store rate).
+  expectedUsd: number;
+  expectedRiel: number;
   // Payment mix over the shift, for the dashboard.
   sales: { total: number; cash: number; card: number; ewallet: number };
   // The pure-dollar portion of each movement type (the riel part is separate,
@@ -91,9 +101,18 @@ function bucket(method: string): "cash" | "card" | "ewallet" {
 export function drawerFor(db: DB, shift: Shift): Drawer {
   const shiftSales = db.sales.filter((s: Sale) => s.shiftId === shift.id && !s.cancelled);
   const sales = { total: 0, cash: 0, card: 0, ewallet: 0 };
+  // The cash that stayed in the till, split by the currency it was paid in. Each
+  // cash sale records its NET dollars and riel; older sales (before the split)
+  // fall back to all-dollars so their total still lands in the right place.
+  let cashSalesUsd = 0;
+  let cashSalesRiel = 0;
   for (const s of shiftSales) {
     sales.total = round2(sales.total + s.total);
     sales[bucket(s.paymentMethod)] = round2(sales[bucket(s.paymentMethod)] + s.total);
+    if (bucket(s.paymentMethod) === "cash") {
+      cashSalesUsd = round2(cashSalesUsd + (Number(s.cashUsd ?? s.total) || 0));
+      cashSalesRiel += Number(s.cashRiel) || 0;
+    }
   }
 
   // Cash invoices cancelled this shift: the sale above is already excluded, so
@@ -122,6 +141,19 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
   // (and legacy cash in/out) move the till.
   const expected = round2(shift.openingFloat + sales.cash + cashIn - cashOut - drop - refunds);
 
+  // Opening float split into real dollars and riel from the counted denominations
+  // (older shifts with no count fall back to all-dollars).
+  const oc = shift.openingCount;
+  const openingUsd = oc
+    ? round2((oc.denoms || []).reduce((s, x) => s + (Number(x.denom) || 0) * (Number(x.count) || 0), 0) + (Number(oc.coins) || 0))
+    : round2(shift.openingFloat);
+  const openingRiel = oc ? (oc.riel || []).reduce((s, x) => s + (Number(x.denom) || 0) * (Number(x.count) || 0), 0) : 0;
+
+  // What the drawer should hold, in each currency on its own. The two always add
+  // back to `expected` (dollars + riel-at-rate), so the total never drifts.
+  const expectedUsd = round2(openingUsd + cashSalesUsd + usdOf("CASH_IN") - usdOf("CASH_OUT") - usdOf("DROP") - usdOf("REFUND"));
+  const expectedRiel = openingRiel + cashSalesRiel + rielOf("CASH_IN") - rielOf("CASH_OUT") - rielOf("DROP") - rielOf("REFUND");
+
   // The store SAFE balance: everything safe-dropped (from any shift) minus what
   // has been transferred to the bank. This is the cash sitting in the safe,
   // available to transfer — dollars and riel kept separate. Store-wide, so it
@@ -142,7 +174,11 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
 
   return {
     opening: round2(shift.openingFloat),
+    openingUsd,
+    openingRiel,
     cashSales: sales.cash,
+    cashSalesUsd,
+    cashSalesRiel,
     cashIn,
     cashOut,
     drop,
@@ -151,6 +187,8 @@ export function drawerFor(db: DB, shift: Shift): Drawer {
     safe,
     refundedCancelled,
     expected,
+    expectedUsd,
+    expectedRiel,
     sales,
     // Pure-dollar and pure-riel parts of each movement, kept apart so the drawer
     // can show dollars and riel as two separate amounts (never merged into one).
