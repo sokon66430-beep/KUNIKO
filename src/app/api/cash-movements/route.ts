@@ -4,11 +4,16 @@ import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { canApproveCash } from "@/lib/access";
+import { drawerFor } from "@/lib/money";
 import type { CashMovement, CashMovementType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const TYPES: CashMovementType[] = ["CASH_IN", "CASH_OUT", "DROP", "REFUND", "BANK_DEPOSIT"];
+// Movements that take cash OUT of the drawer. You can never remove more than is
+// physically there, so these are capped at the drawer's available cash — the
+// guard that stops an impossible entry (a fat-fingered $2,332,436 safe drop).
+const OUTFLOWS: CashMovementType[] = ["CASH_OUT", "DROP", "REFUND", "BANK_DEPOSIT"];
 const LABEL: Record<CashMovementType, string> = {
   CASH_IN: "Cash In",
   CASH_OUT: "Cash Out",
@@ -59,6 +64,16 @@ export async function POST(req: Request) {
     const rate = db.meta.business?.exchangeRate || 4100;
     const amount = round2(amountUsd + amountRiel / rate);
 
+    // Guard: you can't take out more cash than the drawer holds. Reject any
+    // outflow bigger than the available cash (a small epsilon covers rounding).
+    // This is what makes an impossible entry impossible, not just discouraged.
+    if (OUTFLOWS.includes(type)) {
+      const available = round2(drawerFor(db, shift).expected);
+      if (amount > available + 0.005) {
+        return { error: "insufficient" as const, available: Math.max(0, available), tried: amount };
+      }
+    }
+
     // A bank deposit snapshots the store's one fixed bank (set in Settings) and
     // keeps the deposit slip / transaction reference for matching the statement.
     const isDeposit = type === "BANK_DEPOSIT";
@@ -104,6 +119,13 @@ export async function POST(req: Request) {
 
   if ("error" in result) {
     if (result.error === "no_shift") return NextResponse.json({ error: "Open a shift first" }, { status: 400 });
+    if (result.error === "insufficient") {
+      const verb = type === "BANK_DEPOSIT" ? "deposit" : type === "DROP" ? "drop" : type === "REFUND" ? "refund" : "take out";
+      return NextResponse.json(
+        { error: `Can't ${verb} $${result.tried.toFixed(2)} — only $${result.available.toFixed(2)} is in the drawer.` },
+        { status: 400 },
+      );
+    }
     return NextResponse.json({ error: "This shift is closed — reopen it to record cash movements" }, { status: 400 });
   }
   return NextResponse.json(result.movement, { status: 201 });

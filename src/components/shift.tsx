@@ -769,6 +769,13 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const amountRiel = Math.max(0, Math.floor(Number(rielAmount) || 0));
   const totalUsd = Math.round((amountUsd + amountRiel / (rate || 4100)) * 100) / 100;
 
+  // Everything except Cash In takes money OUT of the drawer — you can't remove
+  // more than is there. Block the submit (the server enforces this too) so an
+  // impossible amount like a $2,332,436 drop can never be recorded.
+  const isOutflow = type !== "CASH_IN";
+  const available = Math.round((drawer.expected || 0) * 100) / 100;
+  const exceeds = isOutflow && totalUsd > available + 0.005;
+
   const addUsd = (v: number) => setUsdAmount(String(Math.round(((Number(usdAmount) || 0) + v) * 100) / 100));
   const addRiel = (v: number) => setRielAmount(String((Math.floor(Number(rielAmount) || 0)) + v));
 
@@ -847,6 +854,17 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
           <span className="ml-1.5 text-slate-400">= {usd(totalUsd)}</span>
         </span>
       </div>
+      {/* Can't take out more than the drawer holds — block it with a clear reason. */}
+      {isOutflow && (
+        exceeds ? (
+          <div className="mb-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-800">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <span>That&apos;s more than the drawer holds. Only <b>{usd(available)}</b> is in the drawer to take out.</span>
+          </div>
+        ) : (
+          <p className="mb-3 -mt-1 text-right text-xs text-slate-400">In the drawer: {usd(available)}</p>
+        )
+      )}
       <div className="mb-3">
         <ReasonSelect label="Reason" options={MV_REASONS[type]} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
       </div>
@@ -859,7 +877,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
     <Modal open onClose={onClose} size={showReport ? "2xl" : "lg"} title={meta.title} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>
+        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason || exceeds} onClick={go}>
           {prints && <Printer size={16} />}
           {busy ? "Saving…" : prints ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
         </button>
