@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { readSystem } from "@/lib/system";
-import { verifyPassword } from "@/lib/password";
-import { canCancelInvoice, isCrossStoreRole } from "@/lib/access";
+import { findManagerByCode } from "@/lib/managerAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +18,7 @@ export async function POST(req: Request) {
   const ownerOnly = !!body.ownerOnly;
   if (!code) return NextResponse.json({ error: "A code is required" }, { status: 400 });
 
-  const sys = await readSystem();
-  const approvers = sys.users.filter((u) =>
-    ownerOnly
-      ? u.role === "owner"
-      : canCancelInvoice(u.role) &&
-        (isCrossStoreRole(u.role) || u.storeId === session.storeId || (u.storeIds || []).includes(session.storeId)),
-  );
-  const mgr = approvers.find((u) => verifyPassword(code, u.passwordHash));
+  const mgr = await findManagerByCode(code, { ownerOnly, storeId: session.storeId });
   if (!mgr) {
     return NextResponse.json(
       {

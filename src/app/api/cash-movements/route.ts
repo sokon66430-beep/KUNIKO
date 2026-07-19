@@ -5,6 +5,7 @@ import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { canApproveCash } from "@/lib/access";
 import { drawerFor } from "@/lib/money";
+import { findManagerByCode } from "@/lib/managerAuth";
 import type { CashMovement, CashMovementType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -141,6 +142,18 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing movement id" }, { status: 400 });
 
+  // A manager must approve deleting a cash record. Verify the code up front, so
+  // no data is touched unless a real store manager / owner signed off. The name
+  // goes into the audit trail as who approved the removal.
+  const body = await req.json().catch(() => ({}));
+  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId });
+  if (!mgr) {
+    return NextResponse.json(
+      { error: "Manager code not recognised — a store manager or the owner must approve deleting a cash record." },
+      { status: 403 },
+    );
+  }
+
   const actor = await currentActor();
   const result = await mutateDB((db) => {
     const m = db.cashMovements.find((x) => x.id === id);
@@ -148,9 +161,6 @@ export async function DELETE(req: Request) {
     const shift = db.shifts.find((s) => s.id === m.shiftId);
     if (!shift) return { error: "not_found" as const };
     if (shift.status !== "open") return { error: "locked" as const };
-    // A supervisor can remove any movement on the open shift; anyone else may
-    // only remove their own (undo their own mistake).
-    if (!canApproveCash(session.role) && m.cashierId !== session.uid) return { error: "forbidden" as const };
 
     db.cashMovements = db.cashMovements.filter((x) => x.id !== id);
     const money = `$${(m.amountUsd ?? m.amount).toFixed(2)}${m.amountRiel ? ` + ${m.amountRiel.toLocaleString()}៛` : ""}`;
@@ -159,14 +169,13 @@ export async function DELETE(req: Request) {
       action: "Removed",
       entityType: "Sale",
       entity: `${LABEL[m.type]} ${m.id}`,
-      detail: `${shift.posTerminalId} · Shift ${shift.shift} · Deleted ${LABEL[m.type]} ${money} · was: ${m.reason}`,
+      detail: `${shift.posTerminalId} · Shift ${shift.shift} · Deleted ${LABEL[m.type]} ${money} · was: ${m.reason} · approved by ${mgr.name}`,
     });
     return { ok: true as const };
   });
 
   if ("error" in result) {
     if (result.error === "not_found") return NextResponse.json({ error: "That movement no longer exists" }, { status: 404 });
-    if (result.error === "forbidden") return NextResponse.json({ error: "Only a supervisor, or the person who recorded it, can delete this movement" }, { status: 403 });
     return NextResponse.json({ error: "This shift is closed — its cash movements are locked" }, { status: 400 });
   }
   return NextResponse.json({ ok: true });

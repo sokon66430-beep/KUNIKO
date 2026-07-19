@@ -26,7 +26,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api, useFetch } from "@/lib/client";
-import { confirmDialog } from "@/components/confirm";
+import { ManagerGate } from "@/components/ManagerGate";
 import { Badge, StatCard, Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { usd, timeOnly } from "@/lib/format";
@@ -521,32 +521,12 @@ export function CashMovementsModal({ shift, onClose, onChanged }: { shift: Shift
   const { data, loading, reload } = useFetch<any[]>(url);
   const moves = data ?? [];
   const d = shift.drawer;
-  const [deleting, setDeleting] = useState<string | null>(null);
-
-  // Remove a movement entered by mistake. Confirm first (it changes the drawer),
-  // then refresh this list and the drawer behind it. The server records the
-  // deletion in the audit trail and only allows it on an open shift.
-  async function del(m: any) {
-    const money = `${usd(m.amountUsd ?? m.amount ?? 0)}${(m.amountRiel ?? 0) > 0 ? ` + ${khr(m.amountRiel)}` : ""}`;
-    const meta = MV_LOG[m.type as CashMovementType];
-    const ok = await confirmDialog({
-      title: `Delete this ${meta?.label ?? "movement"}?`,
-      message: `Remove the ${meta?.label ?? "movement"} of ${money} (${m.reason || "no reason"})? It will be taken off the drawer. This is recorded in the audit trail.`,
-      confirmText: "Delete",
-      tone: "danger",
-    });
-    if (!ok) return;
-    setDeleting(m.id);
-    try {
-      await api(`/api/cash-movements?id=${encodeURIComponent(m.id)}`, { method: "DELETE" });
-      reload();
-      onChanged?.();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setDeleting(null);
-    }
-  }
+  // The movement queued for deletion — drives the manager-approval prompt.
+  const [pending, setPending] = useState<any | null>(null);
+  const pendingMeta = pending ? MV_LOG[pending.type as CashMovementType] : null;
+  const pendingMoney = pending
+    ? `${usd(pending.amountUsd ?? pending.amount ?? 0)}${(pending.amountRiel ?? 0) > 0 ? ` + ${khr(pending.amountRiel)}` : ""}`
+    : "";
 
   return (
     <Modal
@@ -614,14 +594,14 @@ export function CashMovementsModal({ shift, onClose, onChanged }: { shift: Shift
                   <p className="text-sm font-bold tabular-nums text-ink-900">{meta.sign}{usd(usdPart)}</p>
                   {rielPart > 0 && <p className="text-xs font-semibold tabular-nums text-violet-600">{meta.sign}{khr(rielPart)}</p>}
                 </div>
-                {/* Delete a movement recorded by mistake — only for this open
-                    shift (movements on a closed shift are locked). */}
+                {/* Delete a movement recorded by mistake — needs a manager to
+                    approve, and only for this open shift (a closed shift is
+                    locked). */}
                 {m.shiftId === shift.id && (
                   <button
-                    onClick={() => del(m)}
-                    disabled={deleting === m.id}
-                    title="Delete this movement"
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40"
+                    onClick={() => setPending(m)}
+                    title="Delete this movement (manager approval)"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -630,6 +610,23 @@ export function CashMovementsModal({ shift, onClose, onChanged }: { shift: Shift
             );
           })}
         </div>
+      )}
+
+      {/* A manager must approve before a cash record is deleted. Verifying the
+          code and deleting happen in one server call; the audit trail records
+          who approved. */}
+      {pending && (
+        <ManagerGate
+          title={`Delete this ${pendingMeta?.label ?? "movement"}?`}
+          hint={`Remove the ${pendingMeta?.label ?? "movement"} of ${pendingMoney} (${pending.reason || "no reason"})? It comes off the drawer and is recorded in the audit trail. A manager must approve.`}
+          actionLabel="Approve & delete"
+          codeLabel="Manager code"
+          verify={async (code) => {
+            await api(`/api/cash-movements?id=${encodeURIComponent(pending.id)}`, { method: "DELETE", body: JSON.stringify({ managerCode: code }) });
+          }}
+          onOk={() => { setPending(null); reload(); onChanged?.(); }}
+          onClose={() => setPending(null)}
+        />
       )}
     </Modal>
   );

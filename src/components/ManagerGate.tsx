@@ -15,6 +15,7 @@ export function ManagerGate({
   actionLabel,
   ownerOnly,
   codeLabel = "Manager code",
+  verify,
   onOk,
   onClose,
 }: {
@@ -23,6 +24,10 @@ export function ManagerGate({
   actionLabel: string;
   ownerOnly?: boolean; // require the OWNER's password rather than any manager
   codeLabel?: string;
+  // Optional override: instead of just checking the code against
+  // /api/verify-manager, run the guarded action itself with the code (e.g.
+  // verify-and-delete in one call). Throw to show the message inline.
+  verify?: (code: string) => Promise<{ name?: string } | void>;
   onOk: (mgr: { name: string }) => void;
   onClose: () => void;
 }) {
@@ -35,11 +40,16 @@ export function ManagerGate({
     setBusy(true);
     setErr("");
     try {
-      const r = await api<{ ok: boolean; name: string }>("/api/verify-manager", {
-        method: "POST",
-        body: JSON.stringify({ code, ownerOnly: !!ownerOnly }),
-      });
-      onOk({ name: r.name });
+      if (verify) {
+        const r = await verify(code);
+        onOk({ name: r?.name || "Manager" });
+      } else {
+        const r = await api<{ ok: boolean; name: string }>("/api/verify-manager", {
+          method: "POST",
+          body: JSON.stringify({ code, ownerOnly: !!ownerOnly }),
+        });
+        onOk({ name: r.name });
+      }
     } catch (e: any) {
       setErr(e.message || "Not recognised.");
     } finally {
