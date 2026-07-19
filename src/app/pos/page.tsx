@@ -727,7 +727,7 @@ export default function PosPage() {
             loading ? (
               <Spinner label="Loading products…" />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                 {filtered.slice(0, 24).map((p) => (
                   <ProductCard
                     key={p.id}
@@ -767,7 +767,7 @@ export default function PosPage() {
                 </p>
               </div>
               {favourites.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                   {favourites.map((p) => (
                     <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
                   ))}
@@ -804,7 +804,7 @@ export default function PosPage() {
                   {openGroup.category} <span className="font-normal text-slate-400">· {openGroup.items.length}</span>
                 </p>
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                 {openGroup.items.map((p) => (
                   <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
                 ))}
@@ -826,21 +826,21 @@ export default function PosPage() {
                   ({directSaleCount} items)
                 </span>
               </p>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2.5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                 {/* Favourites pinned FIRST — same square tile as a category, so
                     the whole grid lines up. */}
                 {(favourites.length > 0 || favouriteSuggestions.length > 0) && (
                   <button
                     onClick={() => setOpenCat(FAV)}
-                    className="card group flex aspect-square flex-col items-center justify-center gap-1 p-2 text-center ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:ring-amber-300 hover:shadow-soft"
+                    className="card group flex aspect-square flex-col items-center justify-center gap-0.5 p-1.5 text-center ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:ring-amber-300 hover:shadow-soft"
                   >
-                    <Star size={18} className="text-amber-400" fill="currentColor" />
-                    <span className="text-[13px] font-bold leading-tight text-ink-900">Favourites</span>
-                    <span className="flex items-center gap-1">
-                      <span className="text-[11px] text-slate-500">
+                    <Star size={15} className="text-amber-400" fill="currentColor" />
+                    <span className="text-[11.5px] font-bold leading-tight text-ink-900">Favourites</span>
+                    <span className="flex items-center gap-0.5">
+                      <span className="text-[10px] text-slate-500">
                         {favourites.length} item{favourites.length === 1 ? "" : "s"}
                       </span>
-                      <ChevronLeft size={13} className="rotate-180 text-slate-300 transition group-hover:text-amber-500" />
+                      <ChevronLeft size={11} className="rotate-180 text-slate-300 transition group-hover:text-amber-500" />
                     </span>
                   </button>
                 )}
@@ -848,15 +848,15 @@ export default function PosPage() {
                   <button
                     key={g.category}
                     onClick={() => setOpenCat(g.category)}
-                    className="card group flex aspect-square flex-col items-center justify-center gap-1 p-2 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                    className="card group flex aspect-square flex-col items-center justify-center gap-0.5 p-1.5 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
                   >
-                    <span className="line-clamp-2 text-[13px] font-bold leading-tight text-ink-900">{g.category}</span>
-                    <span className="flex items-center gap-1">
-                      <span className="text-[11px] text-slate-500">
+                    <span className="line-clamp-3 text-[11.5px] font-bold leading-tight text-ink-900">{g.category}</span>
+                    <span className="flex items-center gap-0.5">
+                      <span className="text-[10px] text-slate-500">
                         {g.items.length} item{g.items.length === 1 ? "" : "s"}
                       </span>
                       <ChevronLeft
-                        size={13}
+                        size={11}
                         className="rotate-180 text-slate-300 transition group-hover:text-brand-500"
                       />
                     </span>
@@ -1174,19 +1174,19 @@ function ProductCard({
           the bottom — a compact grid the cashier taps to sell. */}
       <button
         onClick={() => onAdd(p)}
-        className="card flex aspect-square w-full flex-col p-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+        className="card flex aspect-square w-full flex-col p-2 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
       >
         {p.image && (
-          <div className="mb-1.5 h-1/2 w-full overflow-hidden rounded-lg bg-slate-100">
+          <div className="mb-1 h-1/2 w-full overflow-hidden rounded-lg bg-slate-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
           </div>
         )}
         {/* Name and price only — the cashier taps the tile to sell. Item code,
-            stock and status stay on the Inventory screen. `pr-5` keeps the name
+            stock and status stay on the Inventory screen. `pr-4` keeps the name
             clear of the favourite star in the top-right corner. */}
-        <p className="line-clamp-2 pr-5 text-[13px] font-semibold leading-tight text-ink-800">{p.name}</p>
-        <span className="mt-auto pt-1 text-sm font-bold text-brand-600">{usd(p.price)}</span>
+        <p className="line-clamp-2 pr-4 text-[11.5px] font-semibold leading-tight text-ink-800">{p.name}</p>
+        <span className="mt-auto pt-0.5 text-[13px] font-bold text-brand-600">{usd(p.price)}</span>
       </button>
 
       {onToggleFavourite && (
@@ -1199,13 +1199,13 @@ function ProductCard({
           // Always visible once starred; otherwise it appears on hover/focus so
           // the tile stays clean, but never on touch — where there IS no hover,
           // so it has to be there from the start or it's unreachable.
-          className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg transition ${
+          className={`absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-lg transition ${
             p.favourite
               ? "text-amber-400 hover:bg-amber-50 hover:text-amber-500"
               : "text-slate-300 hover:bg-slate-100 hover:text-amber-400 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0"
           }`}
         >
-          <Star size={15} fill={p.favourite ? "currentColor" : "none"} />
+          <Star size={13} fill={p.favourite ? "currentColor" : "none"} />
         </button>
       )}
     </div>
