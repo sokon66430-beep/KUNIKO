@@ -176,6 +176,11 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
   // Cash movements log — every individual cash event, not just the totals. Can
   // open straight away when reached from the till's Cash Movements quick tile.
   const [moves, setMoves] = useState(!!initialMoves);
+  // We run on two currencies, so every USD total also shows its riel value
+  // (converted at the store rate) underneath — readable in both.
+  const rielEq = (v: number) => (
+    <span className="font-bold text-violet-600">{khr(Math.round((v || 0) * (rate || 4100)))}</span>
+  );
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -195,14 +200,15 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onCh
         </div>
       )}
 
-      {/* The TILL — what should be in the drawer right now. */}
+      {/* The TILL — what should be in the drawer right now. Every dollar total
+          also shows its riel value underneath (we run on two currencies). */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Opening Float" value={usd(d.opening)} accent="violet" />
-        <StatCard label="Cash Sales" value={usd(d.cashSales)} sub={`${usd(d.sales.total)} all payments`} accent="brand" />
-        <StatCard label="Card" value={usd(d.sales.card)} accent="violet" />
-        <StatCard label="E-wallet" value={usd(d.sales.ewallet)} accent="violet" />
+        <StatCard label="Opening Float" value={usd(d.opening)} sub={rielEq(d.opening)} accent="violet" />
+        <StatCard label="Cash Sales" value={usd(d.cashSales)} sub={rielEq(d.cashSales)} accent="brand" />
+        <StatCard label="Card" value={usd(d.sales.card)} sub={rielEq(d.sales.card)} accent="violet" />
+        <StatCard label="E-wallet" value={usd(d.sales.ewallet)} sub={rielEq(d.sales.ewallet)} accent="violet" />
         <CashStat label="Safe Drops" sign="−" usdAmount={d.usd.drop + d.usd.refunds} rielAmount={d.riel.drop + d.riel.refunds} />
-        <StatCard label="Expected Drawer" value={usd(d.expected)} sub="dollars + riel, USD value" accent={over ? "rose" : "emerald"} />
+        <StatCard label="Expected Drawer" value={usd(d.expected)} sub={rielEq(d.expected)} accent={over ? "rose" : "emerald"} />
       </div>
 
       {/* The SAFE — money safe-dropped here, minus what's been transferred to the
