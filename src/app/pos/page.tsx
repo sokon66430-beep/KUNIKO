@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { barcodeIncludes } from "@/lib/barcodes";
 import {
   Search,
@@ -969,6 +970,19 @@ export default function PosPage() {
                     <span className="text-[12.5px] font-bold text-ink-900">Close Shift</span>
                   </button>
                 </div>
+
+                {/* Full Money Management (drawer control + reports). Hidden on a
+                    locked till, which stays on the POS screen. */}
+                {!tillMode && (
+                  <Link
+                    href="/money"
+                    className="card mt-2.5 flex items-center justify-center gap-2 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                  >
+                    <Wallet size={17} className="text-emerald-600" />
+                    <span className="text-[12.5px] font-bold text-ink-900">Money Management</span>
+                    <span className="text-[11px] font-semibold text-slate-400">— drawer, safe &amp; reports</span>
+                  </Link>
+                )}
               </div>
             </div>
           )}
