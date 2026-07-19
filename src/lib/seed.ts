@@ -226,6 +226,7 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
     queue: [],
     shifts: [],
     cashMovements: [],
+    surveys: [],
     meta: {
       nextInvoice: 100001,
       nextPR: 100002,
@@ -245,6 +246,7 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
       queue: { current: 0, updatedAt: new Date().toISOString() },
       nextShift: 1,
       nextCashMovement: 1,
+      nextSurvey: 1,
       business,
     },
   };

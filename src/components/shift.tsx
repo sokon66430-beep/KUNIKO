@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Scale,
+  Printer,
 } from "lucide-react";
 import { api, useFetch } from "@/lib/client";
 import { Badge, StatCard, Modal } from "@/components/ui";
@@ -196,22 +197,124 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
   );
 }
 
+// A printed shift-survey slip — a thermal-receipt style record of the money
+// check. Opens a print window and fires the browser print dialog, the same way
+// invoices print. Dollars and riel are listed separately, note by note.
+function printSurveySlip(survey: any, business: any) {
+  const esc = (s: any) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+  const money = (n: number) => `$${(Math.round((n || 0) * 100) / 100).toFixed(2)}`;
+  const riel = (n: number) => `${(n || 0).toLocaleString("en-US")}៛`;
+  const b = business || {};
+  const contact = [b.address, b.phone].filter(Boolean).join(" · ");
+  const dt = new Date(survey.at);
+  const when = dt.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const c = survey.count || {};
+  const usdLines = (c.denoms || []).filter((x: any) => x.count > 0).map((x: any) => `<div class="ln"><span>$${x.denom} × ${x.count}</span><span>${money(x.denom * x.count)}</span></div>`).join("");
+  const coinLine = c.coins > 0 ? `<div class="ln"><span>Coins</span><span>${money(c.coins)}</span></div>` : "";
+  const rielLines = (c.riel || []).filter((x: any) => x.count > 0).map((x: any) => `<div class="ln"><span>${riel(x.denom)} × ${x.count}</span><span>${riel(x.denom * x.count)}</span></div>`).join("");
+  const v = survey.variance || 0;
+  const verdict = v === 0 ? "MONEY MATCHES" : v < 0 ? `SHORT ${money(Math.abs(v))}` : `OVER ${money(v)}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(survey.id)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Courier New", ui-monospace, monospace; width: 300px; margin: 0 auto; padding: 14px 16px; color: #000; font-size: 12px; }
+  .ctr { text-align: center; }
+  .name { font-weight: 800; font-size: 15px; }
+  .sub { color: #444; font-size: 11px; }
+  .title { font-weight: 800; letter-spacing: 2px; margin-top: 6px; }
+  hr { border: none; border-top: 1px dashed #999; margin: 8px 0; }
+  .ln { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+  .ln span:last-child { font-weight: 700; white-space: nowrap; }
+  .sec { font-weight: 800; font-size: 10px; letter-spacing: 1px; margin-bottom: 2px; }
+  .big { font-size: 14px; font-weight: 800; }
+  .verdict { text-align: center; font-weight: 800; letter-spacing: 1px; padding: 6px; margin-top: 6px; border: 2px solid #000; }
+  .sig { margin-top: 10px; }
+  .sig .row { margin-top: 14px; border-top: 1px solid #000; padding-top: 2px; font-size: 10px; color: #333; }
+  @media print { body { width: auto; } }
+</style></head><body>
+  <div class="ctr">
+    <div class="name">${esc(b.name || "Store")}</div>
+    ${contact ? `<div class="sub">${esc(contact)}</div>` : ""}
+    <div class="title">SHIFT SURVEY</div>
+    <div class="sub">${esc(survey.id)}</div>
+  </div>
+  <hr>
+  <div class="ln"><span>Date</span><span>${esc(when)}</span></div>
+  <div class="ln"><span>Shift</span><span>${esc(survey.shift)} · ${esc(survey.posTerminalId)}</span></div>
+  <div class="ln"><span>Surveyed by</span><span>${esc(survey.by)}</span></div>
+  <hr>
+  <div class="sec">SOLD THIS SHIFT</div>
+  <div class="ln"><span>Total sales</span><span>${money(survey.sales.total)}</span></div>
+  <div class="ln"><span>Cash</span><span>${money(survey.sales.cash)}</span></div>
+  <div class="ln"><span>Card</span><span>${money(survey.sales.card)}</span></div>
+  <div class="ln"><span>E-wallet</span><span>${money(survey.sales.ewallet)}</span></div>
+  <hr>
+  <div class="sec">DRAWER COUNTED</div>
+  ${usdLines || `<div class="ln"><span>No dollar notes</span><span>${money(0)}</span></div>`}
+  ${coinLine}
+  <div class="ln"><span><b>Dollars counted</b></span><span>${money(survey.countedUsd)}</span></div>
+  <hr>
+  ${rielLines || `<div class="ln"><span>No riel notes</span><span>${riel(0)}</span></div>`}
+  <div class="ln"><span><b>Riel counted</b></span><span>${riel(survey.countedRiel)}</span></div>
+  <hr>
+  <div class="ln"><span>Expected cash</span><span>${money(survey.expected)}</span></div>
+  <div class="ln big"><span>Counted (USD)</span><span>${money(survey.counted)}</span></div>
+  <div class="ln big"><span>Variance</span><span>${v > 0 ? "+" : ""}${money(v)}</span></div>
+  <div class="verdict">${esc(verdict)}</div>
+  ${survey.note ? `<hr><div class="sub">Note: ${esc(survey.note)}</div>` : ""}
+  <div class="sig">
+    <div class="row">Counted by</div>
+    <div class="row">Verified by (supervisor)</div>
+  </div>
+  <hr>
+  <div class="ctr sub">This is a money-check record. The shift is not closed.</div>
+</body></html>`;
+  const w = window.open("", "SURVEY", "width=380,height=640");
+  if (!w) { alert("Allow pop-ups to print the survey slip."); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  // Give the layout a tick, then print.
+  setTimeout(() => { try { w.print(); } catch {} }, 250);
+}
+
 // Shift survey — a mid-shift CHECK, not a close. The operations team counts the
 // drawer whenever they want to verify the till: it shows what sold, the cash the
 // drawer should hold, what was actually counted, and a plain verdict — does the
 // money MATCH or not? Counting here changes nothing and never ends the shift.
+// Saving records the survey and PRINTS a slip that captures everything.
 export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: number; onClose: () => void }) {
   const [count, setCount] = useState<CashCount>(emptyCount());
+  const { data: business } = useFetch<any>("/api/business");
+  const [busy, setBusy] = useState(false);
   const d = shift.drawer;
   const expected = d.expected;
   const counted = countTotal(count, rate);
   const variance = Math.round((counted - expected) * 100) / 100;
   const matched = variance === 0;
 
+  async function saveAndPrint() {
+    setBusy(true);
+    try {
+      const survey = await api("/api/shift-surveys", { method: "POST", body: JSON.stringify({ shiftId: shift.id, count }) });
+      // Close the survey first, then print — the print dialog blocks the thread,
+      // so closing beforehand keeps the till clean behind the slip.
+      onClose();
+      printSurveySlip(survey, business);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Modal open onClose={onClose} size="2xl" title={`Shift Survey · Shift ${shift.shift} · ${shift.posTerminalId}`} footer={
-      <div className="flex w-full justify-end">
-        <button className="btn-primary" onClick={onClose}>Done</button>
+      <div className="flex w-full justify-end gap-2">
+        <button className="btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" disabled={busy || counted <= 0} onClick={saveAndPrint}>
+          <Printer size={16} /> {busy ? "Saving…" : "Save & print survey"}
+        </button>
       </div>
     }>
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
@@ -243,7 +346,7 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
               </p>
             </div>
           )}
-          <p className="text-xs text-slate-400">This is a check only — it doesn&apos;t record anything or close the shift.</p>
+          <p className="text-xs text-slate-400">Saving records this survey and prints a slip with everything — the shift stays open.</p>
         </div>
       </div>
     </Modal>

@@ -57,8 +57,10 @@ function backfill(db: DB): DB {
   // empty books and a sensible default drawer ceiling.
   if (!db.shifts) db.shifts = [];
   if (!db.cashMovements) db.cashMovements = [];
+  if (!db.surveys) db.surveys = [];
   if (db.meta.nextShift == null) db.meta.nextShift = 1;
   if (db.meta.nextCashMovement == null) db.meta.nextCashMovement = 1;
+  if (db.meta.nextSurvey == null) db.meta.nextSurvey = 1;
   if (db.meta.business && db.meta.business.cashDrawerLimit == null) db.meta.business.cashDrawerLimit = 500;
   if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
   if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;

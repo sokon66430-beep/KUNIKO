@@ -556,6 +556,29 @@ export type CashMovement = {
   approvedAt?: string;
 };
 
+// A mid-shift money check (the "shift survey"): the drawer is counted and
+// checked against what the sales say it should hold, WITHOUT closing the shift.
+// Each survey is recorded and a slip is printed, so there's a paper + data trail
+// of every check. Dollars and riel counted are kept separate.
+export type ShiftSurvey = {
+  id: string; // SV-000001
+  shiftId: string;
+  posTerminalId: string;
+  shift: ShiftName;
+  at: string;
+  by: string; // who ran it (session name)
+  byId: string; // session uid
+  expected: number; // USD the drawer should hold
+  counted: number; // USD-equivalent counted
+  variance: number; // counted − expected (negative = short)
+  matched: boolean;
+  countedUsd: number; // dollars counted, face value
+  countedRiel: number; // riel counted, note face value — kept separate
+  count: CashCount; // full denomination snapshot
+  sales: { total: number; cash: number; card: number; ewallet: number };
+  note?: string;
+};
+
 // ---------------------------------------------------------------------------
 // Procurement: Purchase Request → Purchase Order → Goods Receiving → Stock
 // ---------------------------------------------------------------------------
@@ -804,6 +827,7 @@ export type DB = {
   queue: QueueTicket[];
   shifts: Shift[];
   cashMovements: CashMovement[];
+  surveys: ShiftSurvey[];
   meta: {
     nextInvoice: number;
     nextPR: number;
@@ -826,6 +850,7 @@ export type DB = {
     queue: { current: number; updatedAt: string };
     nextShift: number;
     nextCashMovement: number;
+    nextSurvey: number;
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().
     supplierTaxInitialized?: boolean;
