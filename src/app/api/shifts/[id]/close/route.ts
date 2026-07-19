@@ -4,7 +4,7 @@ import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { countTotal, drawerFor } from "@/lib/money";
-import { canApproveCash } from "@/lib/access";
+import { findManagerByCode } from "@/lib/managerAuth";
 import type { CashCount } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -19,16 +19,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const body = await req.json().catch(() => ({}));
   const closingCount: CashCount | undefined = body.closingCount;
   const varianceReason = String(body.varianceReason || "").trim();
+
+  // Closing a shift is a manager-only function: a store manager / assistant store
+  // manager (or owner) must approve. Verify the code before touching the shift.
+  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId });
+  if (!mgr) {
+    return NextResponse.json(
+      { error: "Manager code not recognised — only a store manager or assistant store manager can close a shift." },
+      { status: 403 },
+    );
+  }
   const actor = await currentActor();
 
   const result = await mutateDB((db) => {
     const shift = db.shifts.find((s) => s.id === params.id);
     if (!shift) return { error: "not_found" as const };
     if (shift.status !== "open") return { error: "not_open" as const };
-    // The owning cashier or a supervisor may submit the count.
-    if (shift.cashierId !== session.uid && !canApproveCash(session.role)) {
-      return { error: "forbidden" as const };
-    }
 
     const drawer = drawerFor(db, shift);
     const actualCash = countTotal(closingCount, db.meta.business.exchangeRate);
@@ -50,7 +56,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       entity: `Shift ${shift.id}`,
       detail: `Close submitted · expected ${drawer.expected.toFixed(2)} · counted ${actualCash.toFixed(2)} · variance ${
         variance >= 0 ? "+" : ""
-      }${variance.toFixed(2)}${variance !== 0 ? ` · ${varianceReason}` : ""}`,
+      }${variance.toFixed(2)}${variance !== 0 ? ` · ${varianceReason}` : ""} · approved by ${mgr.name}`,
     });
     return { shift, variance };
   });
@@ -58,7 +64,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if ("error" in result) {
     if (result.error === "not_found") return NextResponse.json({ error: "Shift not found" }, { status: 404 });
     if (result.error === "not_open") return NextResponse.json({ error: "This shift isn't open" }, { status: 400 });
-    if (result.error === "forbidden") return NextResponse.json({ error: "Only the shift's cashier or a supervisor can close it" }, { status: 403 });
     return NextResponse.json({ error: `A reason is required for a variance of ${result.variance}`, variance: result.variance }, { status: 400 });
   }
   return NextResponse.json(result);

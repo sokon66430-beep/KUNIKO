@@ -1000,6 +1000,11 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [busy, setBusy] = useState(false);
+  // Closing is a manager-only function — a store manager / assistant store
+  // manager must enter their code to unlock it. Held for the submit so the
+  // server can re-verify (a client gate alone can be bypassed).
+  const [mgr, setMgr] = useState<{ name: string } | null>(null);
+  const [mgrCode, setMgrCode] = useState("");
   const expected = shift.drawer.expected;
   const actual = countTotal(count, rate);
   const variance = Math.round((actual - expected) * 100) / 100;
@@ -1007,7 +1012,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
   async function submit() {
     setBusy(true);
     try {
-      const res = await api(`/api/shifts/${shift.id}/close`, { method: "POST", body: JSON.stringify({ closingCount: count, varianceReason: reason }) });
+      const res = await api(`/api/shifts/${shift.id}/close`, { method: "POST", body: JSON.stringify({ closingCount: count, varianceReason: reason, managerCode: mgrCode }) });
       // Close the modal first, then print — the print dialog blocks the thread.
       onDone();
       const closed = res?.shift || {
@@ -1018,6 +1023,25 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
       printCloseSlip(closed, business);
     } catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
+  }
+
+  // Gate: no count / close UI until a manager code is accepted.
+  if (!mgr) {
+    return (
+      <ManagerGate
+        title="Close Shift — manager only"
+        hint="A store manager or assistant store manager must approve closing this shift. Enter your manager code to continue."
+        actionLabel="Unlock close"
+        codeLabel="Manager code"
+        verify={async (code) => {
+          const r = await api<{ ok: boolean; name: string }>("/api/verify-manager", { method: "POST", body: JSON.stringify({ code }) });
+          setMgrCode(code);
+          return { name: r.name };
+        }}
+        onOk={(m) => setMgr(m)}
+        onClose={onClose}
+      />
+    );
   }
 
   return (
