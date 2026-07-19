@@ -263,12 +263,14 @@ export function Td({
   children,
   align = "left",
   className = "",
+  colSpan,
 }: {
   children?: ReactNode;
   align?: Align;
   className?: string;
+  colSpan?: number;
 }) {
-  return <td className={`py-2.5 ${ALIGN[align]} ${className}`}>{children}</td>;
+  return <td colSpan={colSpan} className={`py-2.5 ${ALIGN[align]} ${className}`}>{children}</td>;
 }
 
 export function Modal({

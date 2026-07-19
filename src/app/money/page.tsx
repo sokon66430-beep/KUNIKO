@@ -307,6 +307,16 @@ function ReportTab() {
                           <Td align="right" className="font-semibold">{usd(d.usdEquivalent)}</Td>
                         </Tr>
                       ))}
+                      {/* Totals — dollars and riel each summed on their own, plus
+                          the combined USD value. */}
+                      <Tr className="border-t-2 border-slate-200 bg-slate-50/60">
+                        <Td colSpan={5} className="font-bold uppercase tracking-wide text-slate-500">
+                          Total · {num(data.dropTotals.count)} drop{data.dropTotals.count === 1 ? "" : "s"}
+                        </Td>
+                        <Td align="right" className="font-extrabold text-brand-700">{data.dropTotals.usd > 0 ? usd(data.dropTotals.usd) : "—"}</Td>
+                        <Td align="right" className="font-extrabold text-violet-700">{data.dropTotals.riel > 0 ? `${data.dropTotals.riel.toLocaleString()}៛` : "—"}</Td>
+                        <Td align="right" className="font-extrabold text-ink-900">{usd(data.dropTotals.usdEquivalent)}</Td>
+                      </Tr>
                     </TBody>
                   </Table>
                 </div>
