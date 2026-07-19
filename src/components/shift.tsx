@@ -20,7 +20,7 @@ import {
   ClipboardCheck,
   Scale,
 } from "lucide-react";
-import { api } from "@/lib/client";
+import { api, useFetch } from "@/lib/client";
 import { Badge, StatCard, Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { usd, timeOnly } from "@/lib/format";
@@ -292,10 +292,61 @@ function ReasonSelect({ label, options, sel, onSel, other, onOther }: {
   );
 }
 
-export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate }: {
+// Safe Drop report — how much this shift has moved to the safe, with DOLLARS and
+// RIEL kept SEPARATE (never merged into one figure), plus a line-by-line list so
+// the safe can be counted note-for-note in each currency. Shown right beside the
+// drop form so the cashier sees the running total as they drop.
+export function SafeDropReport({ shiftId }: { shiftId: string }) {
+  const { data, loading } = useFetch<any>(`/api/cash-report?shiftId=${shiftId}`);
+  const t = data?.dropTotals;
+  const drops: any[] = data?.drops ?? [];
+  const count = t?.count ?? 0;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <Vault size={13} /> Dropped this shift
+        </p>
+        {/* Dollars and riel side by side — separate, never combined. */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="rounded-xl bg-brand-50 px-3 py-2.5 ring-1 ring-brand-100">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-brand-500">In Dollars</p>
+            <p className="text-lg font-extrabold tabular-nums text-brand-700">{usd(t?.usd ?? 0)}</p>
+          </div>
+          <div className="rounded-xl bg-violet-50 px-3 py-2.5 ring-1 ring-violet-100">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500">In Riel</p>
+            <p className="text-lg font-extrabold tabular-nums text-violet-700">{khr(t?.riel ?? 0)}</p>
+          </div>
+        </div>
+        <div className="mt-2.5 flex items-center justify-between border-t border-dashed border-slate-200 pt-2.5 text-xs">
+          <span className="text-slate-500">{count} drop{count === 1 ? "" : "s"} · USD equivalent</span>
+          <span className="font-bold tabular-nums text-ink-800">{usd(t?.usdEquivalent ?? 0)}</span>
+        </div>
+      </div>
+      {loading && !data ? (
+        <p className="px-1 py-2 text-sm text-slate-400">Loading…</p>
+      ) : drops.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-400">No safe drops yet this shift.</p>
+      ) : (
+        <div className="max-h-56 space-y-1.5 overflow-y-auto pr-0.5">
+          {drops.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+              <span className="w-12 shrink-0 text-xs font-semibold text-slate-400">{timeOnly(d.at)}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-500">{d.reason || "Safe drop"}</span>
+              <span className="w-16 shrink-0 text-right font-bold tabular-nums text-brand-700">{d.usd > 0 ? usd(d.usd) : "—"}</span>
+              <span className="w-20 shrink-0 text-right font-bold tabular-nums text-violet-700">{d.riel > 0 ? khr(d.riel) : "—"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate, shift }: {
   type: CashMovementType; onClose: () => void;
   onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string }) => Promise<void>;
-  drawer: Drawer; drawerLimit: number; rate: number;
+  drawer: Drawer; drawerLimit: number; rate: number; shift?: ShiftView;
 }) {
   const meta = MV_META[type];
   const recDrop = type === "DROP" && drawerLimit > 0 ? Math.max(0, Math.round((drawer.expected - drawerLimit) * 100) / 100) : 0;
@@ -325,13 +376,11 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
 
   const chip = "rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-[0.97]";
 
-  return (
-    <Modal open onClose={onClose} size="lg" title={meta.title} footer={
-      <div className="flex w-full justify-end gap-2">
-        <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>{busy ? "Saving…" : `Record ${usd(totalUsd)}`}</button>
-      </div>
-    }>
+  // On a Safe Drop, show the running Safe Drop report beside the form.
+  const showReport = type === "DROP" && !!shift;
+
+  const form = (
+    <>
       <p className="mb-3 text-sm text-slate-500">{meta.hint}</p>
       {type === "DROP" && recDrop > 0 && (
         <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">Recommended drop to reach the {usd(drawerLimit)} limit: {usd(recDrop)}</p>
@@ -370,6 +419,22 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
       </div>
       <label className="label">Notes (optional)</label>
       <input value={notes} onChange={(e) => setNotes(e.target.value)} className="input" />
+    </>
+  );
+
+  return (
+    <Modal open onClose={onClose} size={showReport ? "2xl" : "lg"} title={meta.title} footer={
+      <div className="flex w-full justify-end gap-2">
+        <button className="btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>{busy ? "Saving…" : `Record ${usd(totalUsd)}`}</button>
+      </div>
+    }>
+      {showReport ? (
+        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+          <div>{form}</div>
+          <div className="lg:sticky lg:top-0 lg:self-start"><SafeDropReport shiftId={shift!.id} /></div>
+        </div>
+      ) : form}
     </Modal>
   );
 }

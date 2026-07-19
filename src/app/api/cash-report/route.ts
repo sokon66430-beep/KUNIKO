@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   const terminal = p.get("posTerminalId");
   const cashier = p.get("cashier");
   const shiftName = p.get("shift");
+  const shiftId = p.get("shiftId"); // one specific shift — the till's live Safe Drop report
 
   let shifts = [...db.shifts];
   if (day) shifts = shifts.filter((s) => storeToday(new Date(s.openedAt)) === day);
@@ -90,6 +91,7 @@ export async function GET(req: Request) {
   // note in each currency. Older drops recorded before the split are all-USD.
   const shiftById = new Map(db.shifts.map((s) => [s.id, s]));
   let dropMoves = db.cashMovements.filter((m) => m.type === "DROP");
+  if (shiftId) dropMoves = dropMoves.filter((m) => m.shiftId === shiftId);
   if (day) dropMoves = dropMoves.filter((m) => storeToday(new Date(m.at)) === day);
   if (terminal) dropMoves = dropMoves.filter((m) => m.posTerminalId === terminal);
   if (cashier) dropMoves = dropMoves.filter((m) => m.createdBy === cashier);
