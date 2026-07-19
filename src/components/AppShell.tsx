@@ -62,6 +62,16 @@ function ShellInner({ children }: { children: ReactNode }) {
     if (pathname !== "/pos") router.replace("/pos");
   }, [ready, tillMode, pathname, router]);
 
+  // On a till the screen is PINNED — lock the page so it can't be scrolled or
+  // dragged up/down/left/right (a real cash register doesn't pan). Inner panels
+  // still scroll on their own if content is taller than the screen.
+  useEffect(() => {
+    if (!ready) return;
+    const root = document.documentElement;
+    root.classList.toggle("till-locked", tillMode);
+    return () => root.classList.remove("till-locked");
+  }, [ready, tillMode]);
+
   if (pathname === "/login" || pathname === "/register") return <Suspense>{children}</Suspense>;
 
   // Locked till: slim bar, no sidebar, POS only. While a stray URL is being
@@ -70,8 +80,10 @@ function ShellInner({ children }: { children: ReactNode }) {
     return (
       <>
         <TillBar />
-        <main className="min-h-screen pt-[52px]">
-          <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
+        {/* Fixed frame under the till bar — the screen never pans; only the
+            content inside scrolls, and only if it's taller than the screen. */}
+        <main className="fixed inset-x-0 bottom-0 top-[52px] overflow-hidden">
+          <div className="mx-auto h-full max-w-6xl overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 lg:px-10">
             {pathname === "/pos" ? <Suspense>{children}</Suspense> : null}
           </div>
         </main>

@@ -286,6 +286,18 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background-clip: content-box;
 }
 
+/* Till Mode — pin the screen. The page can't scroll, bounce or pan in any
+   direction; only panels inside the fixed till frame scroll on their own. */
+html.till-locked,
+html.till-locked body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
 /* Keep the printable PO sheet white even in dark mode (placed AFTER the
    general surface rules so it wins on specificity ties). */
 html.dark .po-sheet,
