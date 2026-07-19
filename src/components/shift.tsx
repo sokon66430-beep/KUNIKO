@@ -20,6 +20,8 @@ import {
   ClipboardCheck,
   Scale,
   Printer,
+  ArrowLeftRight,
+  Inbox,
 } from "lucide-react";
 import { api, useFetch } from "@/lib/client";
 import { Badge, StatCard, Modal } from "@/components/ui";
@@ -144,6 +146,8 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
   const recDrop = over ? Math.max(0, Math.round((d.expected - drawerLimit) * 100) / 100) : 0;
   // Shift survey — count the drawer to check it matches, WITHOUT closing.
   const [survey, setSurvey] = useState(false);
+  // Cash movements log — every individual cash event, not just the totals.
+  const [moves, setMoves] = useState(false);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -188,11 +192,13 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
         <button className="btn-ghost" onClick={() => onMovement("CASH_IN")}><PlusCircle size={16} /> Cash In</button>
         <button className="btn-ghost" onClick={() => onMovement("CASH_OUT")}><MinusCircle size={16} /> Cash Out</button>
         <button className="btn-ghost" onClick={() => onMovement("DROP")}><Vault size={16} /> Safe Drop</button>
+        <button className="btn-ghost" onClick={() => setMoves(true)}><ArrowLeftRight size={16} /> Cash movements</button>
         <button className="btn-ghost ml-auto ring-1 ring-brand-200 text-brand-700" onClick={() => setSurvey(true)}><Scale size={16} /> Shift survey</button>
         <button className="btn-primary" onClick={onClose}><Lock size={16} /> Close shift &amp; count</button>
       </div>
 
       {survey && <SurveyModal shift={shift} rate={rate} onClose={() => setSurvey(false)} />}
+      {moves && <CashMovementsModal shift={shift} onClose={() => setMoves(false)} />}
     </div>
   );
 }
@@ -426,6 +432,101 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
           <p className="text-xs text-slate-400">Saving records this survey and prints a slip with everything — the shift stays open.</p>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// How each movement type reads in the log — label, colour, and the sign it has
+// on the drawer (money in is +, money out/drop/refund is −).
+const MV_LOG: Record<CashMovementType, { label: string; cls: string; sign: string }> = {
+  CASH_IN: { label: "Cash In", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200", sign: "+" },
+  CASH_OUT: { label: "Cash Out", cls: "bg-amber-50 text-amber-700 ring-amber-200", sign: "−" },
+  DROP: { label: "Safe Drop", cls: "bg-violet-50 text-violet-700 ring-violet-200", sign: "−" },
+  REFUND: { label: "Refund", cls: "bg-rose-50 text-rose-700 ring-rose-200", sign: "−" },
+};
+
+// The Cash Movements log — every individual cash event captured at the till, not
+// just the running totals: cash in, cash out, safe drops and refunds, each with
+// its time, who did it, the reason, and the dollars and riel kept separate.
+// Toggle between just this shift and all recent movements across the store.
+export function CashMovementsModal({ shift, onClose }: { shift: ShiftView; onClose: () => void }) {
+  const [scope, setScope] = useState<"shift" | "all">("shift");
+  const url = scope === "shift" ? `/api/cash-movements?shiftId=${shift.id}` : "/api/cash-movements";
+  const { data, loading } = useFetch<any[]>(url);
+  const moves = data ?? [];
+  const d = shift.drawer;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="2xl"
+      title={`Cash Movements · Shift ${shift.shift} · ${shift.posTerminalId}`}
+      footer={<div className="flex w-full justify-end"><button className="btn-primary" onClick={onClose}>Done</button></div>}
+    >
+      {/* Scope toggle. */}
+      <div className="mb-4 inline-flex rounded-xl bg-slate-100 p-1">
+        {([["shift", "This shift"], ["all", "All recent"]] as const).map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setScope(v)}
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${scope === v ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* This-shift cash picture — the totals every movement rolls up into. */}
+      {scope === "shift" && (
+        <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <StatCard label="Opening" value={usd(d.opening)} accent="violet" />
+          <StatCard label="Cash Sales" value={usd(d.cashSales)} accent="brand" />
+          <StatCard label="Cash In" value={`+${usd(d.cashIn)}`} accent="emerald" />
+          <StatCard label="Cash Out" value={`-${usd(d.cashOut)}`} accent="amber" />
+          <StatCard label="Drops" value={`-${usd(d.drop)}`} accent="amber" />
+          <StatCard label="Expected" value={usd(d.expected)} accent="emerald" />
+        </div>
+      )}
+
+      {/* The log itself. */}
+      {loading && !data ? (
+        <p className="px-1 py-6 text-center text-sm text-slate-400">Loading movements…</p>
+      ) : moves.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-10 text-center">
+          <Inbox size={22} className="text-slate-300" />
+          <p className="text-sm font-medium text-slate-500">No cash movements {scope === "shift" ? "this shift" : "yet"}.</p>
+          <p className="text-xs text-slate-400">Cash in, cash out, safe drops and refunds show up here.</p>
+        </div>
+      ) : (
+        <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-0.5">
+          {moves.map((m) => {
+            const meta = MV_LOG[m.type as CashMovementType] || { label: m.type, cls: "bg-slate-100 text-slate-600 ring-slate-200", sign: "" };
+            const usdPart = m.amountUsd ?? m.amount ?? 0;
+            const rielPart = m.amountRiel ?? 0;
+            return (
+              <div key={m.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${meta.cls}`}>{meta.label}</span>
+                    <span className="truncate text-sm font-semibold text-ink-800">{m.reason || "—"}</span>
+                    {m.status === "pending" && <span className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 ring-1 ring-amber-200">Pending</span>}
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-400">
+                    {timeOnly(m.at)} · {m.createdBy || "—"}
+                    {scope === "all" ? ` · ${m.posTerminalId}` : ""}
+                    {m.notes ? ` · ${m.notes}` : ""}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm font-bold tabular-nums text-ink-900">{meta.sign}{usd(usdPart)}</p>
+                  {rielPart > 0 && <p className="text-xs font-semibold tabular-nums text-violet-600">{meta.sign}{khr(rielPart)}</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Modal>
   );
 }
