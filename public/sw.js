@@ -1,29 +1,17 @@
-/* Stookii service worker — enables "Install app" and keeps the till usable if
-   the connection blips. Network-FIRST everywhere (a POS must show live data);
-   only the page shell is cached, as an offline fallback so the screen is never
-   blank. API calls are never cached. */
-const SHELL = "stookii-shell-v1";
-
+/* Stookii service worker — its only job is to make the app installable
+   ("Install app" / "Add to Home Screen"). It does NOT cache anything: a POS
+   must always show live data, and a cached page shell could serve a stale
+   screen after a deploy. So it just passes navigations straight to the network. */
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
-
+self.addEventListener("activate", (event) => {
+  // Drop any shell cached by an older version of this worker.
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).then(() => self.clients.claim()),
+  );
+});
 self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return; // let cross-origin through
-  if (url.pathname.startsWith("/api/")) return; // never cache live data
-
-  // Page navigations: try the network, fall back to the last cached shell.
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then((c) => c || caches.match("/"))),
-    );
+  // A fetch handler is required for installability. Network pass-through only.
+  if (event.request.mode === "navigate") {
+    event.respondWith(fetch(event.request));
   }
 });
