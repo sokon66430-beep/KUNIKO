@@ -130,3 +130,44 @@ export async function POST(req: Request) {
   }
   return NextResponse.json(result.movement, { status: 201 });
 }
+
+// Delete a cash movement recorded by mistake. Only while the shift is still
+// OPEN (a closed shift is locked), and only by a supervisor or the person who
+// recorded it. The removal is written to the audit trail — a cash record is
+// never silently erased, and the drawer recomputes without it.
+export async function DELETE(req: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Missing movement id" }, { status: 400 });
+
+  const actor = await currentActor();
+  const result = await mutateDB((db) => {
+    const m = db.cashMovements.find((x) => x.id === id);
+    if (!m) return { error: "not_found" as const };
+    const shift = db.shifts.find((s) => s.id === m.shiftId);
+    if (!shift) return { error: "not_found" as const };
+    if (shift.status !== "open") return { error: "locked" as const };
+    // A supervisor can remove any movement on the open shift; anyone else may
+    // only remove their own (undo their own mistake).
+    if (!canApproveCash(session.role) && m.cashierId !== session.uid) return { error: "forbidden" as const };
+
+    db.cashMovements = db.cashMovements.filter((x) => x.id !== id);
+    const money = `$${(m.amountUsd ?? m.amount).toFixed(2)}${m.amountRiel ? ` + ${m.amountRiel.toLocaleString()}៛` : ""}`;
+    logAudit(db, {
+      actor,
+      action: "Removed",
+      entityType: "Sale",
+      entity: `${LABEL[m.type]} ${m.id}`,
+      detail: `${shift.posTerminalId} · Shift ${shift.shift} · Deleted ${LABEL[m.type]} ${money} · was: ${m.reason}`,
+    });
+    return { ok: true as const };
+  });
+
+  if ("error" in result) {
+    if (result.error === "not_found") return NextResponse.json({ error: "That movement no longer exists" }, { status: 404 });
+    if (result.error === "forbidden") return NextResponse.json({ error: "Only a supervisor, or the person who recorded it, can delete this movement" }, { status: 403 });
+    return NextResponse.json({ error: "This shift is closed — its cash movements are locked" }, { status: 400 });
+  }
+  return NextResponse.json({ ok: true });
+}

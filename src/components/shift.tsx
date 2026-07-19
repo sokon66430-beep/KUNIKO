@@ -23,8 +23,10 @@ import {
   ArrowLeftRight,
   Inbox,
   Landmark,
+  Trash2,
 } from "lucide-react";
 import { api, useFetch } from "@/lib/client";
+import { confirmDialog } from "@/components/confirm";
 import { Badge, StatCard, Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { usd, timeOnly } from "@/lib/format";
@@ -164,8 +166,8 @@ function CashStat({ label, sign, usdAmount, rielAmount }: {
 // The live shift summary — the "shift survey" the cashier reads at a glance:
 // where the drawer stands right now (opening float, what's sold, cash movements
 // and the expected cash to count). The action buttons underneath run the drawer.
-export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
-  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void;
+export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onChanged }: {
+  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void; onChanged?: () => void;
 }) {
   const d = shift.drawer;
   const over = drawerLimit > 0 && d.expected > drawerLimit;
@@ -226,7 +228,7 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
       </div>
 
       {survey && <SurveyModal shift={shift} rate={rate} onClose={() => setSurvey(false)} />}
-      {moves && <CashMovementsModal shift={shift} onClose={() => setMoves(false)} />}
+      {moves && <CashMovementsModal shift={shift} onClose={() => setMoves(false)} onChanged={onChanged} />}
     </div>
   );
 }
@@ -513,12 +515,38 @@ const MV_LOG: Record<CashMovementType, { label: string; cls: string; sign: strin
 // just the running totals: cash in, cash out, safe drops and refunds, each with
 // its time, who did it, the reason, and the dollars and riel kept separate.
 // Toggle between just this shift and all recent movements across the store.
-export function CashMovementsModal({ shift, onClose }: { shift: ShiftView; onClose: () => void }) {
+export function CashMovementsModal({ shift, onClose, onChanged }: { shift: ShiftView; onClose: () => void; onChanged?: () => void }) {
   const [scope, setScope] = useState<"shift" | "all">("shift");
   const url = scope === "shift" ? `/api/cash-movements?shiftId=${shift.id}` : "/api/cash-movements";
-  const { data, loading } = useFetch<any[]>(url);
+  const { data, loading, reload } = useFetch<any[]>(url);
   const moves = data ?? [];
   const d = shift.drawer;
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Remove a movement entered by mistake. Confirm first (it changes the drawer),
+  // then refresh this list and the drawer behind it. The server records the
+  // deletion in the audit trail and only allows it on an open shift.
+  async function del(m: any) {
+    const money = `${usd(m.amountUsd ?? m.amount ?? 0)}${(m.amountRiel ?? 0) > 0 ? ` + ${khr(m.amountRiel)}` : ""}`;
+    const meta = MV_LOG[m.type as CashMovementType];
+    const ok = await confirmDialog({
+      title: `Delete this ${meta?.label ?? "movement"}?`,
+      message: `Remove the ${meta?.label ?? "movement"} of ${money} (${m.reason || "no reason"})? It will be taken off the drawer. This is recorded in the audit trail.`,
+      confirmText: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setDeleting(m.id);
+    try {
+      await api(`/api/cash-movements?id=${encodeURIComponent(m.id)}`, { method: "DELETE" });
+      reload();
+      onChanged?.();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   return (
     <Modal
@@ -586,6 +614,18 @@ export function CashMovementsModal({ shift, onClose }: { shift: ShiftView; onClo
                   <p className="text-sm font-bold tabular-nums text-ink-900">{meta.sign}{usd(usdPart)}</p>
                   {rielPart > 0 && <p className="text-xs font-semibold tabular-nums text-violet-600">{meta.sign}{khr(rielPart)}</p>}
                 </div>
+                {/* Delete a movement recorded by mistake — only for this open
+                    shift (movements on a closed shift are locked). */}
+                {m.shiftId === shift.id && (
+                  <button
+                    onClick={() => del(m)}
+                    disabled={deleting === m.id}
+                    title="Delete this movement"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             );
           })}

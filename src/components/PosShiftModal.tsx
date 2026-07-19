@@ -118,7 +118,7 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
               <Spinner label="Loading shift…" />
             ) : current ? (
               // Live shift: summary + drawer actions + close & count.
-              <DrawerView shift={current} drawerLimit={drawerLimit} rate={rate} onMovement={setMv} onClose={() => setClosing(true)} />
+              <DrawerView shift={current} drawerLimit={drawerLimit} rate={rate} onMovement={setMv} onClose={() => setClosing(true)} onChanged={reload} />
             ) : pending ? (
               // Already counted and submitted — waiting on a supervisor to approve.
               <div className="space-y-5">
