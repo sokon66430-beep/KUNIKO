@@ -30,6 +30,7 @@ import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/ma
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
 import { SearchSelect } from "@/components/SearchSelect";
+import { Select } from "@/components/Select";
 import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
@@ -891,6 +892,9 @@ export default function PosPage() {
               ) : (
                 <div className="space-y-3">
                   {lines.map((l) => (
+                    // Fixed columns so every row lines up: name (flex) · stepper ·
+                    // line total · bin — same widths on each line regardless of the
+                    // product name's length.
                     <div key={lineKey(l.product, l.markdown, l.unit)} className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
                         {/* The packaging badge sits OUTSIDE the truncating name:
@@ -913,7 +917,7 @@ export default function PosPage() {
                             <span className="text-slate-400 line-through">{usd(l.markdown.originalPrice)}</span>
                           </p>
                         ) : (
-                          <p className="text-xs text-slate-400">
+                          <p className="truncate text-xs text-slate-400">
                             {usd(linePrice(l))} each
                             {/* Say what a case actually takes off the shelf — the
                                 cashier is counting cases, stock counts cans. */}
@@ -922,32 +926,34 @@ export default function PosPage() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
+                      {/* Stepper — one rounded control so − / qty / + read as a unit
+                          and sit in a fixed-width column on every row. */}
+                      <div className="flex shrink-0 items-center rounded-lg bg-slate-100">
                         <button
                           onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), l.qty - 1)}
                           aria-label="Decrease quantity"
-                          className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
+                          className="grid h-8 w-8 place-items-center rounded-l-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
-                          <Minus size={16} />
+                          <Minus size={15} />
                         </button>
-                        <span className="w-7 text-center text-sm font-bold tabular-nums">{l.qty}</span>
+                        <span className="w-7 text-center text-sm font-bold tabular-nums text-ink-900">{l.qty}</span>
                         <button
                           onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), l.qty + 1)}
                           aria-label="Increase quantity"
-                          className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300"
+                          className="grid h-8 w-8 place-items-center rounded-r-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
-                          <Plus size={16} />
+                          <Plus size={15} />
                         </button>
                       </div>
-                      <span className="w-16 shrink-0 text-right text-sm font-bold text-ink-900">
+                      <span className="w-16 shrink-0 text-right text-sm font-bold tabular-nums text-ink-900">
                         {usd(linePrice(l) * l.qty)}
                       </span>
                       <button
                         onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), 0)}
                         aria-label="Remove item"
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:bg-rose-100"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:bg-rose-100"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   ))}
@@ -1401,10 +1407,12 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
             </ul>
             <div className="mt-3">
               <label className="label">Reason (required)</label>
-              <select value={reasonSel} onChange={(e) => setReasonSel(e.target.value)} className="input">
-                <option value="">Select a reason…</option>
-                {CANCEL_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              <Select
+                value={reasonSel}
+                onChange={setReasonSel}
+                placeholder="Select a reason…"
+                options={CANCEL_REASONS.map((r) => ({ value: r, label: r }))}
+              />
               {reasonSel === "Other" && (
                 <input value={reasonOther} onChange={(e) => setReasonOther(e.target.value)} placeholder="Type the reason" className="input mt-2" />
               )}

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/client";
 import { Badge, StatCard, Modal } from "@/components/ui";
+import { Select } from "@/components/Select";
 import { usd, timeOnly } from "@/lib/format";
 import { CASH_DENOMS, RIEL_DENOMS, countTotal } from "@/lib/money";
 import type { CashCount, CashMovementType } from "@/lib/types";
@@ -283,10 +284,7 @@ function ReasonSelect({ label, options, sel, onSel, other, onOther }: {
   return (
     <div>
       <label className="label">{label}</label>
-      <select value={sel} onChange={(e) => onSel(e.target.value)} className="input">
-        <option value="">Select a reason…</option>
-        {options.map((r) => <option key={r} value={r}>{r}</option>)}
-      </select>
+      <Select value={sel} onChange={onSel} placeholder="Select a reason…" options={options.map((r) => ({ value: r, label: r }))} />
       {sel === "Other" && (
         <input value={other} onChange={(e) => onOther(e.target.value)} placeholder="Type the reason" className="input mt-2" autoFocus />
       )}
