@@ -197,25 +197,19 @@ export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose }: {
   );
 }
 
-// A printed shift-survey slip — a thermal-receipt style record of the money
-// check. Opens a print window and fires the browser print dialog, the same way
-// invoices print. Dollars and riel are listed separately, note by note.
-function printSurveySlip(survey: any, business: any) {
-  const esc = (s: any) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
-  const money = (n: number) => `$${(Math.round((n || 0) * 100) / 100).toFixed(2)}`;
-  const riel = (n: number) => `${(n || 0).toLocaleString("en-US")}៛`;
-  const b = business || {};
-  const contact = [b.address, b.phone].filter(Boolean).join(" · ");
-  const dt = new Date(survey.at);
-  const when = dt.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const c = survey.count || {};
-  const usdLines = (c.denoms || []).filter((x: any) => x.count > 0).map((x: any) => `<div class="ln"><span>$${x.denom} × ${x.count}</span><span>${money(x.denom * x.count)}</span></div>`).join("");
-  const coinLine = c.coins > 0 ? `<div class="ln"><span>Coins</span><span>${money(c.coins)}</span></div>` : "";
-  const rielLines = (c.riel || []).filter((x: any) => x.count > 0).map((x: any) => `<div class="ln"><span>${riel(x.denom)} × ${x.count}</span><span>${riel(x.denom * x.count)}</span></div>`).join("");
-  const v = survey.variance || 0;
-  const verdict = v === 0 ? "MONEY MATCHES" : v < 0 ? `SHORT ${money(Math.abs(v))}` : `OVER ${money(v)}`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(survey.id)}</title>
-<style>
+// ---------------------------------------------------------------------------
+// Printed cash slips — thermal-receipt style records for the shift survey, safe
+// drops and shift close. One shared shell (store header + style + print) so all
+// three slips look the same; dollars and riel are always listed separately, note
+// by note, and every slip is stamped with the date and time.
+// ---------------------------------------------------------------------------
+const slipEsc = (s: any) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+const slipMoney = (n: number) => `$${(Math.round((n || 0) * 100) / 100).toFixed(2)}`;
+const slipRiel = (n: number) => `${(n || 0).toLocaleString("en-US")}៛`;
+const slipWhen = (iso?: string) =>
+  (iso ? new Date(iso) : new Date()).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+const SLIP_STYLE = `
   * { box-sizing: border-box; }
   body { font-family: "Courier New", ui-monospace, monospace; width: 300px; margin: 0 auto; padding: 14px 16px; color: #000; font-size: 12px; }
   .ctr { text-align: center; }
@@ -230,52 +224,135 @@ function printSurveySlip(survey: any, business: any) {
   .verdict { text-align: center; font-weight: 800; letter-spacing: 1px; padding: 6px; margin-top: 6px; border: 2px solid #000; }
   .sig { margin-top: 10px; }
   .sig .row { margin-top: 14px; border-top: 1px solid #000; padding-top: 2px; font-size: 10px; color: #333; }
-  @media print { body { width: auto; } }
-</style></head><body>
+  @media print { body { width: auto; } }`;
+
+// Denomination lines for a counted drawer — dollars, coins, riel, kept apart.
+function denomLines(count: any) {
+  const c = count || {};
+  const usdLines = (c.denoms || []).filter((x: any) => x.count > 0).map((x: any) => `<div class="ln"><span>$${x.denom} × ${x.count}</span><span>${slipMoney(x.denom * x.count)}</span></div>`).join("");
+  const coinLine = c.coins > 0 ? `<div class="ln"><span>Coins</span><span>${slipMoney(c.coins)}</span></div>` : "";
+  const rielLines = (c.riel || []).filter((x: any) => x.count > 0).map((x: any) => `<div class="ln"><span>${slipRiel(x.denom)} × ${x.count}</span><span>${slipRiel(x.denom * x.count)}</span></div>`).join("");
+  return { usdLines, coinLine, rielLines };
+}
+
+// Wrap a slip body in the store header + style and fire the print dialog.
+function openSlip(title: string, subtitle: string, inner: string, business: any) {
+  const b = business || {};
+  const contact = [b.address, b.phone].filter(Boolean).join(" · ");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${slipEsc(subtitle || title)}</title>
+<style>${SLIP_STYLE}</style></head><body>
   <div class="ctr">
-    <div class="name">${esc(b.name || "Store")}</div>
-    ${contact ? `<div class="sub">${esc(contact)}</div>` : ""}
-    <div class="title">SHIFT SURVEY</div>
-    <div class="sub">${esc(survey.id)}</div>
+    <div class="name">${slipEsc(b.name || "Store")}</div>
+    ${contact ? `<div class="sub">${slipEsc(contact)}</div>` : ""}
+    <div class="title">${slipEsc(title)}</div>
+    ${subtitle ? `<div class="sub">${slipEsc(subtitle)}</div>` : ""}
   </div>
+  ${inner}
+</body></html>`;
+  const w = window.open("", "SLIP", "width=380,height=640");
+  if (!w) { alert("Allow pop-ups to print the slip."); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { try { w.print(); } catch {} }, 250);
+}
+
+// Shift-survey slip — the mid-shift money check.
+function printSurveySlip(survey: any, business: any) {
+  const { usdLines, coinLine, rielLines } = denomLines(survey.count);
+  const v = survey.variance || 0;
+  const verdict = v === 0 ? "MONEY MATCHES" : v < 0 ? `SHORT ${slipMoney(Math.abs(v))}` : `OVER ${slipMoney(v)}`;
+  const inner = `
   <hr>
-  <div class="ln"><span>Date</span><span>${esc(when)}</span></div>
-  <div class="ln"><span>Shift</span><span>${esc(survey.shift)} · ${esc(survey.posTerminalId)}</span></div>
-  <div class="ln"><span>Surveyed by</span><span>${esc(survey.by)}</span></div>
+  <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(survey.at))}</span></div>
+  <div class="ln"><span>Shift</span><span>${slipEsc(survey.shift)} · ${slipEsc(survey.posTerminalId)}</span></div>
+  <div class="ln"><span>Surveyed by</span><span>${slipEsc(survey.by)}</span></div>
   <hr>
   <div class="sec">SOLD THIS SHIFT</div>
-  <div class="ln"><span>Total sales</span><span>${money(survey.sales.total)}</span></div>
-  <div class="ln"><span>Cash</span><span>${money(survey.sales.cash)}</span></div>
-  <div class="ln"><span>Card</span><span>${money(survey.sales.card)}</span></div>
-  <div class="ln"><span>E-wallet</span><span>${money(survey.sales.ewallet)}</span></div>
+  <div class="ln"><span>Total sales</span><span>${slipMoney(survey.sales.total)}</span></div>
+  <div class="ln"><span>Cash</span><span>${slipMoney(survey.sales.cash)}</span></div>
+  <div class="ln"><span>Card</span><span>${slipMoney(survey.sales.card)}</span></div>
+  <div class="ln"><span>E-wallet</span><span>${slipMoney(survey.sales.ewallet)}</span></div>
   <hr>
   <div class="sec">DRAWER COUNTED</div>
-  ${usdLines || `<div class="ln"><span>No dollar notes</span><span>${money(0)}</span></div>`}
+  ${usdLines || `<div class="ln"><span>No dollar notes</span><span>${slipMoney(0)}</span></div>`}
   ${coinLine}
-  <div class="ln"><span><b>Dollars counted</b></span><span>${money(survey.countedUsd)}</span></div>
+  <div class="ln"><span><b>Dollars counted</b></span><span>${slipMoney(survey.countedUsd)}</span></div>
   <hr>
-  ${rielLines || `<div class="ln"><span>No riel notes</span><span>${riel(0)}</span></div>`}
-  <div class="ln"><span><b>Riel counted</b></span><span>${riel(survey.countedRiel)}</span></div>
+  ${rielLines || `<div class="ln"><span>No riel notes</span><span>${slipRiel(0)}</span></div>`}
+  <div class="ln"><span><b>Riel counted</b></span><span>${slipRiel(survey.countedRiel)}</span></div>
   <hr>
-  <div class="ln"><span>Expected cash</span><span>${money(survey.expected)}</span></div>
-  <div class="ln big"><span>Counted (USD)</span><span>${money(survey.counted)}</span></div>
-  <div class="ln big"><span>Variance</span><span>${v > 0 ? "+" : ""}${money(v)}</span></div>
-  <div class="verdict">${esc(verdict)}</div>
-  ${survey.note ? `<hr><div class="sub">Note: ${esc(survey.note)}</div>` : ""}
+  <div class="ln"><span>Expected cash</span><span>${slipMoney(survey.expected)}</span></div>
+  <div class="ln big"><span>Counted (USD)</span><span>${slipMoney(survey.counted)}</span></div>
+  <div class="ln big"><span>Variance</span><span>${v > 0 ? "+" : ""}${slipMoney(v)}</span></div>
+  <div class="verdict">${slipEsc(verdict)}</div>
+  ${survey.note ? `<hr><div class="sub">Note: ${slipEsc(survey.note)}</div>` : ""}
   <div class="sig">
     <div class="row">Counted by</div>
     <div class="row">Verified by (supervisor)</div>
   </div>
   <hr>
-  <div class="ctr sub">This is a money-check record. The shift is not closed.</div>
-</body></html>`;
-  const w = window.open("", "SURVEY", "width=380,height=640");
-  if (!w) { alert("Allow pop-ups to print the survey slip."); return; }
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  // Give the layout a tick, then print.
-  setTimeout(() => { try { w.print(); } catch {} }, 250);
+  <div class="ctr sub">This is a money-check record. The shift is not closed.</div>`;
+  openSlip("SHIFT SURVEY", survey.id, inner, business);
+}
+
+// Safe-drop slip — cash moved from the till to the store safe. Dollars and riel
+// dropped are recorded separately, stamped with the date and time.
+function printDropSlip(mv: any, shift: ShiftView, business: any) {
+  const usdPart = Math.round((mv?.amountUsd ?? mv?.amount ?? 0) * 100) / 100;
+  const rielPart = mv?.amountRiel ?? 0;
+  const inner = `
+  <hr>
+  <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(mv?.at))}</span></div>
+  <div class="ln"><span>Shift</span><span>${slipEsc(shift.shift)} · ${slipEsc(shift.posTerminalId)}</span></div>
+  <div class="ln"><span>Dropped by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
+  ${mv?.id ? `<div class="ln"><span>Ref</span><span>${slipEsc(mv.id)}</span></div>` : ""}
+  <hr>
+  <div class="sec">DROPPED TO SAFE</div>
+  <div class="ln big"><span>Dollars</span><span>${slipMoney(usdPart)}</span></div>
+  <div class="ln big"><span>Riel</span><span>${slipRiel(rielPart)}</span></div>
+  <hr>
+  <div class="ln"><span>Total (USD equivalent)</span><span>${slipMoney(mv?.amount ?? usdPart)}</span></div>
+  ${mv?.reason ? `<div class="ln"><span>Reason</span><span>${slipEsc(mv.reason)}</span></div>` : ""}
+  ${mv?.notes ? `<div class="sub">Note: ${slipEsc(mv.notes)}</div>` : ""}
+  <div class="sig">
+    <div class="row">Dropped by</div>
+    <div class="row">Received into safe by</div>
+  </div>
+  <hr>
+  <div class="ctr sub">Safe drop record — keep with the safe count.</div>`;
+  openSlip("SAFE DROP", mv?.id || "", inner, business);
+}
+
+// Shift-close slip — the counted drawer submitted for approval.
+function printCloseSlip(shift: any, business: any) {
+  const { usdLines, coinLine, rielLines } = denomLines(shift.closingCount);
+  const v = shift.variance || 0;
+  const verdict = v === 0 ? "BALANCED" : v < 0 ? `SHORT ${slipMoney(Math.abs(v))}` : `OVER ${slipMoney(v)}`;
+  const inner = `
+  <hr>
+  <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(shift.submittedAt))}</span></div>
+  <div class="ln"><span>Shift</span><span>${slipEsc(shift.shift)} · ${slipEsc(shift.posTerminalId)}</span></div>
+  <div class="ln"><span>Cashier</span><span>${slipEsc(shift.cashier)}</span></div>
+  <div class="ln"><span>Opened</span><span>${slipEsc(slipWhen(shift.openedAt))}</span></div>
+  <hr>
+  <div class="sec">DRAWER COUNTED</div>
+  ${usdLines || `<div class="ln"><span>No dollar notes</span><span>${slipMoney(0)}</span></div>`}
+  ${coinLine}
+  ${rielLines}
+  <hr>
+  <div class="ln"><span>Expected cash</span><span>${slipMoney(shift.expectedCash)}</span></div>
+  <div class="ln big"><span>Counted cash</span><span>${slipMoney(shift.actualCash)}</span></div>
+  <div class="ln big"><span>Variance</span><span>${v > 0 ? "+" : ""}${slipMoney(v)}</span></div>
+  <div class="verdict">${slipEsc(verdict)}</div>
+  ${shift.varianceReason ? `<hr><div class="ln"><span>Reason</span><span>${slipEsc(shift.varianceReason)}</span></div>` : ""}
+  <div class="sig">
+    <div class="row">Counted by</div>
+    <div class="row">Approved by (supervisor)</div>
+  </div>
+  <hr>
+  <div class="ctr sub">Submitted for supervisor approval.</div>`;
+  openSlip("SHIFT CLOSE", shift.id, inner, business);
 }
 
 // Shift survey — a mid-shift CHECK, not a close. The operations team counts the
@@ -448,9 +525,10 @@ export function SafeDropReport({ shiftId }: { shiftId: string }) {
 
 export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate, shift }: {
   type: CashMovementType; onClose: () => void;
-  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string }) => Promise<void>;
+  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string }) => Promise<any>;
   drawer: Drawer; drawerLimit: number; rate: number; shift?: ShiftView;
 }) {
+  const { data: business } = useFetch<any>("/api/business");
   const meta = MV_META[type];
   const recDrop = type === "DROP" && drawerLimit > 0 ? Math.max(0, Math.round((drawer.expected - drawerLimit) * 100) / 100) : 0;
   // Two separate amounts — dollars and riel — kept apart so the record keeps a
@@ -472,8 +550,17 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
 
   async function go() {
     setBusy(true);
-    try { await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined }); }
-    catch (e: any) { alert(e.message); }
+    try {
+      const created = await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined });
+      // A safe drop prints a slip recording the drop (dollars & riel separate,
+      // date & time). Fall back to what was entered if the server didn't echo it.
+      if (type === "DROP" && shift) {
+        const mv = created && typeof created === "object"
+          ? created
+          : { amountUsd, amountRiel, amount: totalUsd, reason, notes: notes.trim() || undefined, at: new Date().toISOString(), createdBy: "" };
+        printDropSlip(mv, shift, business);
+      }
+    } catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
   }
 
@@ -529,7 +616,10 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
     <Modal open onClose={onClose} size={showReport ? "2xl" : "lg"} title={meta.title} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>{busy ? "Saving…" : `Record ${usd(totalUsd)}`}</button>
+        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason} onClick={go}>
+          {type === "DROP" && <Printer size={16} />}
+          {busy ? "Saving…" : type === "DROP" ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
+        </button>
       </div>
     }>
       {showReport ? (
@@ -544,6 +634,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
 
 export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView; rate: number; onClose: () => void; onDone: () => void }) {
   const [count, setCount] = useState<CashCount>(emptyCount());
+  const { data: business } = useFetch<any>("/api/business");
   const [reasonSel, setReasonSel] = useState("");
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
@@ -555,8 +646,15 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
   async function submit() {
     setBusy(true);
     try {
-      await api(`/api/shifts/${shift.id}/close`, { method: "POST", body: JSON.stringify({ closingCount: count, varianceReason: reason }) });
+      const res = await api(`/api/shifts/${shift.id}/close`, { method: "POST", body: JSON.stringify({ closingCount: count, varianceReason: reason }) });
+      // Close the modal first, then print — the print dialog blocks the thread.
       onDone();
+      const closed = res?.shift || {
+        id: shift.id, shift: shift.shift, posTerminalId: shift.posTerminalId, cashier: shift.cashier,
+        openedAt: shift.openedAt, submittedAt: new Date().toISOString(),
+        expectedCash: expected, actualCash: actual, variance, varianceReason: variance !== 0 ? reason : undefined, closingCount: count,
+      };
+      printCloseSlip(closed, business);
     } catch (e: any) { alert(e.message); }
     finally { setBusy(false); }
   }
@@ -566,7 +664,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn-primary" disabled={busy || (variance !== 0 && !reason)} onClick={submit}>
-          <ClipboardCheck size={16} /> {busy ? "Submitting…" : "Submit for approval"}
+          <ClipboardCheck size={16} /> {busy ? "Submitting…" : "Submit & print"}
         </button>
       </div>
     }>
@@ -584,7 +682,7 @@ export function CloseModal({ shift, rate, onClose, onDone }: { shift: ShiftView;
           {variance !== 0 && (
             <ReasonSelect label="Variance reason (required)" options={VARIANCE_REASONS} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
           )}
-          <p className="text-xs text-slate-400">Submitting sends the count to a supervisor. Once approved, the shift locks and can&apos;t be edited.</p>
+          <p className="text-xs text-slate-400">Submitting sends the count to a supervisor and prints a close slip. Once approved, the shift locks and can&apos;t be edited.</p>
         </div>
       </div>
     </Modal>
