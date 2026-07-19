@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy, MonitorCheck, Lock } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
+import { useTillMode } from "@/lib/tillmode";
+import { ManagerGate } from "@/components/ManagerGate";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
@@ -116,6 +118,8 @@ export default function SettingsPage() {
       {error && <ErrorBox message={error} />}
 
       <ChangePasswordCard />
+
+      <TillModeCard />
 
       {/* Owner-only data tools, grouped into one tidy Danger zone instead of
           three separate red cards stacked down the page. */}
@@ -494,6 +498,51 @@ function CleanupDuplicatesCard() {
         <Copy size={15} /> {busy ? "Cleaning…" : "Remove duplicates"}
       </button>
     </div>
+  );
+}
+
+// Turn THIS device into a locked till. Whoever signs in here afterwards sees
+// only the POS screen; leaving Till Mode needs a manager code (done from the
+// till bar's lock menu). Other devices are unaffected — the lock is per-machine.
+function TillModeCard() {
+  const router = useRouter();
+  const { tillMode, setTillMode } = useTillMode();
+  const [gate, setGate] = useState(false);
+  const [terminal, setTerminal] = useState("POS 1");
+  useEffect(() => {
+    const s = typeof window !== "undefined" ? window.localStorage.getItem("stookii_pos_terminal") : null;
+    if (s) setTerminal(s);
+  }, []);
+
+  return (
+    <Card className="mb-6">
+      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
+        <MonitorCheck size={16} className="text-brand-600" /> Till Mode
+      </h3>
+      <p className="mb-3 text-xs leading-relaxed text-slate-500">
+        Turn <b>this device</b> into a locked cash register. Whoever signs in on it afterwards — anyone on the operation
+        team, on their own login — sees <b>only the Point of Sale screen</b>: no sidebar, settings, reports or exports.
+        Leaving Till Mode needs a manager code. Your other devices (office, back room) are unaffected.
+      </p>
+      {tillMode ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+          This device is a till ({terminal}). Exit from the lock menu on the till bar.
+        </p>
+      ) : (
+        <button className="btn-primary" onClick={() => setGate(true)}>
+          <Lock size={16} /> Turn this device into a till
+        </button>
+      )}
+      {gate && (
+        <ManagerGate
+          title="Turn on Till Mode"
+          hint="A manager code locks this device to the POS screen. Set the till name on the checkout screen first if needed."
+          actionLabel="Turn on Till Mode"
+          onClose={() => setGate(false)}
+          onOk={() => { setGate(false); setTillMode(true); router.push("/pos"); }}
+        />
+      )}
+    </Card>
   );
 }
 

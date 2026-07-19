@@ -28,6 +28,7 @@ import {
   Lock,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
+import { useTillMode } from "@/lib/tillmode";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
@@ -92,6 +93,9 @@ export default function PosPage() {
   const { data: salesReport } = useFetch<{ byItem: { productId: string; qty: number }[] }>("/api/sales-report");
   // Store profile + receipt styling for the printed receipt (Invoice Customization).
   const { data: business } = useFetch<ReceiptBusiness>("/api/business");
+  // On a till (Till Mode device), the page drops its title, exports and reports —
+  // just the sale, the cash drawer and invoices.
+  const { tillMode } = useTillMode();
 
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, CartLine>>({});
@@ -575,43 +579,60 @@ export default function PosPage() {
 
   return (
     <div className={lines.length > 0 ? "pb-24 lg:pb-0" : undefined}>
-      <PageHeader
-        title="Point of Sale"
-        subtitle="Ring up a sale — stock and loyalty update automatically"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="btn-ghost !py-2 text-sm"
-              onClick={() => openShift()}
-              title="Shift summary, cash drawer & close shift — without leaving the till"
-            >
-              <Wallet size={16} /> Cash Drawer
-            </button>
-            <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
-              <ReceiptText size={16} /> Invoices
-            </button>
-            <button className="btn-ghost !py-2 text-sm" onClick={() => setReportOpen(true)}>
-              <BarChart3 size={16} /> Sales Report
-            </button>
-            <a className="btn-ghost !py-2 text-sm" href="/api/reports/sales/export">
-              <FileSpreadsheet size={16} /> Export
-            </a>
-            <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => importRef.current?.click()}>
-              <Upload size={16} /> {importing ? "Importing…" : "Import"}
-            </button>
-            <input
-              ref={importRef}
-              type="file"
-              accept=".xlsx"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) importSales(f);
-              }}
-            />
-          </div>
-        }
-      />
+      {tillMode ? (
+        // On a till: no page title, no exports/imports/report — just the two
+        // buttons a cashier needs. The slim status bar lives up in the TillBar.
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+          <button
+            className="btn-ghost !py-2 text-sm"
+            onClick={() => openShift()}
+            title="Shift summary, cash drawer & close shift — without leaving the till"
+          >
+            <Wallet size={16} /> Cash Drawer
+          </button>
+          <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
+            <ReceiptText size={16} /> Invoices
+          </button>
+        </div>
+      ) : (
+        <PageHeader
+          title="Point of Sale"
+          subtitle="Ring up a sale — stock and loyalty update automatically"
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="btn-ghost !py-2 text-sm"
+                onClick={() => openShift()}
+                title="Shift summary, cash drawer & close shift — without leaving the till"
+              >
+                <Wallet size={16} /> Cash Drawer
+              </button>
+              <button className="btn-ghost !py-2 text-sm" onClick={() => setInvoicesOpen(true)} title="Recent invoices — cancel a wrong sale">
+                <ReceiptText size={16} /> Invoices
+              </button>
+              <button className="btn-ghost !py-2 text-sm" onClick={() => setReportOpen(true)}>
+                <BarChart3 size={16} /> Sales Report
+              </button>
+              <a className="btn-ghost !py-2 text-sm" href="/api/reports/sales/export">
+                <FileSpreadsheet size={16} /> Export
+              </a>
+              <button className="btn-ghost !py-2 text-sm" disabled={importing} onClick={() => importRef.current?.click()}>
+                <Upload size={16} /> {importing ? "Importing…" : "Import"}
+              </button>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) importSales(f);
+                }}
+              />
+            </div>
+          }
+        />
+      )}
 
       {error && <ErrorBox message={error} />}
 

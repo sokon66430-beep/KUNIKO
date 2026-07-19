@@ -4,8 +4,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, Suspense, useEffect, useState } from "react";
 import { Eye } from "lucide-react";
 import Sidebar from "./Sidebar";
+import { TillBar } from "./TillBar";
 import { ConfirmHost } from "./confirm";
 import { ThemeProvider } from "./theme";
+import { TillModeProvider, useTillMode } from "@/lib/tillmode";
 import { canAccessPage, isReadOnly } from "@/lib/access";
 import { setViewOnly } from "@/lib/client";
 import type { Role } from "@/lib/auth";
@@ -14,9 +16,20 @@ import type { Role } from "@/lib/auth";
 // The Suspense boundary lets pages use useSearchParams() (request-time data)
 // without breaking the production build.
 export default function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <ThemeProvider>
+      <TillModeProvider>
+        <ShellInner>{children}</ShellInner>
+      </TillModeProvider>
+    </ThemeProvider>
+  );
+}
+
+function ShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [readOnly, setReadOnly] = useState(false);
+  const { tillMode, ready } = useTillMode();
 
   // Re-check page access on every navigation so an owner-set denial (beyond
   // the built-in baseline middleware already enforces) still sends the user
@@ -41,25 +54,47 @@ export default function AppShell({ children }: { children: ReactNode }) {
     };
   }, [pathname, router]);
 
+  // Till Mode: this DEVICE is a cash register — confine it to the POS screen no
+  // matter who signs in or what URL they try.
+  useEffect(() => {
+    if (!ready || !tillMode) return;
+    if (pathname === "/login" || pathname === "/register") return;
+    if (pathname !== "/pos") router.replace("/pos");
+  }, [ready, tillMode, pathname, router]);
+
   if (pathname === "/login" || pathname === "/register") return <Suspense>{children}</Suspense>;
 
-  return (
-    <ThemeProvider>
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <main className="flex-1 min-w-0 pt-[54px] lg:pt-0 lg:pl-[264px]">
-          {readOnly && (
-            <div className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-800">
-              <Eye size={14} />
-              View-only access (Management / Board) — you can see everything but can&apos;t make changes.
-            </div>
-          )}
-          <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
-            <Suspense>{children}</Suspense>
+  // Locked till: slim bar, no sidebar, POS only. While a stray URL is being
+  // bounced back to /pos, render nothing so the wrong page never flashes.
+  if (ready && tillMode) {
+    return (
+      <>
+        <TillBar />
+        <main className="min-h-screen pt-[52px]">
+          <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
+            {pathname === "/pos" ? <Suspense>{children}</Suspense> : null}
           </div>
         </main>
         <ConfirmHost />
-      </div>
-    </ThemeProvider>
+      </>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <main className="flex-1 min-w-0 pt-[54px] lg:pt-0 lg:pl-[264px]">
+        {readOnly && (
+          <div className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-800">
+            <Eye size={14} />
+            View-only access (Management / Board) — you can see everything but can&apos;t make changes.
+          </div>
+        )}
+        <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
+          <Suspense>{children}</Suspense>
+        </div>
+      </main>
+      <ConfirmHost />
+    </div>
   );
 }
