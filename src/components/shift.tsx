@@ -166,16 +166,17 @@ function CashStat({ label, sign, usdAmount, rielAmount }: {
 // The live shift summary — the "shift survey" the cashier reads at a glance:
 // where the drawer stands right now (opening float, what's sold, cash movements
 // and the expected cash to count). The action buttons underneath run the drawer.
-export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onChanged }: {
-  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void; onChanged?: () => void;
+export function DrawerView({ shift, drawerLimit, rate, onMovement, onClose, onChanged, initialMoves }: {
+  shift: ShiftView; drawerLimit: number; rate: number; onMovement: (t: CashMovementType) => void; onClose: () => void; onChanged?: () => void; initialMoves?: boolean;
 }) {
   const d = shift.drawer;
   const over = drawerLimit > 0 && d.expected > drawerLimit;
   const recDrop = over ? Math.max(0, Math.round((d.expected - drawerLimit) * 100) / 100) : 0;
   // Shift survey — count the drawer to check it matches, WITHOUT closing.
   const [survey, setSurvey] = useState(false);
-  // Cash movements log — every individual cash event, not just the totals.
-  const [moves, setMoves] = useState(false);
+  // Cash movements log — every individual cash event, not just the totals. Can
+  // open straight away when reached from the till's Cash Movements quick tile.
+  const [moves, setMoves] = useState(!!initialMoves);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
