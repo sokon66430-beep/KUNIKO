@@ -23,6 +23,9 @@ import {
   Wallet,
   ReceiptText,
   ShieldCheck,
+  Vault,
+  Scale,
+  Lock,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
@@ -36,7 +39,7 @@ import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
 import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
-import { PosShiftModal } from "@/components/PosShiftModal";
+import { PosShiftModal, type ShiftAction } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
 import { baseUnitName, defaultUnitOf, findByBarcode, type ResolvedUnit } from "@/lib/sellingUnits";
@@ -122,7 +125,14 @@ export default function PosPage() {
   const [reportOpen, setReportOpen] = useState(false);
   const [invoicesOpen, setInvoicesOpen] = useState(false);
   // The cash shift, opened right here in the till: live drawer summary + close.
+  // `shiftAction` jumps straight to Safe Drop / Survey / Close from the quick
+  // buttons under the categories.
   const [shiftOpen, setShiftOpen] = useState(false);
+  const [shiftAction, setShiftAction] = useState<ShiftAction | undefined>(undefined);
+  const openShift = (action?: ShiftAction) => {
+    setShiftAction(action);
+    setShiftOpen(true);
+  };
   const [cameraOpen, setCameraOpen] = useState(false);
   const [openCat, setOpenCat] = useState<string | null>(null); // drilled-into category at the till
   const [importing, setImporting] = useState(false);
@@ -572,7 +582,7 @@ export default function PosPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               className="btn-ghost !py-2 text-sm"
-              onClick={() => setShiftOpen(true)}
+              onClick={() => openShift()}
               title="Shift summary, cash drawer & close shift — without leaving the till"
             >
               <Wallet size={16} /> Cash Drawer
@@ -661,7 +671,16 @@ export default function PosPage() {
 
       {reportOpen && <SalesReportModal onClose={() => setReportOpen(false)} />}
       {invoicesOpen && <InvoicesModal onClose={() => setInvoicesOpen(false)} onChanged={reload} />}
-      {shiftOpen && <PosShiftModal terminal={terminal} onClose={() => setShiftOpen(false)} />}
+      {shiftOpen && (
+        <PosShiftModal
+          terminal={terminal}
+          initialAction={shiftAction}
+          onClose={() => {
+            setShiftOpen(false);
+            setShiftAction(undefined);
+          }}
+        />
+      )}
 
       {/* Camera barcode scanner — for phones, iPads and any device without a
           hardware scanner. Stays open for continuous scanning; each barcode is
@@ -862,6 +881,36 @@ export default function PosPage() {
                     </span>
                   </button>
                 ))}
+              </div>
+
+              {/* Shift quick actions — Safe Drop / Shift Survey / Close Shift,
+                  one tap from the till instead of opening the Cash Drawer first.
+                  Each opens the shift screen straight into that action. */}
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Shift</p>
+                <div className="grid grid-cols-3 gap-2.5">
+                  <button
+                    onClick={() => openShift("DROP")}
+                    className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                  >
+                    <Vault size={18} className="text-amber-500" />
+                    <span className="text-[12.5px] font-bold text-ink-900">Safe Drop</span>
+                  </button>
+                  <button
+                    onClick={() => openShift("survey")}
+                    className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                  >
+                    <Scale size={18} className="text-brand-600" />
+                    <span className="text-[12.5px] font-bold text-ink-900">Shift Survey</span>
+                  </button>
+                  <button
+                    onClick={() => openShift("close")}
+                    className="card flex flex-col items-center justify-center gap-1.5 p-3 text-center transition hover:-translate-y-0.5 hover:ring-brand-200 hover:shadow-soft"
+                  >
+                    <Lock size={18} className="text-rose-500" />
+                    <span className="text-[12.5px] font-bold text-ink-900">Close Shift</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

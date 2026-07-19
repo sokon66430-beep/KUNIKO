@@ -8,7 +8,7 @@
 // cash in/out, expected drawer) and runs the CLOSE-AND-COUNT flow, using exactly
 // the same drawer engine as the Money Management page.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Wallet, Unlock, X } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { Spinner, ErrorBox, Badge, StatCard } from "@/components/ui";
@@ -20,11 +20,16 @@ import {
   DrawerView,
   MovementModal,
   CloseModal,
+  SurveyModal,
   emptyCount,
   type ShiftsData,
 } from "@/components/shift";
 
-export function PosShiftModal({ terminal, onClose }: { terminal: string; onClose: () => void }) {
+// Optionally jump straight to a shift action when opened (from a POS quick
+// button) instead of landing on the drawer overview.
+export type ShiftAction = "DROP" | "survey" | "close";
+
+export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: string; initialAction?: ShiftAction; onClose: () => void }) {
   const { data, loading, error, reload } = useFetch<ShiftsData>("/api/shifts");
   const shifts = data?.shifts ?? [];
   const drawerLimit = data?.drawerLimit ?? 0;
@@ -59,6 +64,18 @@ export function PosShiftModal({ terminal, onClose }: { terminal: string; onClose
   }
 
   const [closing, setClosing] = useState(false);
+  const [survey, setSurvey] = useState(false);
+
+  // If opened for a specific action, jump straight to it once the open shift is
+  // known. No open shift → the open-shift form shows instead (which is correct).
+  const fired = useRef(false);
+  useEffect(() => {
+    if (fired.current || !initialAction || !current) return;
+    fired.current = true;
+    if (initialAction === "DROP") setMv("DROP");
+    else if (initialAction === "survey") setSurvey(true);
+    else if (initialAction === "close") setClosing(true);
+  }, [initialAction, current]);
 
   return (
     <>
@@ -147,6 +164,7 @@ export function PosShiftModal({ terminal, onClose }: { terminal: string; onClose
           onDone={() => { setClosing(false); reload(); }}
         />
       )}
+      {survey && current && <SurveyModal shift={current} rate={rate} onClose={() => setSurvey(false)} />}
     </>
   );
 }
