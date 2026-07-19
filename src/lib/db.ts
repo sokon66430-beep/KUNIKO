@@ -94,6 +94,38 @@ function backfill(db: DB): DB {
     for (const s of db.suppliers) s.taxPct = 10;
     db.meta.supplierTaxInitialized = true;
   }
+  // Job Schedule (workforce management). Stores predating it get empty books and,
+  // once, the three default shifts + the standard retail station/position lists —
+  // so a store manager can start rostering immediately (and still edit any of it).
+  if (!db.scheduleEmployees) db.scheduleEmployees = [];
+  if (!db.rosterEntries) db.rosterEntries = [];
+  if (!db.shiftTemplates) db.shiftTemplates = [];
+  if (!db.stations) db.stations = [];
+  if (!db.positions) db.positions = [];
+  if (db.meta.nextScheduleEmployee == null) db.meta.nextScheduleEmployee = 1;
+  if (db.meta.nextRosterEntry == null) db.meta.nextRosterEntry = 1;
+  if (!db.meta.scheduleSeeded) {
+    if (db.shiftTemplates.length === 0) {
+      db.shiftTemplates = [
+        { id: "SHT-1", name: "Morning", code: 1, startTime: "06:30", endTime: "15:30", color: "amber", status: "active" },
+        { id: "SHT-2", name: "Afternoon", code: 2, startTime: "13:30", endTime: "22:30", color: "brand", status: "active" },
+        { id: "SHT-3", name: "Night", code: 3, startTime: "22:00", endTime: "07:00", overnight: true, color: "violet", status: "active" },
+      ];
+    }
+    if (db.stations.length === 0) {
+      db.stations = ["Checkout", "Drink", "Hot Food", "Refill & Storage", "Stock Room", "Management"].map((name, i) => ({
+        id: `STN-${i + 1}`,
+        name,
+      }));
+    }
+    if (db.positions.length === 0) {
+      db.positions = ["Store Manager", "Assistant Manager", "Supervisor", "Cashier", "Store Crew"].map((name, i) => ({
+        id: `POS-${i + 1}`,
+        name,
+      }));
+    }
+    db.meta.scheduleSeeded = true;
+  }
   return db;
 }
 

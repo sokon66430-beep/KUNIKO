@@ -78,6 +78,11 @@ export async function PATCH(req: Request) {
       const number = String(body.bankAccount.number || "").trim().slice(0, 40);
       b.bankAccount = name ? { name, number: number || undefined } : undefined;
     }
+    // The store cash float — money always kept on hand; a bank transfer deposits
+    // only what's ABOVE this. In dollars, never negative.
+    if (body.cashFloat != null) {
+      b.cashFloat = Math.max(0, Math.round((Number(body.cashFloat) || 0) * 100) / 100);
+    }
     if (Array.isArray(body.approvers)) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers

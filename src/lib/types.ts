@@ -814,6 +814,63 @@ export type AuditEvent = {
   detail?: string; // one-line human summary
 };
 
+// ── Job Schedule (retail workforce management) ────────────────────────────
+// Replaces the Excel manpower schedule. All store-scoped, reusing the store +
+// permission systems. A roster person may optionally link to a POS login user
+// (userId) so attendance can compare scheduled vs actual clock-in later.
+
+// A shift template — the Excel's 1 / 2 / 3. Admin can edit the times.
+export type ShiftTemplate = {
+  id: string; // "SHT-1"
+  name: string; // "Morning"
+  code: number; // 1 = Morning, 2 = Afternoon, 3 = Night (shown in the grid)
+  startTime: string; // "06:30" (24h)
+  endTime: string; // "15:30" (24h)
+  overnight?: boolean; // end time is the NEXT day (night shift)
+  color?: string; // brand | amber | violet … tint used in the roster grid
+  status: "active" | "inactive";
+};
+
+// A work station within the store (Checkout, Drink, Hot Food …). Customizable.
+export type Station = { id: string; name: string; active?: boolean };
+
+// A job position / title (Store Manager, Cashier, Store Crew …).
+export type Position = { id: string; name: string; active?: boolean };
+
+// A member of the store's staff roster. Most crew have NO POS login — userId is
+// an optional link to one for attendance.
+export type ScheduleEmployee = {
+  id: string; // "EMP-000001"
+  name: string;
+  phone?: string;
+  positionId?: string; // → Position
+  stationId?: string; // default station → Station
+  defaultShiftId?: string; // default shift → ShiftTemplate
+  userId?: string; // optional link to a POS login account
+  // A hashed short PIN. When set, this staff can sign into the till by picking
+  // their name and typing this PIN (Store Crew / till-only access). Never sent
+  // to the client — the API exposes only a `hasPin` flag.
+  pinHash?: string;
+  active?: boolean; // undefined = active
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+// One cell of the monthly roster: this employee, on this date, works this shift
+// (or is OFF). shiftId empty + off true = day off.
+export type RosterEntry = {
+  id: string; // "RST-000001"
+  employeeId: string; // → ScheduleEmployee
+  date: string; // "YYYY-MM-DD"
+  shiftId?: string; // → ShiftTemplate; empty when off
+  off?: boolean; // true = day off
+  stationId?: string; // station for this shift → Station
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type DB = {
   products: Product[];
   customers: Customer[];
@@ -836,6 +893,12 @@ export type DB = {
   shifts: Shift[];
   cashMovements: CashMovement[];
   surveys: ShiftSurvey[];
+  // Job Schedule (workforce management) — store-scoped roster & config.
+  shiftTemplates: ShiftTemplate[];
+  stations: Station[];
+  positions: Position[];
+  scheduleEmployees: ScheduleEmployee[];
+  rosterEntries: RosterEntry[];
   meta: {
     nextInvoice: number;
     nextPR: number;
@@ -859,6 +922,10 @@ export type DB = {
     nextShift: number;
     nextCashMovement: number;
     nextSurvey: number;
+    // Job Schedule counters + one-time defaults-seeded flag.
+    nextScheduleEmployee?: number;
+    nextRosterEntry?: number;
+    scheduleSeeded?: boolean;
     // One-time flag: suppliers have all been defaulted to 10% VAT (after which
     // each supplier's tax rate is managed individually). See backfill().
     supplierTaxInitialized?: boolean;
@@ -894,6 +961,10 @@ export type DB = {
       // The one bank account the store deposits its cash into. Set once here so a
       // Bank Deposit at the till doesn't ask which bank every time.
       bankAccount?: { name: string; number?: string };
+      // The cash float the store always keeps on hand (for change / the next day).
+      // Everything in the safe ABOVE this floats to the bank on a bank day, so a
+      // Bank Transfer pre-fills its amount = safe cash − this float. In dollars.
+      cashFloat?: number;
     };
   };
 };

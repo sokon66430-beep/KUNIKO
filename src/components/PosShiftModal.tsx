@@ -9,7 +9,7 @@
 // the same drawer engine as the Money Management page.
 
 import { useEffect, useRef, useState } from "react";
-import { Wallet, Unlock, X, ChevronLeft } from "lucide-react";
+import { Wallet, Unlock, X } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
 import { Spinner, ErrorBox, Badge, StatCard } from "@/components/ui";
@@ -62,9 +62,14 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
   const [mv, setMv] = useState<CashMovementType | null>(null);
   async function submitMovement(payload: { amountUsd: number; amountRiel: number; reason: string; notes?: string; reference?: string }) {
     if (!current) return;
+    const wasDrop = mv === "DROP";
     const created = await api("/api/cash-movements", { method: "POST", body: JSON.stringify({ shiftId: current.id, type: mv, ...payload }) });
     setMv(null);
     reload();
+    // A safe drop is a one-and-done action from the sale screen — once it's
+    // recorded (and its slip printed) send the cashier straight back to the POS,
+    // don't leave them parked on the Cash Shift screen.
+    if (wasDrop) onClose();
     return created;
   }
 
@@ -90,14 +95,6 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
       <div className={`fixed inset-x-0 bottom-0 z-50 flex flex-col bg-slate-50 ${tillMode ? "top-[52px]" : "top-0"}`}>
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-8">
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Back to the sale screen — the clear way out on a till. */}
-            <button
-              onClick={onClose}
-              className="inline-flex items-center gap-1 rounded-lg py-2 pl-1.5 pr-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-ink-900"
-            >
-              <ChevronLeft size={20} /> Back
-            </button>
-            <span className="hidden h-6 w-px bg-slate-200 sm:block" />
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600"><Wallet size={18} /></span>
             <div>
               <h2 className="text-base font-bold leading-tight text-ink-900">Cash Shift</h2>

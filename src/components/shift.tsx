@@ -847,7 +847,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   // total in each currency (not one merged, converted number).
   const [usdAmount, setUsdAmount] = useState(recDrop > 0 ? String(recDrop) : "");
   const [rielAmount, setRielAmount] = useState("");
-  const [reasonSel, setReasonSel] = useState("");
+  const [reasonSel, setReasonSel] = useState(type === "BANK_DEPOSIT" ? "Daily cash deposit" : "");
   const [reasonOther, setReasonOther] = useState("");
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [notes, setNotes] = useState("");
@@ -860,8 +860,20 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const bankNumber = (business?.bankAccount?.number || "").trim();
   const prints = type === "DROP" || isDeposit;
 
-  const amountUsd = Math.round((Number(usdAmount) || 0) * 100) / 100;
-  const amountRiel = Math.max(0, Math.floor(Number(rielAmount) || 0));
+  // The store keeps a fixed cash FLOAT in dollars (Settings, default $500). On a
+  // bank day everything ABOVE the float is banked: all the dollars over the float,
+  // plus all the riel in the safe. The cashier does NOT type this — the system
+  // works it out from the safe and they just confirm the exact amount.
+  const floatUsd = Math.max(0, Math.round(((business?.cashFloat ?? 500)) * 100) / 100);
+  const safeUsd = Math.round((drawer.safe?.usd || 0) * 100) / 100;
+  const safeRiel = Math.max(0, Math.floor(drawer.safe?.riel || 0));
+  const transferUsd = Math.max(0, Math.round((safeUsd - floatUsd) * 100) / 100);
+  const transferRiel = safeRiel;
+
+  // Effective amounts: fixed by the system for a transfer; typed by the cashier
+  // for every other movement.
+  const amountUsd = isDeposit ? transferUsd : Math.round((Number(usdAmount) || 0) * 100) / 100;
+  const amountRiel = isDeposit ? transferRiel : Math.max(0, Math.floor(Number(rielAmount) || 0));
   const totalUsd = Math.round((amountUsd + amountRiel / (rate || 4100)) * 100) / 100;
 
   // You can't take out more than is there. A bank transfer draws from the SAFE
@@ -873,6 +885,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const available = Math.round(((fromSafe ? drawer.safe?.usdEquivalent : drawer.expected) || 0) * 100) / 100;
   const exceeds = isOutflow && totalUsd > available + 0.005;
   const holdLabel = fromSafe ? "safe" : "drawer";
+  const nothingToTransfer = isDeposit && transferUsd <= 0 && transferRiel <= 0;
 
   const addUsd = (v: number) => setUsdAmount(String(Math.round(((Number(usdAmount) || 0) + v) * 100) / 100));
   const addRiel = (v: number) => setRielAmount(String((Math.floor(Number(rielAmount) || 0)) + v));
@@ -905,25 +918,55 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
       {type === "DROP" && recDrop > 0 && (
         <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">Recommended drop to reach the {usd(drawerLimit)} limit: {usd(recDrop)}</p>
       )}
-      {/* Bank Deposit uses the store's one fixed bank (Settings) — shown here so
-          staff never have to pick it, plus the deposit-slip reference. */}
+      {/* Bank Transfer — the system decides the amount (everything in the safe
+          above the store's cash float). The cashier can't type it; they read the
+          exact figure, take that to the bank and confirm. */}
       {isDeposit && (
-        <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Landmark size={15} className="shrink-0 text-sky-600" />
-            {bankName ? (
-              <span className="font-semibold text-sky-800">Depositing to {bankName}{bankNumber ? ` · ${bankNumber}` : ""}</span>
-            ) : (
-              <span className="font-semibold text-amber-700">No bank account set — add one in Settings so deposits record which bank.</span>
-            )}
+        nothingToTransfer ? (
+          <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-center">
+            <p className="text-base font-bold text-ink-800">Nothing to transfer</p>
+            <p className="mt-1 text-sm text-slate-500">
+              The safe holds {usd(available)} — at or below the {usd(floatUsd)} store float. Keep it all as the float.
+            </p>
           </div>
-          <div className="mt-2.5">
-            <label className="label">Deposit slip / reference no. (optional)</label>
-            <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. bank slip / transaction ID" className="input" />
+        ) : (
+          <div className="mb-4 rounded-2xl border border-brand-200 bg-brand-50 p-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-500">Transfer to bank</p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-3xl font-extrabold tabular-nums text-brand-700">{usd(transferUsd)}</span>
+              {transferRiel > 0 && (
+                <span className="text-xl font-bold tabular-nums text-violet-700">+ {khr(transferRiel)}</span>
+              )}
+            </div>
+            <p className="mt-1.5 text-sm text-slate-600">
+              Take this exact amount to the bank and press Confirm. The store keeps its {usd(floatUsd)} float.
+            </p>
+            <div className="mt-3 space-y-1 border-t border-dashed border-brand-200 pt-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Dollars in safe</span>
+                <span className="font-semibold tabular-nums text-ink-800">{usd(safeUsd)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Keep as store float</span>
+                <span className="font-semibold tabular-nums text-slate-500">− {usd(floatUsd)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Dollars to bank</span>
+                <span className="font-bold tabular-nums text-brand-700">{usd(transferUsd)}</span>
+              </div>
+              {transferRiel > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Riel to bank (all)</span>
+                  <span className="font-bold tabular-nums text-violet-700">{khr(transferRiel)}</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )
       )}
-      {/* Dollars and riel are entered — and kept — separately. */}
+      {/* Dollars and riel are entered — and kept — separately. Hidden for a bank
+          transfer, whose amount the system fixes above. */}
+      {!isDeposit && (<>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label">Amount in dollars ($)</label>
@@ -967,6 +1010,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
           <p className="mb-3 -mt-1 text-right text-xs text-slate-400">In the {holdLabel}: {usd(available)}</p>
         )
       )}
+      </>)}
       <div className="mb-3">
         <ReasonSelect label="Reason" options={MV_REASONS[type]} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
       </div>
@@ -981,7 +1025,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason || exceeds} onClick={go}>
           {prints && <Printer size={16} />}
-          {busy ? "Saving…" : prints ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
+          {busy ? "Saving…" : isDeposit ? `Confirm & print ${usd(totalUsd)}` : prints ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
         </button>
       </div>
     }>

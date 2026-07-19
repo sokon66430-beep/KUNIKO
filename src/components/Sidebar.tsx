@@ -34,6 +34,7 @@ import {
   Store,
   Tag,
   TicketPercent,
+  CalendarClock,
   ReceiptText,
   ShieldCheck,
   BookOpen,
@@ -71,6 +72,7 @@ const OPERATIONS = {
     // which is why it's still here and the basket-wide deals engine isn't.
     { href: "/promotions", label: "Mark Down", icon: TicketPercent },
     { href: "/purchase-requests", label: "Purchase Requests", icon: FileText },
+    { href: "/job-schedule", label: "Job Schedule", icon: CalendarClock },
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/reports-center", label: "Reports", icon: BarChart3 },
     { href: "/business-reports", label: "Business Reports", icon: TrendingUp },

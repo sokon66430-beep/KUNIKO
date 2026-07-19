@@ -79,6 +79,7 @@ export default function SettingsPage() {
           poNotes: form.poNotes,
           approvers: form.approvers,
           bankAccount: form.bankAccount ?? { name: "" },
+          cashFloat: form.cashFloat ?? 0,
           logo: form.logo ?? "",
         }),
       });
@@ -229,6 +230,26 @@ export default function SettingsPage() {
                   placeholder="e.g. 000 123 456"
                 />
               </div>
+            </div>
+            <div className="mt-4 border-t border-dashed border-slate-200 pt-4">
+              <label className="label">Store cash float (kept on hand)</label>
+              <div className="relative max-w-[220px]">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="input pl-7"
+                  value={form.cashFloat ?? ""}
+                  onChange={(e) => set("cashFloat", e.target.value === "" ? 0 : Number(e.target.value))}
+                  placeholder="500.00"
+                />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                The cash the store always keeps for change and the next day. A{" "}
+                <span className="font-semibold">Bank Transfer</span> pre-fills its amount as everything in the safe{" "}
+                <span className="font-semibold">above</span> this float — so on a bank day, only the surplus goes to the bank.
+              </p>
             </div>
           </Card>
 

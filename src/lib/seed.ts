@@ -227,6 +227,13 @@ export function buildSeed(opts?: { storeName?: string; withDemo?: boolean }): DB
     shifts: [],
     cashMovements: [],
     surveys: [],
+    // Job Schedule — the defaults (3 shifts, station/position lists) are filled in
+    // lazily by db.ts backfill() the first time the store is read.
+    shiftTemplates: [],
+    stations: [],
+    positions: [],
+    scheduleEmployees: [],
+    rosterEntries: [],
     meta: {
       nextInvoice: 100001,
       nextPR: 100002,

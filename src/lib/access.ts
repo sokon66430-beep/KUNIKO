@@ -72,6 +72,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/promotion-reports", label: "Promotion Reports" },
   { href: "/unit-sales", label: "Selling Unit Reports" },
   { href: "/purchase-requests", label: "Purchase Requests" },
+  { href: "/job-schedule", label: "Job Schedule" },
   { href: "/customers", label: "Customers" },
   { href: "/reports-center", label: "Reports" },
   { href: "/business-reports", label: "Business Reports" },
@@ -228,6 +229,21 @@ export function canReopenShift(role: Role): boolean {
     role === "ops_manager" ||
     role === "area_manager" ||
     role === "store_manager" ||
+    role === "manager"
+  );
+}
+
+// Who may ASSIGN the Job Schedule roster (set each person's shift / day off).
+// Store + regional leadership manage rotation by hand — everyone else (crew,
+// accountant, procurement) can open the schedule but only to view/print it.
+export function canAssignRoster(role: Role): boolean {
+  return (
+    role === "owner" ||
+    role === "management" ||
+    role === "ops_manager" ||
+    role === "area_manager" ||
+    role === "store_manager" ||
+    role === "asst_store_manager" ||
     role === "manager"
   );
 }
