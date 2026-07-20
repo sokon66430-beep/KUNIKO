@@ -24,19 +24,25 @@ export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const sys = await readSystem();
-  const allowed = allowedStoreIds(sys, s.uid, s.role, s.storeId);
+  // Use the user's CURRENT role from the store, not the one baked into the
+  // session cookie at login — so an owner promoting someone (e.g. to Area
+  // Manager) or assigning extra stores takes effect on their next page load,
+  // without them having to sign out and back in.
+  const dbUser = sys.users.find((u) => u.id === s.uid);
+  const role = dbUser?.role ?? s.role;
+  const allowed = allowedStoreIds(sys, s.uid, role, s.storeId);
   const stores = sys.stores
     .filter((st) => allowed.has(st.id))
     .map((st) => ({ id: st.id, name: st.name }));
   // Effective denied-page list for this role — the owner's live /permissions
   // config if set, otherwise the built-in baseline. Owner is never denied.
-  const denied = s.role === "owner" ? [] : sys.rolePermissions?.[s.role] ?? DEFAULT_ROLE_DENIED[s.role] ?? [];
+  const denied = role === "owner" ? [] : sys.rolePermissions?.[role] ?? DEFAULT_ROLE_DENIED[role] ?? [];
   // Capabilities (profit/cost) for this role, so a screen can hide a figure it
   // isn't allowed to show. The server strips the numbers regardless — this only
   // stops an empty card being drawn around data that never arrived.
-  const caps = sys.roleCaps?.[s.role] ?? {};
+  const caps = sys.roleCaps?.[role] ?? {};
   return NextResponse.json({
-    user: { id: s.uid, name: s.name, role: s.role, storeId: s.storeId, storeName: s.storeName },
+    user: { id: s.uid, name: s.name, role, storeId: s.storeId, storeName: s.storeName },
     stores,
     denied,
     caps,
@@ -48,22 +54,27 @@ export async function GET() {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  if (!canSwitchStores(s.role))
+  const sys = await readSystem();
+  // Read the CURRENT role from the store (not the login cookie), so a freshly
+  // promoted Area Manager can switch right away — and the re-issued session
+  // carries their up-to-date role.
+  const dbUser = sys.users.find((u) => u.id === s.uid);
+  const role = dbUser?.role ?? s.role;
+  if (!canSwitchStores(role))
     return NextResponse.json({ error: "You can't switch stores" }, { status: 403 });
 
   const { storeId } = await req.json().catch(() => ({}));
-  const sys = await readSystem();
   const store = sys.stores.find((st) => st.id === storeId);
   if (!store) return NextResponse.json({ error: "Store not found" }, { status: 404 });
   // An Area Manager may only switch to a store the owner assigned them.
-  if (!allowedStoreIds(sys, s.uid, s.role, s.storeId).has(store.id)) {
+  if (!allowedStoreIds(sys, s.uid, role, s.storeId).has(store.id)) {
     return NextResponse.json({ error: "That store isn't assigned to you" }, { status: 403 });
   }
 
   const token = await signSession({
     uid: s.uid,
     name: s.name,
-    role: s.role,
+    role,
     storeId: store.id,
     storeName: store.name,
   });

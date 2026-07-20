@@ -85,7 +85,7 @@ function RosterPrint() {
         </button>
       </div>
 
-      <div className="po-sheet bg-white p-6 text-black shadow-card">
+      <div className="roster-sheet bg-white p-6 text-black shadow-card">
         {/* Header */}
         <div className="mb-3 text-center">
           <h1 style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.5 }}>STAFF ROSTER {isWeek ? "— WEEK" : ""}</h1>
@@ -216,6 +216,26 @@ function RosterPrint() {
           Printed from Stookii · {title}
         </p>
       </div>
+
+      {/* Print this roster on A4 LANDSCAPE — the day columns need the width. The
+          app shell is dropped and the sheet is pinned to the full landscape
+          printable area (297mm − 2×8mm ≈ 281mm) so nothing scales down. */}
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 8mm; }
+          aside, .no-print, .fixed { display: none !important; }
+          body { background: #fff !important; }
+          main:has(.roster-sheet) { width: 281mm !important; max-width: 281mm !important; padding: 0 !important; margin: 0 !important; }
+          main:has(.roster-sheet) > div,
+          main:has(.roster-sheet) > div > div { width: 281mm !important; max-width: 281mm !important; margin: 0 !important; padding: 0 !important; }
+          .roster-sheet {
+            width: 281mm !important; max-width: 281mm !important;
+            margin: 0 !important; padding: 0 !important;
+            border: none !important; box-shadow: none !important;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+          }
+        }
+      `}</style>
     </div>
   );
 }
