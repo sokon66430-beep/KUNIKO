@@ -1,4 +1,4 @@
-# Monakom Pro
+# Stookii-me
 
 An all-in-one **retail business management system** — a cleaner, more capable take on the kind of cloud business tool Monakom offers. Built for a Cambodia retail context (USD + Riel, VAT, local suppliers & payment methods like ABA / Wing).
 
