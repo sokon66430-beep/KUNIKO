@@ -402,6 +402,11 @@ export default function PurchaseOrdersPage() {
                       <span className={po.sentToSupplier ? "font-semibold text-emerald-600" : ""}>
                         {po.sentToSupplier ? "Sent" : "Send?"}
                       </span>
+                      {po.sentToSupplier && po.sentBy && (
+                        <span className="text-[10px] font-normal text-slate-400" title={po.sentAt ? `Sent ${dateTime(po.sentAt)}` : undefined}>
+                          by {po.sentBy}
+                        </span>
+                      )}
                     </label>
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:w-24">

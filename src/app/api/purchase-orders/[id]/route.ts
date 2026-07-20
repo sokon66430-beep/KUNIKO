@@ -135,6 +135,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         po.items = reflectProductChanges(po, db.products).items.map((i) => ({ ...i }));
       }
       po.sentToSupplier = body.sentToSupplier || undefined;
+      // Record who sent it (and when) so the list shows accountability; clear on untick.
+      if (body.sentToSupplier) {
+        po.sentBy = actor;
+        po.sentAt = new Date().toISOString();
+      } else {
+        po.sentBy = undefined;
+        po.sentAt = undefined;
+      }
       logAudit(db, {
         actor,
         action: body.sentToSupplier ? "Marked sent" : "Unmarked sent",

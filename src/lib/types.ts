@@ -641,6 +641,8 @@ export type PurchaseOrder = {
   expectedDate?: string;
   createdAt: string;
   sentToSupplier?: boolean; // ticked once the team has actually sent it out
+  sentBy?: string; // who ticked "sent to supplier"
+  sentAt?: string; // when it was marked sent (ISO)
 };
 
 export type GRNItem = {
