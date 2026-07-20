@@ -94,6 +94,21 @@ function backfill(db: DB): DB {
     for (const s of db.suppliers) s.taxPct = 10;
     db.meta.supplierTaxInitialized = true;
   }
+  // "Sent by" was added after some POs were already marked sent. Backfill who
+  // sent each of those from the most recent "Marked sent" audit entry, so the
+  // list shows accountability for old orders too. Idempotent (only fills blanks;
+  // if there's no audit record we simply leave it unknown).
+  for (const po of db.purchaseOrders || []) {
+    if (po.sentToSupplier && !po.sentBy) {
+      const ev = [...(db.auditLog || [])]
+        .reverse()
+        .find((a) => a.entityType === "PO" && a.entity === po.poNo && a.action === "Marked sent");
+      if (ev) {
+        po.sentBy = ev.actor;
+        po.sentAt = ev.at;
+      }
+    }
+  }
   // Job Schedule (workforce management). Stores predating it get empty books and,
   // once, the three default shifts + the standard retail station/position lists —
   // so a store manager can start rostering immediately (and still edit any of it).
