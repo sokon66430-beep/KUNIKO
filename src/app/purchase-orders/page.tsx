@@ -787,6 +787,9 @@ function SupplierBrowser({
   onAdd: (product: Product, qty?: number) => void;
 }) {
   const [query, setQuery] = useState("");
+  // Multi-select: tick several products, then add them all at once.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEffect(() => setSelected(new Set()), [supplierCode]);
   const supplier = suppliers.find((s) => s.code === supplierCode);
 
   if (!supplier) {
@@ -827,6 +830,21 @@ function SupplierBrowser({
   }
 
   const items = products.filter((p) => p.supplierCode === supplierCode).sort((a, b) => a.name.localeCompare(b.name));
+  const shown = items.slice(0, 60);
+  const selectedCount = items.filter((p) => selected.has(p.id)).length;
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function addSelected() {
+    items.forEach((p) => selected.has(p.id) && onAdd(p));
+    setSelected(new Set());
+  }
+
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
@@ -835,23 +853,40 @@ function SupplierBrowser({
           Change supplier
         </button>
       </div>
+      <p className="mb-1.5 text-[11px] text-slate-400">Tick the items you want, then add them all at once.</p>
       <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200">
-        {items.slice(0, 60).map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onAdd(p)}
-            className="flex w-full items-center justify-between gap-2 border-b border-slate-50 px-3.5 py-2 text-left text-sm last:border-0 hover:bg-brand-50"
-          >
-            <span className="min-w-0 truncate font-medium text-ink-800">{p.name}</span>
-            <span className="shrink-0 text-xs text-slate-500">{usd(p.cost)}</span>
-          </button>
-        ))}
+        {shown.map((p) => {
+          const on = selected.has(p.id);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => toggle(p.id)}
+              className={`flex w-full items-center gap-2.5 border-b border-slate-50 px-3.5 py-2 text-left text-sm last:border-0 ${on ? "bg-brand-50" : "hover:bg-slate-50"}`}
+            >
+              <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border ${on ? "border-brand-600 bg-brand-600 text-white" : "border-slate-300"}`}>
+                {on && <Check size={12} strokeWidth={3} />}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium text-ink-800">{p.name}</span>
+              <span className="shrink-0 text-xs text-slate-500">{usd(p.cost)}</span>
+            </button>
+          );
+        })}
         {items.length === 0 && <p className="px-3.5 py-5 text-center text-sm text-slate-400">No products found.</p>}
       </div>
-      {items.length > 60 && (
-        <p className="mt-1 text-[11px] text-slate-400">Showing 60 of {items.length} — use search above to narrow.</p>
-      )}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-slate-400">
+          {items.length > 60 ? `Showing 60 of ${items.length} — search above to narrow.` : `${items.length} product${items.length === 1 ? "" : "s"}`}
+        </span>
+        <button
+          type="button"
+          className="btn-primary !py-1.5 text-xs"
+          disabled={selectedCount === 0}
+          onClick={addSelected}
+        >
+          <Plus size={14} /> Add {selectedCount || ""} selected
+        </button>
+      </div>
     </div>
   );
 }
