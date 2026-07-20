@@ -108,7 +108,9 @@ function RosterPrint() {
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 8 }}>
           <thead>
             <tr>
-              <th style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", width: isWeek ? "20%" : "26%", fontSize: 8.5 }}>Employee</th>
+              <th style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", width: isWeek ? "15%" : "14%", fontSize: 8.5 }}>Employee</th>
+              <th style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", width: isWeek ? "10%" : "9%", fontSize: 8 }}>Role</th>
+              <th style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", width: isWeek ? "11%" : "9%", fontSize: 8 }}>Phone</th>
               {columns.map((c) => {
                 const weekend = c.wd === 0 || c.wd === 6;
                 return (
@@ -143,16 +145,71 @@ function RosterPrint() {
               });
               return (
                 <tr key={emp.id}>
-                  <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left" }}>
-                    <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                    {posName(emp.positionId) && <span style={{ fontSize: 6.5, color: "#64748b" }}> · {posName(emp.positionId)}</span>}
-                  </td>
+                  <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", fontWeight: 700 }}>{emp.name}</td>
+                  <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", fontSize: 7 }}>{posName(emp.positionId)}</td>
+                  <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", fontSize: 7.5, whiteSpace: "nowrap" }}>{emp.phone || ""}</td>
                   {cells}
                   <td style={{ border: cellBorder, padding: 0, textAlign: "center", fontWeight: 700 }}>{work}</td>
                 </tr>
               );
             })}
           </tbody>
+          {/* Daily manpower — how many staff are on each shift, per day.
+              Two blank rows separate it from the roster so it reads clearly. */}
+          <tfoot>
+            <tr style={{ height: 9 }}>
+              <td colSpan={columns.length + 4} style={{ border: "none" }} />
+            </tr>
+            <tr style={{ height: 9 }}>
+              <td colSpan={columns.length + 4} style={{ border: "none" }} />
+            </tr>
+            <tr>
+              <td colSpan={3} style={{ border: cellBorder, padding: "2px 4px", textAlign: "left", fontWeight: 800, fontSize: 8, background: "#e2e8f0" }}>
+                DAILY MANPOWER — staff per shift
+              </td>
+              {columns.map((c) => (
+                <td key={c.date} style={{ border: cellBorder, background: "#e2e8f0" }} />
+              ))}
+              <td style={{ border: cellBorder, background: "#e2e8f0" }} />
+            </tr>
+            {shifts.map((s) => {
+              let total = 0;
+              return (
+                <tr key={s.id} style={{ background: "#f8fafc" }}>
+                  <td colSpan={3} style={{ border: cellBorder, padding: "2px 4px", textAlign: "right", fontWeight: 700, fontSize: 7.5 }}>
+                    {s.code} · {s.name}
+                  </td>
+                  {columns.map((c) => {
+                    const n = employees.filter((e) => byKey.get(`${e.id}|${c.date}`)?.shiftId === s.id).length;
+                    total += n;
+                    const weekend = c.wd === 0 || c.wd === 6;
+                    return (
+                      <td key={c.date} style={{ border: cellBorder, padding: 0, textAlign: "center", fontWeight: 700, background: weekend ? "#fef2f2" : undefined }}>
+                        {n || ""}
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: cellBorder, padding: 0, textAlign: "center", fontWeight: 700 }}>{total}</td>
+                </tr>
+              );
+            })}
+            <tr style={{ background: "#eef2fb" }}>
+              <td colSpan={3} style={{ border: cellBorder, padding: "2px 4px", textAlign: "right", fontWeight: 800, fontSize: 7.5 }}>On duty / day</td>
+              {columns.map((c) => {
+                const n = employees.filter((e) => {
+                  const sh = byKey.get(`${e.id}|${c.date}`)?.shiftId;
+                  return sh && shifts.some((x) => x.id === sh);
+                }).length;
+                const weekend = c.wd === 0 || c.wd === 6;
+                return (
+                  <td key={c.date} style={{ border: cellBorder, padding: 0, textAlign: "center", fontWeight: 800, background: weekend ? "#fef2f2" : undefined }}>
+                    {n || ""}
+                  </td>
+                );
+              })}
+              <td style={{ border: cellBorder, padding: 0 }} />
+            </tr>
+          </tfoot>
         </table>
 
         <p style={{ fontSize: 8, color: "#64748b", marginTop: 8, textAlign: "right" }}>
