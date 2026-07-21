@@ -119,6 +119,8 @@ export default function StoresPage() {
   const [addingUser, setAddingUser] = useState(false);
   const [editingStore, setEditingStore] = useState<StoreRow | null>(null);
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migResult, setMigResult] = useState<{ id: string; name: string; from: string; to: string }[] | null>(null);
 
   const storeList = stores || [];
   const userList = users || [];
@@ -146,13 +148,45 @@ export default function StoresPage() {
     }
   }
 
+  // Convert every existing account's login to the store-scoped email format in
+  // one go, then show the owner each person's new login.
+  async function migrateLogins() {
+    if (
+      !(await confirmDialog({
+        title: "Convert existing logins to email format",
+        message:
+          "Every current account gets a new login like name@onmart-store.kh. Passwords stay the same and anyone signed in stays signed in — but from now on they sign in with the new address. Continue?",
+        confirmText: "Convert logins",
+      }))
+    )
+      return;
+    setMigrating(true);
+    try {
+      const r = await api<{ converted: number; changes: { id: string; name: string; from: string; to: string }[] }>(
+        "/api/users/migrate-logins",
+        { method: "POST" },
+      );
+      setMigResult(r.changes);
+      reloadUsers();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setMigrating(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
         title="Stores & Employees"
         subtitle="Manage every store location and the employees who can sign in — accountant, procurement, operations"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {isOwner && (
+              <button className="btn-ghost" disabled={migrating} onClick={migrateLogins} title="Convert every existing account to a name@onmart-store.kh login">
+                {migrating ? "Converting…" : "Convert logins to email"}
+              </button>
+            )}
             <button className="btn-ghost" onClick={() => setAddingUser(true)}>
               <Users size={18} /> Add Employee
             </button>
@@ -309,6 +343,42 @@ export default function StoresPage() {
           }}
         />
       )}
+
+      {migResult && (
+        <Modal
+          open
+          onClose={() => setMigResult(null)}
+          title="Logins converted"
+          footer={
+            <button className="btn-primary" onClick={() => setMigResult(null)}>
+              Done
+            </button>
+          }
+        >
+          {migResult.length === 0 ? (
+            <p className="py-4 text-sm text-slate-500">Every account was already in the email format — nothing to change.</p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                <b>{migResult.length}</b> login{migResult.length === 1 ? "" : "s"} updated. Passwords are unchanged. Give each
+                person their new login below:
+              </p>
+              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-0.5">
+                {migResult.map((c) => (
+                  <div key={c.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-sm font-semibold text-ink-800">{c.name}</p>
+                    <p className="text-[12px] text-slate-500">
+                      <span className="line-through">{c.from}</span>{" "}
+                      <span className="mx-1 text-slate-300">→</span>{" "}
+                      <span className="font-mono font-semibold text-brand-600">{c.to}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -365,7 +435,9 @@ function EditUserModal({
 }) {
   const [form, setForm] = useState({
     name: user.name,
-    username: user.username,
+    // Edit the local part only — the store's domain is shown as a suffix and
+    // re-attached on save, so an existing login converts to the email format too.
+    username: user.username.split("@")[0],
     password: "",
     role: user.role,
     storeId: user.storeId,
@@ -375,6 +447,12 @@ function EditUserModal({
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const toggleStore = (id: string) =>
     setForm((f) => ({ ...f, storeIds: f.storeIds.includes(id) ? f.storeIds.filter((x) => x !== id) : [...f.storeIds, id] }));
+
+  const selStore = stores.find((s) => s.id === form.storeId);
+  const domain = storeLoginDomain(selStore);
+  const fullLogin = buildLogin(form.username, selStore);
+  const pwProblem = form.password ? passwordProblem(form.password) : null;
+  const canSave = !!form.username.trim() && !!form.storeId && !pwProblem;
 
   async function save() {
     setBusy(true);
@@ -406,7 +484,7 @@ function EditUserModal({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" disabled={busy || !form.username.trim() || !form.storeId} onClick={save}>
+          <button className="btn-primary" disabled={busy || !canSave} onClick={save}>
             {busy ? "Saving…" : "Save"}
           </button>
         </>
@@ -419,11 +497,35 @@ function EditUserModal({
         </div>
         <div>
           <label className="label">Username</label>
-          <input className="input" value={form.username} onChange={(e) => set("username", e.target.value)} />
+          <div className="flex items-stretch overflow-hidden rounded-xl border border-slate-200 focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/10">
+            <input
+              className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-sm text-ink-800 outline-none placeholder:text-slate-400"
+              value={form.username}
+              onChange={(e) => set("username", e.target.value)}
+              placeholder="e.g. sok"
+            />
+            <span className="flex items-center whitespace-nowrap border-l border-slate-200 bg-slate-50 px-3 font-mono text-[12px] text-slate-500">
+              @{domain}
+            </span>
+          </div>
+          {form.username.trim() && (
+            <p className="mt-1 text-[11px] text-slate-400">
+              Signs in as <span className="font-semibold text-slate-600">{fullLogin}</span>
+            </p>
+          )}
         </div>
         <div>
           <label className="label">New password (leave blank to keep)</label>
-          <input className="input" type="text" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••••" />
+          <input
+            className="input"
+            type="text"
+            value={form.password}
+            onChange={(e) => set("password", e.target.value)}
+            placeholder="letters + numbers, 8+"
+          />
+          <p className={`mt-1 text-[11px] ${pwProblem ? "font-semibold text-rose-500" : "text-slate-400"}`}>
+            {pwProblem || "Leave blank to keep. New password needs 8+ chars with letters and numbers."}
+          </p>
         </div>
         <div>
           <label className="label">Role</label>

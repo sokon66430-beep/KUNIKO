@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import { readSystem, mutateSystem } from "@/lib/system";
 import { canManageStaff, isCrossStoreRole } from "@/lib/access";
 import { hashPassword } from "@/lib/password";
+import { buildLogin, passwordProblem } from "@/lib/userIdentity";
 import type { Role } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     if (typeof body.username === "string" && body.username.trim()) {
-      const uname = body.username.trim();
+      // Build the store-scoped email login, using the store this edit lands on
+      // (a store change in the same request wins), so it matches the create flow.
+      const effectiveStoreId =
+        typeof body.storeId === "string" && sys.stores.some((st) => st.id === body.storeId) ? body.storeId : target.storeId;
+      const store = sys.stores.find((st) => st.id === effectiveStoreId);
+      const uname = buildLogin(body.username, store);
+      if (!uname) return { error: "Enter a username", status: 400 };
       if (sys.users.some((u) => u.id !== target.id && u.username.toLowerCase() === uname.toLowerCase())) {
         return { error: "That username is already taken", status: 400 };
       }
@@ -77,6 +84,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       delete target.storeIds;
     }
     if (typeof body.password === "string" && body.password.trim()) {
+      // Same strength policy as creating an account.
+      const pwErr = passwordProblem(body.password.trim());
+      if (pwErr) return { error: pwErr, status: 400 };
       target.passwordHash = hashPassword(body.password.trim());
     }
     return {
