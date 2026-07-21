@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { mutateDB } from "@/lib/db";
+import { mutateDB, readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
@@ -38,27 +38,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const reason = String(body.reason || "").trim();
   if (!reason) return NextResponse.json({ error: "A reason is required to cancel an invoice" }, { status: 400 });
 
-  // Verify the approving manager by their CODE alone — no username. The system
-  // finds which manager it belongs to: match the code against every store
-  // manager / assistant store manager (or owner) who can approve here.
-  const managerCode = String(body.managerCode || body.managerPassword || "");
+  // Verify the approving manager by their CODE alone — no username. Two kinds
+  // of code work, checked in this order:
+  //   1. An APPROVAL CODE / BADGE from Store Settings → Receipt-edit approvers —
+  //      the same badge that approves a receipt edit approves a void.
+  //   2. A manager's own login password (store manager / assistant / owner).
+  const managerCode = String(body.managerCode || body.managerPassword || "").trim();
   if (!managerCode) {
-    return NextResponse.json({ error: "A manager code is required to cancel an invoice" }, { status: 400 });
+    return NextResponse.json({ error: "An approval code is required to cancel an invoice" }, { status: 400 });
   }
-  const sys = await readSystem();
-  const approvers = sys.users.filter(
-    (u) =>
-      canCancelInvoice(u.role) &&
-      (isCrossStoreRole(u.role) || u.storeId === session.storeId || (u.storeIds || []).includes(session.storeId)),
-  );
-  const mgr = approvers.find((u) => verifyPassword(managerCode, u.passwordHash));
-  if (!mgr) {
+  let approvedBy: string | null = null;
+  const storeDb = await readDB();
+  const badge = (storeDb.meta.business.approvers || []).find((a) => a.code && a.code === managerCode);
+  if (badge) {
+    approvedBy = badge.name ? `${badge.name} (${badge.role})` : badge.role;
+  } else {
+    const sys = await readSystem();
+    const approvers = sys.users.filter(
+      (u) =>
+        canCancelInvoice(u.role) &&
+        (isCrossStoreRole(u.role) || u.storeId === session.storeId || (u.storeIds || []).includes(session.storeId)),
+    );
+    const mgr = approvers.find((u) => verifyPassword(managerCode, u.passwordHash));
+    if (mgr) approvedBy = mgr.name;
+  }
+  if (!approvedBy) {
     return NextResponse.json(
-      { error: "Manager code not recognised — only a store manager or assistant store manager can approve." },
+      { error: "Code not recognised — enter an approver badge code (Store Settings) or a manager's password." },
       { status: 403 },
     );
   }
-  const approvedBy = mgr.name;
   const actor = await currentActor();
 
   const result = await mutateDB((db) => {

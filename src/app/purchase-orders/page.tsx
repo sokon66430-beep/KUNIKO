@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Select } from "@/components/Select";
@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
+  MoreHorizontal,
 } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import { DatePicker } from "@/components/DatePicker";
@@ -383,33 +384,36 @@ export default function PurchaseOrdersPage() {
                       {po.supplier} · <span className="font-semibold text-ink-800">{usd(poTotal(po))}</span>
                     </p>
                   </div>
-                  {/* Actions — wrap to a full-width row on phones so nothing is cut off */}
+                  {/* Actions — every element sits in a FIXED-WIDTH slot so the
+                      checkboxes, bars, badges and buttons line up in straight
+                      columns down the whole list. Variable content (long names,
+                      a missing Receive button) no longer knocks rows askew.
+                      On phones the row still wraps to full width. */}
                   <div
-                    className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end sm:gap-4"
+                    className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:flex-nowrap sm:justify-end"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {/* Sent to supplier — tick it once the PO has gone out */}
                     <label
-                      className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500"
-                      title="Tick when this PO has been sent to the supplier"
+                      className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 sm:w-28"
+                      title={
+                        po.sentToSupplier
+                          ? `Sent${po.sentBy ? ` by ${po.sentBy}` : ""}${po.sentAt ? ` · ${dateTime(po.sentAt)}` : ""}`
+                          : "Tick when this PO has been sent to the supplier"
+                      }
                     >
                       <input
                         type="checkbox"
                         checked={!!po.sentToSupplier}
                         onChange={(e) => markSent(po, e.target.checked)}
-                        className="h-4 w-4 accent-brand-600"
+                        className="h-4 w-4 shrink-0 accent-brand-600"
                       />
-                      <span className={po.sentToSupplier ? "font-semibold text-emerald-600" : ""}>
-                        {po.sentToSupplier ? "Sent" : "Send?"}
+                      <span className={`truncate ${po.sentToSupplier ? "font-semibold text-emerald-600" : ""}`}>
+                        {po.sentToSupplier ? (po.sentBy ? `Sent · ${po.sentBy}` : "Sent") : "Send?"}
                       </span>
-                      {po.sentToSupplier && po.sentBy && (
-                        <span className="text-[10px] font-normal text-slate-400" title={po.sentAt ? `Sent ${dateTime(po.sentAt)}` : undefined}>
-                          by {po.sentBy}
-                        </span>
-                      )}
                     </label>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:w-24">
+                    <div className="flex items-center gap-2 sm:w-32">
+                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:w-20">
                         <div
                           className={`h-full rounded-full ${
                             pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300"
@@ -417,10 +421,12 @@ export default function PurchaseOrdersPage() {
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <span className="text-xs text-slate-500">{pct}%</span>
+                      <span className="w-9 text-right text-xs tabular-nums text-slate-500">{pct}%</span>
                     </div>
-                    <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
-                    <div className="flex items-center gap-1">
+                    <div className="sm:w-[84px] sm:text-center">
+                      <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
+                    </div>
+                    <div className="flex items-center gap-1 sm:w-[124px] sm:justify-end">
                       {(po.status === "Open" || po.status === "Partial") && (
                         <Link href="/receiving" className="btn-primary !px-3 !py-1.5 text-xs">
                           <ReceiveIcon size={14} /> Receive
@@ -429,7 +435,7 @@ export default function PurchaseOrdersPage() {
                       <button
                         onClick={() => setViewing(po)}
                         aria-label="View purchase order"
-                        className="hidden h-8 w-8 place-items-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500 sm:grid"
+                        className="hidden h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-slate-100 hover:text-slate-500 sm:grid"
                       >
                         <ChevronRight size={16} />
                       </button>
@@ -677,6 +683,7 @@ function CreatePOModal({
   return (
     <Modal
       open
+      fullScreen
       onClose={onClose}
       title="New Purchase Order"
       footer={
@@ -932,6 +939,8 @@ function ViewPOModal({
   const [draft, setDraft] = useState(po.items);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The "⋯" overflow menu holding the rare destructive actions.
+  const [moreOpen, setMoreOpen] = useState(false);
   // Raw text the user is typing, per line. A number input bound straight to a
   // number coerces every keystroke (you couldn't clear the field mid-type), so
   // keep the raw string for display and parse on save.
@@ -939,6 +948,7 @@ function ViewPOModal({
 
   const startEdit = () => {
     const copy = items.map((i) => ({ ...i }));
+    skipAutoRef.current = true; // this draft reset isn't a user change — don't auto-save it
     setDraft(copy);
     setRaw(Object.fromEntries(copy.map((i) => [i.productId, { qtyOrdered: String(i.qtyOrdered) }])));
     setEditing(true);
@@ -1064,34 +1074,79 @@ function ViewPOModal({
     return m;
   }, [base]);
 
-  async function save() {
-    setBusy(true);
+  // ── Auto-save while editing ───────────────────────────────────────────────
+  // Every change (a quantity typed, a line added or removed) saves on its own
+  // after a short pause — there is no Save button to forget. "Done" just closes
+  // edit mode after flushing anything still pending.
+  const [autoStatus, setAutoStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const savingRef = useRef(false);
+  // startEdit copies items into draft, which would otherwise trigger one no-op
+  // save the moment edit mode opens.
+  const skipAutoRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  async function persist() {
+    // One save on the wire at a time — wait for it, then send the newest draft.
+    while (savingRef.current) await new Promise((r) => setTimeout(r, 150));
+    savingRef.current = true;
+    setAutoStatus("saving");
+    const d = draftRef.current;
+    const orig = itemsRef.current;
     try {
       const edits = [
         // Only the ordered qty travels — unit cost is managed in Master Data.
         // A line the PO didn't have is flagged `add`; the server re-checks the
         // supplier and reads the cost off the product itself.
-        ...draft.map((d) => ({
-          productId: d.productId,
-          qtyOrdered: Math.max(d.qtyReceived, Math.floor(Number(d.qtyOrdered) || 0)),
-          ...(items.some((o) => o.productId === d.productId) ? {} : { add: true }),
+        ...d.map((l) => ({
+          productId: l.productId,
+          qtyOrdered: Math.max(l.qtyReceived, Math.floor(Number(l.qtyOrdered) || 0)),
+          ...(orig.some((o) => o.productId === l.productId) ? {} : { add: true }),
         })),
         // Lines removed in the draft → tell the server to drop them.
-        ...items.filter((o) => !draft.some((d) => d.productId === o.productId)).map((o) => ({ productId: o.productId, remove: true })),
+        ...orig.filter((o) => !d.some((x) => x.productId === o.productId)).map((o) => ({ productId: o.productId, remove: true })),
       ];
       const updated = await api<PurchaseOrder>(`/api/purchase-orders/${po.id}`, {
         method: "PATCH",
         body: JSON.stringify({ items: edits }),
       });
-      setItems(updated.items); // reflect what the server actually saved (qty floored at received, etc.)
-      setDraft(updated.items);
-      setEditing(false);
+      // Reflect what the server actually kept (qty floored at received, etc.)
+      // in the base copy — but leave `draft` alone: the user may be mid-type.
+      setItems(updated.items);
+      setAutoStatus("saved");
       onSaved();
-    } catch (e: any) {
-      alert(e.message);
+    } catch {
+      setAutoStatus("error");
     } finally {
-      setBusy(false);
+      savingRef.current = false;
     }
+  }
+
+  useEffect(() => {
+    if (!editing) return;
+    if (skipAutoRef.current) {
+      skipAutoRef.current = false;
+      return;
+    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(persist, 700);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, editing]);
+
+  async function finishEditing() {
+    setBusy(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    await persist(); // flush whatever is still pending
+    setDraft(itemsRef.current); // resync the working copy with what was saved
+    setBusy(false);
+    setEditing(false);
+    setAutoStatus("idle");
   }
 
   return (
@@ -1106,47 +1161,104 @@ function ViewPOModal({
           <div className="flex flex-wrap gap-2">
             {editing ? (
               <>
-                <button className="btn-ghost" disabled={busy} onClick={() => setEditing(false)}>
-                  Cancel
-                </button>
-                <button className="btn-primary" disabled={busy || draft.length === 0} onClick={save}>
-                  <Check size={16} /> {busy ? "Saving…" : "Save changes"}
+                {/* Live auto-save status — the user never presses Save. */}
+                <span
+                  className={`self-center text-xs font-semibold ${
+                    autoStatus === "error" ? "text-rose-600" : autoStatus === "saved" ? "text-emerald-600" : "text-slate-400"
+                  }`}
+                  aria-live="polite"
+                >
+                  {autoStatus === "saving"
+                    ? "Saving…"
+                    : autoStatus === "error"
+                      ? "Couldn't save — check the connection"
+                      : autoStatus === "saved"
+                        ? "All changes saved ✓"
+                        : "Changes save automatically"}
+                </span>
+                <button className="btn-primary" disabled={busy} onClick={finishEditing}>
+                  <Check size={16} /> {busy ? "Saving…" : "Done"}
                 </button>
               </>
             ) : (
               <>
-                {/* Utility actions — quiet, so they don't compete with the one
-                    decision on this screen (Receive Goods). */}
-                <Link href={`/purchase-orders/${po.id}/print`} className="btn-ghost">
-                  <Printer size={16} /> Print
+                {/* One calm row: quiet icon utilities, Edit, an overflow "⋯"
+                    for the rare destructive actions, and ONE primary decision
+                    (Receive Goods). Six competing labelled buttons was noise. */}
+                <Link
+                  href={`/purchase-orders/${po.id}/print`}
+                  title="Print"
+                  aria-label="Print"
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-700"
+                >
+                  <Printer size={16} />
                 </Link>
-                <a href={`/api/purchase-orders/${po.id}/export`} className="btn-ghost">
-                  <FileSpreadsheet size={16} /> Excel
+                <a
+                  href={`/api/purchase-orders/${po.id}/export`}
+                  title="Export to Excel"
+                  aria-label="Export to Excel"
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-700"
+                >
+                  <FileSpreadsheet size={16} />
                 </a>
                 {canEdit && !locked && (
-                  <button className="btn-ghost" onClick={startEdit}>
-                    <Pencil size={16} /> Edit
+                  <button className="btn-ghost !py-2" onClick={startEdit}>
+                    <Pencil size={15} /> Edit
                   </button>
                 )}
-                {/* Destructive actions are borderless rose text — present but
-                    never shouting; a thin rule sets them apart from utilities. */}
                 {((canDelete && !hasReceipts) || po.status === "Open" || po.status === "Partial") && (
-                  <span className="mx-1 h-6 w-px self-center bg-slate-200 dark:bg-slate-700" />
-                )}
-                {canDelete && !hasReceipts && (
-                  <button className="btn-quiet-danger" onClick={onDelete}>
-                    <Trash2 size={16} /> Delete
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      title="More actions"
+                      aria-label="More actions"
+                      onClick={() => setMoreOpen((v) => !v)}
+                      className={`grid h-9 w-9 place-items-center rounded-lg ring-1 transition ${
+                        moreOpen
+                          ? "bg-slate-100 text-slate-700 ring-slate-300"
+                          : "text-slate-500 ring-slate-200 hover:bg-slate-50 hover:text-slate-700"
+                      }`}
+                    >
+                      <MoreHorizontal size={17} />
+                    </button>
+                    {moreOpen && (
+                      <>
+                        {/* click-away closes the menu */}
+                        <div className="fixed inset-0 z-10" onClick={() => setMoreOpen(false)} />
+                        <div className="absolute bottom-11 right-0 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lift">
+                          {canDelete && !hasReceipts && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMoreOpen(false);
+                                onDelete();
+                              }}
+                              className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[13px] font-semibold text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 size={15} /> Delete PO
+                            </button>
+                          )}
+                          {(po.status === "Open" || po.status === "Partial") && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMoreOpen(false);
+                                onCancel();
+                              }}
+                              className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-[13px] font-semibold text-rose-600 hover:bg-rose-50"
+                            >
+                              <Ban size={15} /> Cancel PO
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
                 {(po.status === "Open" || po.status === "Partial") && (
-                  <>
-                    <button className="btn-quiet-danger" onClick={onCancel}>
-                      <Ban size={16} /> Cancel PO
-                    </button>
-                    <Link href="/receiving" className="btn-primary">
-                      <ReceiveIcon size={16} /> Receive Goods
-                    </Link>
-                  </>
+                  <Link href="/receiving" className="btn-primary">
+                    <ReceiveIcon size={16} /> Receive Goods
+                  </Link>
                 )}
               </>
             )}
@@ -1162,8 +1274,8 @@ function ViewPOModal({
       {editing && (
         <>
           <p className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
-            Adjust the ordered quantity or add an item. You can’t go below what’s already received; remove a line only
-            if none was received. Unit cost is managed in Master Data.
+            Adjust the ordered quantity or add an item — every change saves automatically. You can’t go below what’s
+            already received; remove a line only if none was received. Unit cost is managed in Master Data.
           </p>
           <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

@@ -280,6 +280,8 @@ export function Modal({
   children,
   footer,
   size = "md",
+  fullScreen = false,
+  bodyClassName,
 }: {
   open: boolean;
   onClose: () => void;
@@ -287,17 +289,41 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   size?: "md" | "lg" | "xl" | "2xl";
+  // Fill the whole viewport on EVERY device — no floating card, no side margins,
+  // even on a wide desktop. Use it for work screens that need all their room
+  // (e.g. Receiving), where a centred card would crop the table on a tablet.
+  fullScreen?: boolean;
+  // Replace the body's default padded scroll area — pass this when the content
+  // manages its own layout (e.g. a pinned camera on top of a scrolling list).
+  bodyClassName?: string;
 }) {
   if (!open) return null;
   const maxW =
     size === "2xl" ? "max-w-5xl" : size === "xl" ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
+  const bodyMax = size === "xl" || size === "2xl" ? "sm:max-h-[80vh]" : "sm:max-h-[70vh]";
+  // On a phone the dialog fills the whole screen (no floating card, no wasted
+  // margins) — staff run Stookii on their phones. From `sm` up it's the usual
+  // centred card. The card is a flex column so the body scrolls between a fixed
+  // header and footer.
+  //
+  // `fullScreen` keeps the phone behaviour at every width: full bleed, full
+  // height, no width cap, no rounded corners — the dialog IS the screen.
+  const overlay = fullScreen
+    ? "flex items-stretch justify-center p-0"
+    : "flex items-stretch justify-center p-0 sm:items-center sm:p-4";
+  const shell = fullScreen
+    ? `relative z-10 flex h-full w-full flex-col overflow-hidden bg-white`
+    : `relative z-10 flex w-full ${maxW} flex-col overflow-hidden bg-white shadow-lift ring-1 ring-slate-900/[0.08] max-sm:h-full sm:animate-fade-up sm:rounded-2xl`;
+  const body =
+    bodyClassName ??
+    (fullScreen
+      ? "flex-1 overflow-y-auto px-5 py-5 sm:px-6"
+      : `flex-1 overflow-y-auto px-5 py-5 sm:flex-none sm:px-6 ${bodyMax}`);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={`fixed inset-0 z-50 ${overlay}`}>
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-[4px]" onClick={onClose} />
-      <div
-        className={`relative z-10 w-full ${maxW} animate-fade-up overflow-hidden rounded-2xl bg-white shadow-lift ring-1 ring-slate-900/[0.08]`}
-      >
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+      <div className={shell}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
           <h3 className="text-base font-bold tracking-[-0.01em] text-ink-900">{title}</h3>
           <button
             onClick={onClose}
@@ -306,11 +332,9 @@ export function Modal({
             <X size={17} />
           </button>
         </div>
-        <div className={`overflow-y-auto px-6 py-5 ${size === "xl" || size === "2xl" ? "max-h-[80vh]" : "max-h-[70vh]"}`}>
-          {children}
-        </div>
+        <div className={body}>{children}</div>
         {footer && (
-          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:px-6">
             {footer}
           </div>
         )}

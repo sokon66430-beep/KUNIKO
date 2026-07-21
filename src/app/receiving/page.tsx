@@ -263,7 +263,6 @@ function ReceiveModal({
   const receivedBy = session?.user?.name || "—";
   const [flash, setFlash] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<typeof po.items | null>(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -308,11 +307,14 @@ function ReceiveModal({
   }
 
   function bump(productId: string, name: string) {
-    setNow((p) => ({ ...p, [productId]: (p[productId] || 0) + 1 }));
+    // A scan identifies the item and jumps focus straight to its quantity box —
+    // it does NOT add anything on its own. The receiver scans a box, then keys in
+    // how many are in it (the number is added to the line's running total). This
+    // way "scan → type 24" records 24, not 25.
     seq.current += 1;
     const s = seq.current;
     setScanOrder((o) => ({ ...o, [productId]: s }));
-    setFlash({ tone: "ok", text: `+1 ${name}` });
+    setFlash({ tone: "ok", text: `${name} — key in the quantity` });
     setFocusQty({ id: productId, tick: s });
   }
 
@@ -395,6 +397,8 @@ function ReceiveModal({
   return (
     <Modal
       open
+      fullScreen
+      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
       onClose={onClose}
       title={`Receive · ${po.poNo}`}
       footer={
@@ -413,52 +417,54 @@ function ReceiveModal({
         </>
       }
     >
-      <p className="mb-3 text-sm text-slate-500">
-        Supplier <b className="text-ink-700">{po.supplier}</b> · scan each item or adjust the quantities below.
-        Stock updates immediately on confirm.
-      </p>
+      {/* Top ~30% — the camera is ALWAYS on. Point it at a box; the item jumps
+          to the top of the list and its quantity box takes focus, so the count
+          can be keyed in straight away. No tapping the camera open each time. */}
+      <div className="h-[30vh] shrink-0 border-b border-slate-200 bg-black">
+        <CameraScanner variant="inline" open onClose={() => {}} onScan={(code) => handleScan(code)} />
+      </div>
 
-      {/* Scan box */}
-      <div className="mb-4">
-        <label className="label flex items-center gap-1.5">
-          <ScanLine size={13} /> Scan received item (barcode or Item ID)
-        </label>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
-            <input
-              ref={scanRef}
-              className="input pl-10 pr-12"
-              placeholder="Scan, type Item ID, or tap the camera"
-              value={scan}
-              onChange={(e) => setScan(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleScan();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setCameraOpen(true)}
-              title="Scan with camera"
-              className="absolute right-1.5 top-1/2 grid h-8 w-9 -translate-y-1/2 place-items-center rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-100"
-            >
-              <Camera size={17} />
-            </button>
+      {/* Bottom ~70% — the work area scrolls under the fixed camera. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <p className="mb-3 text-sm text-slate-500">
+          Supplier <b className="text-ink-700">{po.supplier}</b> · scan each item above, then key in the quantity.
+          Stock updates on confirm.
+        </p>
+
+        {/* Manual entry — for a handheld scanner gun, or typing the code/quantity
+            by hand when the camera can't get a read. */}
+        <div className="mb-4">
+          <label className="label flex items-center gap-1.5">
+            <ScanLine size={13} /> Or type the barcode / Item ID
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
+              <input
+                ref={scanRef}
+                className="input pl-10"
+                placeholder="Scan with a handheld, or type the code"
+                value={scan}
+                onChange={(e) => setScan(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleScan();
+                  }
+                }}
+              />
+            </div>
+            {flash && (
+              <span
+                className={`chip whitespace-nowrap ${
+                  flash.tone === "ok" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {flash.text}
+              </span>
+            )}
           </div>
-          {flash && (
-            <span
-              className={`chip whitespace-nowrap ${
-                flash.tone === "ok" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-              }`}
-            >
-              {flash.text}
-            </span>
-          )}
-        </div>
-        {ambiguous && (
+          {ambiguous && (
           <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="mb-2 text-xs font-semibold text-amber-800">
               This barcode matches {ambiguous.length} lines on this PO — pick the correct one:
@@ -508,14 +514,13 @@ function ReceiveModal({
                   <td className="px-3 py-2">
                     <p className="font-semibold text-ink-800">{it.name}</p>
                     {it.barcode && <p className="text-[11px] text-slate-400">{it.barcode}</p>}
-                    <p className="text-xs text-slate-400">
-                      {it.sku}
+                    <p className="text-xs">
                       {short > 0 ? (
-                        <span className="ml-2 text-amber-600">short {short}</span>
+                        <span className="text-amber-600">short {short}</span>
                       ) : short < 0 ? (
-                        <span className="ml-2 text-rose-500">over {Math.abs(short)}</span>
+                        <span className="text-rose-500">over {Math.abs(short)}</span>
                       ) : (
-                        <span className="ml-2 text-emerald-600">complete</span>
+                        <span className="text-emerald-600">complete</span>
                       )}
                     </p>
                   </td>
@@ -629,17 +634,16 @@ function ReceiveModal({
         )}
       </div>
 
-      <div className="mt-4">
-        <label className="label flex items-center gap-1.5">
-          <ShieldCheck size={13} /> Received by
-        </label>
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm">
-          <span className="font-semibold text-ink-800">{receivedBy}</span>
-          <span className="text-xs text-slate-400">· recorded automatically (signed-in user)</span>
+        <div className="mt-4">
+          <label className="label flex items-center gap-1.5">
+            <ShieldCheck size={13} /> Received by
+          </label>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm">
+            <span className="font-semibold text-ink-800">{receivedBy}</span>
+            <span className="text-xs text-slate-400">· recorded automatically (signed-in user)</span>
+          </div>
         </div>
       </div>
-
-      <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => handleScan(code)} />
     </Modal>
   );
 }

@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy, MonitorCheck, Lock, Landmark } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
-import { useTillMode } from "@/lib/tillmode";
-import { ManagerGate } from "@/components/ManagerGate";
 import type { DB } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
@@ -78,8 +76,10 @@ export default function SettingsPage() {
           invoiceTo: form.invoiceTo,
           poNotes: form.poNotes,
           approvers: form.approvers,
-          bankAccount: form.bankAccount ?? { name: "" },
-          cashFloat: form.cashFloat ?? 0,
+          // bankAccount / cashFloat are deliberately NOT sent: the cash rule is
+          // fixed (store keeps a $500 float, the rest goes to the bank) and the
+          // till defaults to that float on its own. Sending cashFloat here would
+          // write 0 for stores that never set it and break that default.
           logo: form.logo ?? "",
         }),
       });
@@ -120,8 +120,6 @@ export default function SettingsPage() {
       {error && <ErrorBox message={error} />}
 
       <ChangePasswordCard />
-
-      <TillModeCard />
 
       {/* Owner-only data tools, grouped into one tidy Danger zone instead of
           three separate red cards stacked down the page. */}
@@ -203,55 +201,10 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          <Card className="lg:col-span-2">
-            <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
-              <Landmark size={16} className="text-brand-600" /> Bank deposit account
-            </h3>
-            <p className="mb-4 text-xs text-slate-500">
-              The one bank account the store deposits its cash into. Set it once here and every{" "}
-              <span className="font-semibold">Bank Deposit</span> at the till records this bank automatically — no picking each time.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label">Bank name</label>
-                <input
-                  className="input"
-                  value={form.bankAccount?.name || ""}
-                  onChange={(e) => set("bankAccount", { ...(form.bankAccount || {}), name: e.target.value })}
-                  placeholder="e.g. ABA Bank"
-                />
-              </div>
-              <div>
-                <label className="label">Account number (optional)</label>
-                <input
-                  className="input"
-                  value={form.bankAccount?.number || ""}
-                  onChange={(e) => set("bankAccount", { ...(form.bankAccount || {}), number: e.target.value })}
-                  placeholder="e.g. 000 123 456"
-                />
-              </div>
-            </div>
-            <div className="mt-4 border-t border-dashed border-slate-200 pt-4">
-              <label className="label">Store cash float (kept on hand)</label>
-              <div className="relative max-w-[220px]">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">$</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="input pl-7"
-                  value={form.cashFloat ?? ""}
-                  onChange={(e) => set("cashFloat", e.target.value === "" ? 0 : Number(e.target.value))}
-                  placeholder="500.00"
-                />
-              </div>
-              <p className="mt-2 text-xs text-slate-500">
-                The cash the store always keeps for change and the next day. A{" "}
-                <span className="font-semibold">Bank Transfer</span> pre-fills its amount as everything in the safe{" "}
-                <span className="font-semibold">above</span> this float — so on a bank day, only the surplus goes to the bank.
-              </p>
-            </div>
-          </Card>
+          {/* No "Bank deposit account" card: the cash rule is fixed — the store
+              keeps a $500 float and everything above it goes to the bank. The
+              till's Bank Transfer defaults to that $500 float on its own
+              (see components/shift.tsx), so there is nothing to configure. */}
 
           <Card className="lg:col-span-2">
             <div className="mb-1 flex items-center justify-between">
@@ -386,21 +339,19 @@ function ClearSalesCard() {
   }
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 py-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div className="min-w-0 flex-1">
         <h4 className="text-[13px] font-bold text-ink-900">Clear sales history</h4>
-        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+        <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-500">
           Delete every sale so you can re-import a fresh set. Products and stock are untouched — only the sales data.
         </p>
         {msg && (
           <span className={`mt-1.5 block text-xs font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
         )}
       </div>
-      <button
-        className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-rose-600 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
-        disabled={busy}
-        onClick={clearSales}
-      >
+      {/* All three danger-zone actions share ONE style and ONE width so the
+          column reads as a straight rail, not three different buttons. */}
+      <button className="btn-danger-zone" disabled={busy} onClick={clearSales}>
         <Trash2 size={15} /> {busy ? "Clearing…" : "Clear sales"}
       </button>
     </div>
@@ -441,10 +392,10 @@ function ClearProductsCard() {
   }
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 py-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div className="min-w-0 flex-1">
         <h4 className="text-[13px] font-bold text-ink-900">Clear all products</h4>
-        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+        <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-500">
           Delete <b>every product</b> so a fresh master can be imported. Sales, orders and receipts keep their history.
           Your password is required to approve.
         </p>
@@ -484,7 +435,7 @@ function ClearProductsCard() {
       </div>
       {!arming && (
         <button
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-rose-600 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-rose-700"
+          className="btn-danger-zone"
           onClick={() => {
             setArming(true);
             setMsg(null);
@@ -535,10 +486,10 @@ function CleanupDuplicatesCard() {
   }
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 py-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div className="min-w-0 flex-1">
         <h4 className="text-[13px] font-bold text-ink-900">Remove duplicate products</h4>
-        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+        <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-500">
           Past imports can leave placeholder-ID copies (SKU-1234) of a product. This removes copies that exist nowhere
           else (no sale, order, receipt, count or write-off). The real products always stay.
         </p>
@@ -546,57 +497,10 @@ function CleanupDuplicatesCard() {
           <span className={`mt-1.5 block text-xs font-medium ${msg.ok ? "text-emerald-600" : "text-rose-600"}`}>{msg.text}</span>
         )}
       </div>
-      <button className="btn-ghost shrink-0 !py-2 text-[13px]" disabled={busy} onClick={cleanup}>
+      <button className="btn-danger-zone" disabled={busy} onClick={cleanup}>
         <Copy size={15} /> {busy ? "Cleaning…" : "Remove duplicates"}
       </button>
     </div>
-  );
-}
-
-// Turn THIS device into a locked till. Whoever signs in here afterwards sees
-// only the POS screen; leaving Till Mode needs a manager code (done from the
-// till bar's lock menu). Other devices are unaffected — the lock is per-machine.
-function TillModeCard() {
-  const router = useRouter();
-  const { tillMode, setTillMode } = useTillMode();
-  const [gate, setGate] = useState(false);
-  const [terminal, setTerminal] = useState("POS 1");
-  useEffect(() => {
-    const s = typeof window !== "undefined" ? window.localStorage.getItem("stookii_pos_terminal") : null;
-    if (s) setTerminal(s);
-  }, []);
-
-  return (
-    <Card className="mb-6">
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-ink-900">
-        <MonitorCheck size={16} className="text-brand-600" /> Till Mode
-      </h3>
-      <p className="mb-3 text-xs leading-relaxed text-slate-500">
-        Turn <b>this device</b> into a locked cash register. Whoever signs in on it afterwards — anyone on the operation
-        team, on their own login — sees <b>only the Point of Sale screen</b>: no sidebar, settings, reports or exports.
-        Only the <b>owner password</b> can switch Till Mode on or off. Your other devices (office, back room) are unaffected.
-      </p>
-      {tillMode ? (
-        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-          This device is a till ({terminal}). Exit from the lock menu on the till bar.
-        </p>
-      ) : (
-        <button className="btn-primary" onClick={() => setGate(true)}>
-          <Lock size={16} /> Turn this device into a till
-        </button>
-      )}
-      {gate && (
-        <ManagerGate
-          title="Turn on Till Mode"
-          hint="The owner password locks this device to the POS screen. Set the till name on the checkout screen first if needed."
-          actionLabel="Turn on Till Mode"
-          ownerOnly
-          codeLabel="Owner password"
-          onClose={() => setGate(false)}
-          onOk={() => { setGate(false); setTillMode(true); router.push("/pos"); }}
-        />
-      )}
-    </Card>
   );
 }
 

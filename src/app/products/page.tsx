@@ -407,11 +407,14 @@ export default function ProductsPage() {
         ) : (
           <>
             <div>
-              {/* Column headers — the stock figure on the right was a bare
-                  number with nothing naming it. */}
+              {/* Column headers — everything on the right half sits in a FIXED
+                  column (price, GP, stock), so the figures line up straight down
+                  the list instead of drifting with each row's text. */}
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.06em] text-slate-500">
                 <span>Product</span>
                 <span className="flex items-center gap-3">
+                  <span className="hidden w-24 text-right sm:block">Price</span>
+                  <span className="hidden w-12 text-right sm:block">GP</span>
                   <span className="w-24 text-right">On hand</span>
                   <span className="w-4" />
                 </span>
@@ -421,32 +424,37 @@ export default function ProductsPage() {
                 return (
                   <div
                     key={p.id}
-                    className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                    className="flex cursor-pointer items-center justify-between gap-3 border-b border-slate-50 px-5 py-3.5 transition last:border-0 hover:bg-slate-50/60"
                     onClick={() => setViewing(p)}
                   >
-                    <div className="min-w-0">
-                      <p className="font-semibold text-ink-900">
+                    {/* Left: name + ONE quiet meta line. The price/GP figures
+                        used to be woven into this text — now they live in their
+                        own aligned columns on the right. */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-ink-900">
                         {p.name}
-                        <span className="ml-2 text-xs font-normal text-slate-400">
-                          {p.sku}
-                          {p.barcode ? ` · ${p.barcode}` : ""}
-                        </span>
+                        {(p.gondola || p.shelf) && (
+                          <span className="ml-2 inline-flex items-center rounded-md bg-brand-50 px-1.5 py-0.5 align-middle text-[11px] font-semibold text-brand-700">
+                            {p.gondola ? `G${p.gondola}` : ""}
+                            {p.gondola && p.shelf ? " · " : ""}
+                            {p.shelf ? `SH${p.shelf}` : ""}
+                          </span>
+                        )}
                       </p>
-                      <p className="mt-0.5 truncate text-sm text-slate-500">
-                        {p.category} ·{" "}
-                        {p.supplierCode ? p.supplier : <Badge tone="amber">Not linked</Badge>} · {usd(p.cost)} →{" "}
-                        <span className="font-semibold text-ink-800">{usd(p.price)}</span> ·{" "}
-                        <span className="text-emerald-600">{gp.toFixed(0)}% GP</span>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">
+                        {p.sku}
+                        {p.barcode ? ` · ${p.barcode}` : ""} · {p.category} ·{" "}
+                        {p.supplierCode ? p.supplier : <span className="font-semibold text-amber-600">Not linked</span>}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {(p.gondola || p.shelf) && (
-                        <span className="inline-flex items-center rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-                          {p.gondola ? `G${p.gondola}` : ""}
-                          {p.gondola && p.shelf ? " · " : ""}
-                          {p.shelf ? `SH${p.shelf}` : ""}
-                        </span>
-                      )}
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="hidden w-24 text-right sm:block">
+                        <span className="block text-sm font-semibold tabular-nums text-ink-900">{usd(p.price)}</span>
+                        <span className="block text-[11px] tabular-nums text-slate-400">cost {usd(p.cost)}</span>
+                      </span>
+                      <span className="hidden w-12 text-right text-xs font-semibold tabular-nums text-emerald-600 sm:block">
+                        {gp.toFixed(0)}%
+                      </span>
                       <span className="w-24 text-right text-sm text-slate-500">
                         <span
                           className={`font-bold tabular-nums ${

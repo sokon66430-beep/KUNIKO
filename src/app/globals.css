@@ -75,6 +75,12 @@ body {
   .btn-quiet-danger {
     @apply btn bg-transparent text-rose-600 hover:bg-rose-50;
   }
+  /* Danger-zone rail (Store Settings): every destructive maintenance action is
+     the SAME outlined style at the SAME width, so the actions read as one tidy
+     column — the solid red is saved for the final "yes, really" step. */
+  .btn-danger-zone {
+    @apply inline-flex w-48 shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-3.5 py-2 text-[13px] font-semibold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50 hover:ring-rose-300 disabled:opacity-50;
+  }
   .input {
     @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink-800 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10;
   }

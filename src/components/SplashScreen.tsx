@@ -14,11 +14,12 @@ import { ShoppingCart, ScanLine, Barcode, Tag, ReceiptText, ShoppingBag, Coins, 
 // ───────────────────────────────────────────────────────────────────────────
 const FLOW = {
   converge: 0, // retail icons fan in + converge
-  badge: 980, // the mark forms from the merge
-  word: 1560, // wordmark rises
-  line: 1820, // accent line + subtitle
-  hold: 3100, // hold the finished lockup
-  fadeOut: 480, // dissolve into the app
+  badge: 600, // the mark forms from the merge — CENTRED on screen
+  reveal: 1250, // the whole lockup slides left (GPU transform) as the text fades in
+  word: 1480, // wordmark rises once the slide is mostly home
+  line: 1660, // accent line + subtitle
+  hold: 2600, // hold the finished lockup
+  fadeOut: 360, // dissolve into the app
 };
 
 // The retail elements that make up a store — each a fresh accent colour.
@@ -32,7 +33,7 @@ const ICONS = [
   { Icon: Coins, color: "#f59e0b" },
   { Icon: Package, color: "#14b8a6" },
 ];
-const RADIUS = 116;
+const RADIUS = 100;
 
 export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "light" | "auto"; onFinish?: () => void }) {
   const [phase, setPhase] = useState<"play" | "out" | "done">("play");
@@ -71,7 +72,7 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
               <span
                 key={i}
                 className="sp-orb"
-                style={{ color, ["--x" as any]: `${x}px`, ["--y" as any]: `${y}px`, animationDelay: `${i * 38}ms` }}
+                style={{ color, ["--x" as any]: `${x}px`, ["--y" as any]: `${y}px`, animationDelay: `${i * 22}ms` }}
               >
                 <Icon size={26} strokeWidth={2.3} />
               </span>
@@ -84,18 +85,24 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
           {/* the brand mark */}
           <svg viewBox="0 0 120 120" className="sp-badge" aria-hidden="true">
             <rect x="6" y="6" width="108" height="108" rx="30" fill="var(--sp-brand)" />
-            <text x="60" y="63" fontSize="82" fontWeight="800" textAnchor="middle" dominantBaseline="central" fontFamily="var(--font-sans, 'Plus Jakarta Sans', Arial, sans-serif)" letterSpacing="-2" fill="#ffffff">
+            {/* Baseline placed by measured ink metrics (glyph ascent 62 / descent 1
+                at 82px → baseline 60 + (62−1)/2 = 90.5) so the S is optically
+                centred in the box on every browser — dominant-baseline rendering
+                differs across engines. */}
+            <text x="60" y="90.5" fontSize="82" fontWeight="800" textAnchor="middle" fontFamily="var(--font-sans, 'Plus Jakarta Sans', Arial, sans-serif)" fill="#ffffff">
               S
             </text>
           </svg>
         </div>
 
-        {/* Wordmark */}
-        <div className="sp-word-wrap">
-          <div className="sp-word">Stookii</div>
+        {/* Wordmark + slogan — beside the mark, like an app header lockup */}
+        <div className="sp-text">
+          <div className="sp-word-wrap">
+            <div className="sp-word">Stookii</div>
+          </div>
+          <div className="sp-line" />
+          <div className="sp-sub">Smart Retail Management</div>
         </div>
-        <div className="sp-line" />
-        <div className="sp-sub">Smart Retail Management</div>
       </div>
 
       <style>{`
@@ -116,24 +123,41 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
         }
         .sp-root { background: radial-gradient(120% 120% at 50% 34%, var(--sp-bg1) 0%, var(--sp-bg2) 100%); }
 
-        .sp-lockup { display: flex; flex-direction: column; align-items: center; gap: clamp(18px, 3.5vmin, 28px); }
+        /* Horizontal lockup. The LAYOUT never animates — the row is laid out in
+           its final shape from the start, and the whole lockup begins shifted
+           right by half the text width so the (still-alone) badge sits at the
+           screen centre. At reveal it slides to 0 on a pure transform — GPU
+           compositing, no reflow per frame — while the text fades in beside it.
+           Animating max-width/margin (layout) was what stuttered. */
+        .sp-lockup {
+          display: flex; flex-direction: row; align-items: center; gap: clamp(20px, 4.5vmin, 34px);
+          transform: translateX(clamp(96px, 13vmin, 122px));
+          will-change: transform;
+          animation: sp-slide 620ms cubic-bezier(.65,0,.35,1) ${FLOW.reveal}ms forwards;
+        }
+        @keyframes sp-slide { to { transform: translateX(0); } }
+        .sp-text {
+          display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+          white-space: nowrap; opacity: 0;
+          animation: sp-fade 460ms ease ${FLOW.reveal + 200}ms forwards;
+        }
         /* Stage is only as big as the mark; the icon ring overflows it (icons are
            absolutely centred) so no empty space pads the wordmark. */
-        .sp-stage { position: relative; width: clamp(120px, 30vmin, 148px); aspect-ratio: 1; overflow: visible; }
+        .sp-stage { position: relative; width: clamp(96px, 24vmin, 124px); aspect-ratio: 1; overflow: visible; }
 
         /* retail elements: fan in at the ring, then rush to centre and merge */
         .sp-orb {
           position: absolute; left: 50%; top: 50%;
           display: grid; place-items: center;
-          filter: drop-shadow(0 4px 12px currentColor);
+          filter: drop-shadow(0 3px 8px currentColor);
           opacity: 0;
-          animation: sp-converge 1120ms cubic-bezier(.55,0,.15,1) both;
+          animation: sp-converge 680ms cubic-bezier(.55,0,.15,1) both;
         }
         @keyframes sp-converge {
-          0%   { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(.45) rotate(-12deg); opacity: 0; }
-          22%  { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1) rotate(0deg); opacity: 1; }
-          64%  { opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(.18) rotate(8deg); opacity: 0; }
+          0%   { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(.5); opacity: 0; }
+          28%  { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); opacity: 1; }
+          60%  { opacity: 1; }
+          100% { transform: translate(-50%, -50%) scale(.2); opacity: 0; }
         }
 
         /* ripple ring when the mark forms */
@@ -141,38 +165,38 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
           position: absolute; left: 50%; top: 50%; width: 100%; height: 100%;
           border-radius: 26%; border: 2px solid var(--sp-brand);
           transform: translate(-50%, -50%) scale(.5); opacity: 0;
-          animation: sp-ripple 720ms ease ${FLOW.badge + 20}ms forwards;
+          animation: sp-ripple 560ms ease ${FLOW.badge + 20}ms forwards;
         }
         @keyframes sp-ripple { 0% { opacity: .5; transform: translate(-50%,-50%) scale(.6); } 100% { opacity: 0; transform: translate(-50%,-50%) scale(1.45); } }
 
         /* brand mark forms at the centre from the merge */
         .sp-badge {
           position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; overflow: visible;
-          filter: drop-shadow(0 16px 38px var(--sp-glow));
+          filter: drop-shadow(0 10px 24px var(--sp-glow));
           opacity: 0; transform: translate(-50%, -50%) scale(.4);
-          animation: sp-pop 720ms cubic-bezier(.2,.85,.25,1.08) ${FLOW.badge}ms forwards,
-                     sp-float 4.5s ease-in-out ${FLOW.word}ms infinite;
+          animation: sp-pop 520ms cubic-bezier(.2,.9,.3,1.04) ${FLOW.badge}ms forwards;
         }
-        @keyframes sp-pop { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 55% { opacity: 1; } 100% { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
-        @keyframes sp-float { 0%,100% { translate: 0 0; } 50% { translate: 0 -5px; } }
+        /* No idle float: once the mark lands it stays perfectly still — a logo
+           that keeps drifting reads as unstable, not alive. */
+        @keyframes sp-pop { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 50% { opacity: 1; } 100% { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
 
         .sp-word-wrap { overflow: hidden; padding: 0 .12em; }
         .sp-word {
-          color: var(--sp-ink); font-weight: 800; font-size: clamp(26px, 6.4vmin, 40px);
+          color: var(--sp-ink); font-weight: 800; font-size: clamp(24px, 5.4vmin, 34px);
           letter-spacing: -.02em; line-height: 1;
           transform: translateY(115%); opacity: 0;
-          animation: sp-rise 720ms cubic-bezier(.16,.84,.28,1) ${FLOW.word}ms forwards;
+          animation: sp-rise 520ms cubic-bezier(.16,.84,.28,1) ${FLOW.word}ms forwards;
         }
         .sp-line {
           height: 2px; width: 0; border-radius: 2px;
-          background: linear-gradient(90deg, transparent, var(--sp-brand), transparent);
-          animation: sp-linegrow 620ms cubic-bezier(.4,0,.2,1) ${FLOW.line}ms forwards;
+          background: linear-gradient(90deg, var(--sp-brand), transparent);
+          animation: sp-linegrow 460ms cubic-bezier(.4,0,.2,1) ${FLOW.line}ms forwards;
         }
         .sp-sub {
           color: var(--sp-sub); font-weight: 600; font-size: clamp(11px, 2.3vmin, 13px);
           letter-spacing: .18em; text-transform: uppercase;
           opacity: 0; transform: translateY(6px);
-          animation: sp-fade 620ms ease ${FLOW.line + 80}ms forwards;
+          animation: sp-fade 460ms ease ${FLOW.line + 60}ms forwards;
         }
 
         @keyframes sp-rise { to { transform: translateY(0); opacity: 1; } }
@@ -180,11 +204,12 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
         @keyframes sp-fade { to { opacity: 1; transform: translateY(0); } }
 
         @media (prefers-reduced-motion: reduce) {
-          .sp-orb, .sp-ripple, .sp-badge, .sp-word, .sp-line, .sp-sub {
+          .sp-lockup, .sp-orb, .sp-ripple, .sp-badge, .sp-text, .sp-word, .sp-line, .sp-sub {
             animation-duration: 1ms !important; animation-delay: 0ms !important;
           }
           .sp-orb { opacity: 0 !important; }
-          .sp-badge, .sp-word { opacity: 1 !important; }
+          .sp-badge, .sp-text, .sp-word { opacity: 1 !important; }
+          .sp-lockup { transform: none; }
           .sp-badge { transform: translate(-50%,-50%) scale(1); }
           .sp-word { transform: none; }
         }

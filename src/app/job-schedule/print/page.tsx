@@ -144,7 +144,9 @@ function RosterPrint() {
                 );
               });
               return (
-                <tr key={emp.id}>
+                // A real minimum height: short rows are hard to read down a
+                // 31-column month and leave no room to hand-write a change.
+                <tr key={emp.id} style={{ height: 26 }}>
                   <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", fontWeight: 700 }}>{emp.name}</td>
                   <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", fontSize: 7 }}>{posName(emp.positionId)}</td>
                   <td style={{ border: cellBorder, padding: "2px 3px", textAlign: "left", fontSize: 7.5, whiteSpace: "nowrap" }}>{emp.phone || ""}</td>
@@ -163,7 +165,7 @@ function RosterPrint() {
             <tr style={{ height: 9 }}>
               <td colSpan={columns.length + 4} style={{ border: "none" }} />
             </tr>
-            <tr>
+            <tr style={{ height: 20 }}>
               <td colSpan={3} style={{ border: cellBorder, padding: "2px 4px", textAlign: "left", fontWeight: 800, fontSize: 8, background: "#e2e8f0" }}>
                 DAILY MANPOWER — staff per shift
               </td>
@@ -175,7 +177,7 @@ function RosterPrint() {
             {shifts.map((s) => {
               let total = 0;
               return (
-                <tr key={s.id} style={{ background: "#f8fafc" }}>
+                <tr key={s.id} style={{ background: "#f8fafc", height: 22 }}>
                   <td colSpan={3} style={{ border: cellBorder, padding: "2px 4px", textAlign: "right", fontWeight: 700, fontSize: 7.5 }}>
                     {s.code} · {s.name}
                   </td>
@@ -193,7 +195,7 @@ function RosterPrint() {
                 </tr>
               );
             })}
-            <tr style={{ background: "#eef2fb" }}>
+            <tr style={{ background: "#eef2fb", height: 22 }}>
               <td colSpan={3} style={{ border: cellBorder, padding: "2px 4px", textAlign: "right", fontWeight: 800, fontSize: 7.5 }}>On duty / day</td>
               {columns.map((c) => {
                 const n = employees.filter((e) => {

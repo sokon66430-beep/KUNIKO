@@ -340,7 +340,9 @@ export default function StockCountPage() {
                         onClick={() => setActiveId(c.id)}
                         className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-100"
                       >
-                        {c.status === "Posted" ? "View" : "Open"}
+                        {/* Not "Open" — the status badge next to it already says
+                            Open, and "Open Open" reads like a mistake. */}
+                        {c.status === "Posted" ? "View" : "Continue"}
                       </button>
                       <button
                         onClick={() => setDeleteTarget(c)}

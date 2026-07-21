@@ -8,6 +8,7 @@ import {
   Plus,
   Minus,
   Trash2,
+  Printer,
   ShoppingCart,
   CheckCircle2,
   X,
@@ -44,6 +45,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
+import { hasThermalPrinter, printThermalReceipt, buildReceiptPayload } from "@/lib/printer";
 import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
 import { PosShiftModal, type ShiftAction } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
@@ -1381,6 +1383,28 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ros
 }
 
 function ReceiptModal({ sale, business, onClose }: { sale: Sale; business?: ReceiptBusiness; onClose: () => void }) {
+  const thermal = hasThermalPrinter();
+  function printReceipt() {
+    const payload = buildReceiptPayload(sale, business, {
+      dateTime: dateTime(sale.createdAt),
+      rielTotal: Math.round((sale.total || 0) * EXCHANGE_RATE),
+      footerNote: (business as any)?.receipt?.footerNote,
+    });
+    // On a Sunmi (companion app) this prints on the built-in printer + pops the
+    // drawer. In a plain browser there's no thermal printer, so fall back to the
+    // browser's print dialog.
+    if (!printThermalReceipt(payload)) window.print();
+  }
+  // Auto-print the moment a sale completes when a real thermal printer is there,
+  // so the cashier never has to tap Print — exactly like a normal till.
+  const autoPrinted = useRef(false);
+  useEffect(() => {
+    if (autoPrinted.current || !thermal) return;
+    autoPrinted.current = true;
+    printReceipt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
@@ -1408,9 +1432,14 @@ function ReceiptModal({ sale, business, onClose }: { sale: Sale; business?: Rece
         {/* The receipt itself — styled from the store's Invoice Customization. */}
         <ReceiptCard sale={sale} business={business} />
 
-        <button onClick={onClose} className="btn-primary mt-4 w-full">
-          New Sale
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button onClick={printReceipt} className="btn-ghost flex-1 justify-center">
+            <Printer size={16} /> {thermal ? "Reprint" : "Print"}
+          </button>
+          <button onClick={onClose} className="btn-primary flex-1 justify-center">
+            New Sale
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1503,7 +1532,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
             )}
           </div>
         </div>
-        <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice needs a store manager or assistant store manager to approve it with their login code.</p>
+        <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice needs approval — an approver badge code (set in Store Settings) or a manager&rsquo;s own code.</p>
         <div className="overflow-y-auto px-2 py-2">
           {loading && !data ? (
             <p className="px-3 py-8 text-center text-sm text-slate-400">Loading…</p>
@@ -1587,13 +1616,13 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
                 type="password"
                 value={mgrPass}
                 onChange={(e) => setMgrPass(e.target.value)}
-                placeholder="Manager code"
+                placeholder="Approval code / badge"
                 autoComplete="off"
                 autoFocus
                 onKeyDown={(e) => { if (e.key === "Enter") confirmCancel(); }}
                 className="input"
               />
-              <p className="mt-1.5 text-[11px] text-slate-400">A store manager or assistant store manager enters their code — the system knows who approved.</p>
+              <p className="mt-1.5 text-[11px] text-slate-400">Scan or type an approver badge code (Store Settings → Receipt-edit approvers), or a manager&rsquo;s own code — the system records who approved.</p>
             </div>
 
             {cancelError && (

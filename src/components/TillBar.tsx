@@ -18,7 +18,7 @@ type ShiftsData = { shifts: { posTerminalId: string; status: string; shift: stri
 
 export function TillBar() {
   const router = useRouter();
-  const { setTillMode } = useTillMode();
+  const { setTillMode, kiosk } = useTillMode();
   const { data: session } = useFetch<SessionInfo>("/api/auth/session");
   const { data: shiftData } = useFetch<ShiftsData>("/api/shifts");
 
@@ -112,12 +112,16 @@ export function TillBar() {
               >
                 <LogOut size={16} className="text-slate-400" /> Log out
               </button>
-              <button
-                onClick={() => { setMenuOpen(false); setGate(true); }}
-                className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                <Unlock size={16} className="text-slate-400" /> Exit Till Mode
-              </button>
+              {/* A kiosk device is permanently a till — no exit, even for the
+                  owner. Manage the store from another device instead. */}
+              {!kiosk && (
+                <button
+                  onClick={() => { setMenuOpen(false); setGate(true); }}
+                  className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Unlock size={16} className="text-slate-400" /> Exit Till Mode
+                </button>
+              )}
             </div>
           )}
           </div>

@@ -438,6 +438,8 @@ function CreatePRModal({
   return (
     <Modal
       open
+      fullScreen
+      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
       onClose={onClose}
       title={editing ? `Continue ${editing.prNo} (draft)` : "New Purchase Request"}
       footer={
@@ -454,16 +456,17 @@ function CreatePRModal({
         </>
       }
     >
-      <LineBuilder products={products} lines={lines} setLines={setLines} suggestions={suggestions} />
-      <div className="mt-4">
-        <label className="label">Note (optional)</label>
-        <input
-          className="input"
-          placeholder="e.g. Weekend replenishment"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </div>
+      <LineBuilder products={products} lines={lines} setLines={setLines} suggestions={suggestions} stickyScanner>
+        <div className="mt-1">
+          <label className="label">Note (optional)</label>
+          <input
+            className="input"
+            placeholder="e.g. Weekend replenishment"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+      </LineBuilder>
     </Modal>
   );
 }

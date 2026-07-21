@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { findByBarcode as findProductsByBarcode } from "@/lib/barcodes";
 import { ScanLine, Search, Trash2, Sparkles, X, Camera, Minus, Plus } from "lucide-react";
 import type { Product } from "@/lib/types";
@@ -142,11 +142,24 @@ export function LineBuilder({
   lines,
   setLines,
   suggestions,
+  // Pin an always-on camera to the top (~30% of the screen) with the controls
+  // and line list scrolling underneath — scan a product, key the quantity, keep
+  // going, no tapping the camera open each time. Used by the full-screen PR/PO
+  // builders. Off by default so nothing else changes.
+  stickyScanner = false,
+  // Content rendered ABOVE the scan/search controls (e.g. an expected-date row).
+  topSlot,
+  // Extra content rendered at the bottom of the scroll area (e.g. a Note field
+  // or an order-split summary).
+  children,
 }: {
   products: Product[];
   lines: Line[];
   setLines: (updater: (prev: Line[]) => Line[]) => void;
   suggestions?: Suggestion[];
+  stickyScanner?: boolean;
+  topSlot?: ReactNode;
+  children?: ReactNode;
 }) {
   const [scan, setScan] = useState("");
   const [query, setQuery] = useState("");
@@ -323,8 +336,8 @@ export function LineBuilder({
 
   const total = lines.reduce((s, l) => s + l.product.cost * l.qty, 0);
 
-  return (
-    <div className="space-y-4">
+  const controls = (
+    <>
       {/* Scan + search row */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -679,7 +692,33 @@ export function LineBuilder({
           </div>
         </>
       )}
+    </>
+  );
 
+  // Sticky mode: live camera pinned to the top ~30%, everything else scrolls
+  // underneath. The parent gives us a full-height flex column to fill.
+  if (stickyScanner) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="h-[30vh] shrink-0 border-b border-slate-200 bg-black">
+          <CameraScanner variant="inline" open onClose={() => {}} onScan={(code) => handleScan(code)} />
+        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+          {topSlot}
+          {controls}
+          {children}
+        </div>
+        {/* The camera button still opens a bigger full-screen view when needed. */}
+        <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => handleScan(code)} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {topSlot}
+      {controls}
+      {children}
       <CameraScanner open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={(code) => handleScan(code)} />
     </div>
   );

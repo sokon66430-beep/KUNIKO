@@ -22,6 +22,10 @@ export function CameraScanner({
   open,
   onClose,
   onScan,
+  // "overlay" = the full-screen black scanner with a Done button (tap-to-open).
+  // "inline"  = an embedded live panel that fills its parent box and never
+  //             closes — used to pin an always-on camera to the top of a screen.
+  variant = "overlay",
   // Defaults to the till's wording, since that's where most scanning happens;
   // screens that look a code up rather than ring it up pass their own.
   hint = "Point the camera at a barcode — items are added automatically. Keep scanning, or tap Done.",
@@ -29,6 +33,7 @@ export function CameraScanner({
   open: boolean;
   onClose: () => void;
   onScan: (code: string) => void;
+  variant?: "overlay" | "inline";
   hint?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -36,6 +41,16 @@ export function CameraScanner({
   const [flash, setFlash] = useState<string | null>(null);
   const [count, setCount] = useState(0);
   const lastRef = useRef<{ code: string; at: number }>({ code: "", at: 0 });
+  // Keep the live callback in a ref so the scanning effect DOESN'T list onScan
+  // in its deps. The parent re-renders on every scan (a qty box gets focus, a
+  // total changes), which makes a fresh onScan each time — if the effect
+  // depended on it the camera would tear down and re-open on every scan. An
+  // always-on inline camera can't flicker like that, so we read the latest
+  // callback through the ref and bind the camera exactly once.
+  const onScanRef = useRef(onScan);
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   useEffect(() => {
     if (!open) return;
@@ -86,7 +101,7 @@ export function CameraScanner({
             setCount((c) => c + 1);
             if (navigator.vibrate) navigator.vibrate(60);
             window.setTimeout(() => setFlash(null), 700);
-            onScan(code);
+            onScanRef.current(code);
           },
         );
       } catch (e: any) {
@@ -109,6 +124,52 @@ export function CameraScanner({
   }, [open, onScan]);
 
   if (!open) return null;
+
+  // Embedded live panel: fills whatever box the parent gives it (e.g. the top
+  // 30% of the Receiving screen) and just keeps scanning. No top bar, no Done
+  // button — closing is the parent's job (it stays open the whole time).
+  if (variant === "inline") {
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-black">
+        {error ? (
+          <div className="flex h-full items-center justify-center p-4 text-center text-xs leading-relaxed text-white/80">
+            {error}
+          </div>
+        ) : (
+          <>
+            <video ref={videoRef} className="h-full w-full object-cover" playsInline muted autoPlay />
+            {/* Aiming frame */}
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div
+                className={`h-20 w-56 max-w-[70%] rounded-xl border-4 transition-colors ${
+                  flash ? "border-emerald-400" : "border-white/70"
+                }`}
+              />
+            </div>
+            {/* Live badge + running count, top-left */}
+            <div className="absolute left-3 top-3 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Live scanner
+              </span>
+              {count > 0 && (
+                <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-bold text-white">
+                  {count} scanned
+                </span>
+              )}
+            </div>
+            {/* Confirmation of the last code read */}
+            {flash && (
+              <div className="absolute inset-x-0 bottom-3 flex justify-center">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg">
+                  <CheckCircle2 size={14} /> {flash}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black">
