@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { canSeeAllStores } from "@/lib/access";
 import { readSystem } from "@/lib/system";
 import { readDB } from "@/lib/db";
 
@@ -14,6 +15,11 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // This exposes sales across EVERY store, so it's limited to cross-store roles
+  // (owner / management / area) — a single-store cashier must not read it.
+  if (!canSeeAllStores(s.role)) {
+    return NextResponse.json({ error: "Cross-store access required" }, { status: 403 });
+  }
 
   const url = new URL(req.url);
   const exclude = url.searchParams.get("exclude") || s.storeId;

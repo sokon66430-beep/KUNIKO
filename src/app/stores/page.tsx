@@ -9,6 +9,7 @@ import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState
 import { confirmDialog } from "@/components/confirm";
 import { Select, type SelectOption } from "@/components/Select";
 import { num, shortDate } from "@/lib/format";
+import { buildLogin, storeLoginDomain, passwordProblem } from "@/lib/userIdentity";
 
 // Role choices for the employee forms, with a one-line description each. Owner
 // and Management are cross-store, high-privilege roles — only an owner may assign
@@ -515,6 +516,14 @@ function AddUserModal({
   const toggleStore = (id: string) =>
     setForm((f) => ({ ...f, storeIds: f.storeIds.includes(id) ? f.storeIds.filter((x) => x !== id) : [...f.storeIds, id] }));
 
+  // The login is built from the typed local part + the chosen store's domain, so
+  // the manager sees the exact address the employee will sign in with.
+  const selStore = stores.find((s) => s.id === form.storeId);
+  const domain = storeLoginDomain(selStore);
+  const fullLogin = buildLogin(form.username, selStore);
+  const pwProblem = form.password ? passwordProblem(form.password) : null;
+  const canSubmit = !!form.username.trim() && !!form.storeId && !pwProblem && !!form.password;
+
   async function save() {
     setBusy(true);
     try {
@@ -536,11 +545,7 @@ function AddUserModal({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button
-            className="btn-primary"
-            disabled={busy || !form.username.trim() || !form.password || !form.storeId}
-            onClick={save}
-          >
+          <button className="btn-primary" disabled={busy || !canSubmit} onClick={save}>
             {busy ? "Creating…" : "Create Employee"}
           </button>
         </>
@@ -553,11 +558,35 @@ function AddUserModal({
         </div>
         <div>
           <label className="label">Username</label>
-          <input className="input" value={form.username} onChange={(e) => set("username", e.target.value)} />
+          <div className="flex items-stretch overflow-hidden rounded-xl border border-slate-200 focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/10">
+            <input
+              className="min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-sm text-ink-800 outline-none placeholder:text-slate-400"
+              value={form.username}
+              onChange={(e) => set("username", e.target.value)}
+              placeholder="e.g. sok"
+            />
+            <span className="flex items-center whitespace-nowrap border-l border-slate-200 bg-slate-50 px-3 font-mono text-[12px] text-slate-500">
+              @{domain}
+            </span>
+          </div>
+          {form.username.trim() && (
+            <p className="mt-1 text-[11px] text-slate-400">
+              Signs in as <span className="font-semibold text-slate-600">{fullLogin}</span>
+            </p>
+          )}
         </div>
         <div>
           <label className="label">Password</label>
-          <input className="input" type="text" value={form.password} onChange={(e) => set("password", e.target.value)} />
+          <input
+            className="input"
+            type="text"
+            value={form.password}
+            onChange={(e) => set("password", e.target.value)}
+            placeholder="letters + numbers, 8+"
+          />
+          <p className={`mt-1 text-[11px] ${pwProblem ? "font-semibold text-rose-500" : "text-slate-400"}`}>
+            {pwProblem || "At least 8 characters, with letters and numbers."}
+          </p>
         </div>
         <div>
           <label className="label">Role</label>

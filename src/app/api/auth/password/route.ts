@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { readSystem, mutateSystem } from "@/lib/system";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { passwordProblem } from "@/lib/userIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,9 @@ export async function POST(req: Request) {
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const { currentPassword, newPassword } = await req.json().catch(() => ({}));
-  if (!newPassword || String(newPassword).length < 4) {
-    return NextResponse.json({ error: "New password must be at least 4 characters" }, { status: 400 });
-  }
+  // Same strength policy as creating an account: 8+ chars, letters and numbers.
+  const pwErr = passwordProblem(String(newPassword || ""));
+  if (pwErr) return NextResponse.json({ error: pwErr }, { status: 400 });
 
   const sys = await readSystem();
   const user = sys.users.find((u) => u.id === s.uid);
