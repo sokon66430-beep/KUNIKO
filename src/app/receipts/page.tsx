@@ -234,7 +234,7 @@ export default function ReceiptsPage() {
 
       {error && <ErrorBox message={error} />}
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid auto-rows-fr grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Receipts Logged" value={num(all.length)} icon={<PackageCheck size={18} />} accent="emerald" />
         <StatCard label="Units Received" value={num(unitsReceived)} icon={<History size={18} />} accent="brand" />
         <StatCard

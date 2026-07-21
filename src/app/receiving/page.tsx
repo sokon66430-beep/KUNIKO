@@ -77,7 +77,10 @@ export default function ReceivingPage() {
 
       {error && <ErrorBox message={error} />}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* auto-rows-fr → every stat card is the SAME height, so a card with a
+          one-line sub (or none) doesn't sit shorter than its neighbour whose
+          sub wraps to two lines. Keeps the 2×2 grid on a phone tidy. */}
+      <div className="mb-4 grid auto-rows-fr grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Awaiting Delivery" value={num(openPOs.length)} icon={<Truck size={18} />} accent="amber" />
         <StatCard
           label="Partially Received"
