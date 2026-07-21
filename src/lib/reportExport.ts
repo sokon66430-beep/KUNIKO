@@ -27,6 +27,10 @@ export type ReportData = {
   cols: Col[];
   rows: any[];
   fancyXlsx?: () => Promise<ExcelJS.Workbook>; // ON Mart-styled workbook (xlsx only)
+  // Labelled money summary drawn beneath the table (PDF) — e.g. Total cost /
+  // Total VAT / Grand total. `value` is pre-formatted ("$232.44"); `strong`
+  // emphasises the bottom line.
+  summary?: { label: string; value: string; strong?: boolean }[];
 };
 
 // ---------------------------------------------------------------------------
@@ -198,9 +202,30 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
     });
     return Math.min(w + pad * 2, 200) * (c.width || 1);
   });
+
+  // Fit to the page WITHOUT butchering numbers. The old code scaled every column
+  // down by the same factor when the row was too wide — on A4 portrait that cut
+  // "$0.90" to "$0." and 13-digit barcodes to "89352924.". Instead, keep every
+  // column at its full natural width and take the overflow out of the wide
+  // free-text columns only (those given a width multiplier > 1, e.g. Item Name).
+  // Money, quantities, codes and barcodes stay full; only a long name ellipsizes.
+  const flexible = cols.map((c) => !!c.width && c.width > 1);
+  const anyFlex = flexible.some(Boolean);
   const totalNat = natural.reduce((s, w) => s + w, 0);
-  const scale = totalNat > contentW ? contentW / totalNat : 1;
-  const widths = natural.map((w) => w * scale);
+  const NAME_FLOOR = 70; // a flex column won't shrink below this
+  let widths = natural.slice();
+  if (totalNat > contentW) {
+    const excess = totalNat - contentW;
+    const room = natural.reduce((s, w, i) => s + (flexible[i] ? Math.max(0, w - NAME_FLOOR) : 0), 0);
+    if (anyFlex && room >= excess) {
+      // Absorb the whole overflow in the flex columns, in proportion to their give.
+      widths = natural.map((w, i) => (flexible[i] ? w - (Math.max(0, w - NAME_FLOOR) / room) * excess : w));
+    } else {
+      // Not enough give in the text columns — fall back to shrinking everything.
+      const scale = contentW / totalNat;
+      widths = natural.map((w) => w * scale);
+    }
+  }
 
   const rowH = 16;
   const money = cols.some((c) => c.money);
@@ -279,6 +304,36 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
       x += w;
     });
     y -= rowH;
+  }
+
+  // Labelled money summary (Total cost / Total VAT / Grand total) — drawn as
+  // right-aligned "label   value" pairs under the table, with the bottom line
+  // emphasised and boxed so it reads as the figure to pay.
+  if (r.summary && r.summary.length) {
+    y -= 4;
+    const rightEdge = M + contentW - pad;
+    const valueGutter = 84; // reserved width for the value, right of the label
+    for (const s of r.summary) {
+      if (y - rowH < M) newPage(false);
+      const f = s.strong ? bold : font;
+      const valT = ascii(s.value);
+      const valW = f.widthOfTextAtSize(valT, RSIZE);
+      const labT = ascii(s.label);
+      const labW = f.widthOfTextAtSize(labT, RSIZE);
+      if (s.strong) {
+        // A pale band behind the grand total.
+        page.drawRectangle({ x: rightEdge - 220, y: y - rowH + 3, width: 220 + pad, height: rowH, color: stripe });
+      }
+      page.drawText(labT, {
+        x: rightEdge - valueGutter - labW,
+        y: y - rowH + 8,
+        size: RSIZE,
+        font: f,
+        color: s.strong ? ink : slate,
+      });
+      page.drawText(valT, { x: rightEdge - valW, y: y - rowH + 8, size: RSIZE, font: f, color: ink });
+      y -= rowH;
+    }
   }
 
   // Footer note on the last page

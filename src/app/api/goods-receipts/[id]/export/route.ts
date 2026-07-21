@@ -48,11 +48,23 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const format = new URL(req.url).searchParams.get("format") || "xlsx";
   const note = `Receipt ${grn.grnNo} · ${grn.supplier} · ${ddmmyyyy(grn.createdAt)} · Received by ${grn.receivedBy}`;
 
+  // Money summary for the foot of the document — total cost (ex-VAT), the total
+  // VAT (per-unit VAT × qty, summed) and the grand total including VAT, so the
+  // PDF carries the same bottom line as the styled Excel.
+  const usd = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const grandCost = round2(rows.reduce((s, r) => s + r.lineCost, 0));
+  const grandVat = round2(rows.reduce((s, r) => s + round2(r.vat * r.qty), 0));
+
   const data: ReportData = {
     title: `Goods Receipt ${grn.grnNo}`,
     filename: grn.grnNo,
     subtitle: `${db.meta.business.name} · ${db.meta.business.branch}   ·   ${note}`,
     rows,
+    summary: [
+      { label: "Total cost (ex-VAT)", value: usd(grandCost) },
+      { label: `Total VAT ${Math.round(vatRate * 100)}%`, value: usd(grandVat) },
+      { label: "Grand total (incl. VAT)", value: usd(round2(grandCost + grandVat)), strong: true },
+    ],
     fancyXlsx: async () => buildGRNReportWorkbook([grn], db.products, db.meta.business, note),
     cols: [
       { header: "Item Code", get: (r: any) => r.sku },

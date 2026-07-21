@@ -14,6 +14,8 @@ import {
   Truck,
   ArrowRight,
   Lock,
+  Search,
+  X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { receiptEditOpen, RECEIPT_EDIT_WINDOW_DAYS } from "@/lib/procurement";
@@ -45,18 +47,27 @@ export default function ReceiptsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [invoiceCamGrn, setInvoiceCamGrn] = useState<string | null>(null);
+  // Free-text search across a receipt's number, its PO, the supplier and who
+  // received it — the list grows quickly, so this is the fast way to a receipt.
+  const [q, setQ] = useState("");
 
   const sortedGrns = useMemo(() => {
+    const query = q.trim().toLowerCase();
     const l = (grns || []).filter((g) => {
       const day = (g.createdAt || "").slice(0, 10);
       if (from && day < from) return false;
       if (to && day > to) return false;
+      if (
+        query &&
+        !`${g.grnNo} ${g.poNo} ${g.supplier} ${g.receivedBy}`.toLowerCase().includes(query)
+      )
+        return false;
       return true;
     });
     if (sortBy === "date-asc") return l.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
     if (sortBy === "grn") return l.sort((a, b) => a.grnNo.localeCompare(b.grnNo));
     return l.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-  }, [grns, sortBy, from, to]);
+  }, [grns, sortBy, from, to, q]);
 
   // Query string for the export links so Excel/PDF match the on-screen range.
   const rangeQs = [from && `from=${from}`, to && `to=${to}`].filter(Boolean).join("&");
@@ -278,6 +289,31 @@ export default function ReceiptsPage() {
         )}
       </div>
 
+      {/* Search — find a receipt by its number, PO, supplier or receiver. */}
+      {all.length > 0 && (
+        <div className="relative mb-3 w-full sm:w-[26rem]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            className="input pl-9 !py-2 text-sm"
+            placeholder="Search receipt no, PO, supplier or receiver…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            inputMode="search"
+            autoComplete="off"
+          />
+          {q && (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Filter bar — its own tidy row, with the date range and the sort each in
           a clearly labelled group instead of one long cramped line. */}
       {all.length > 0 && (
@@ -348,7 +384,10 @@ export default function ReceiptsPage() {
             }
           />
         ) : sortedGrns.length === 0 ? (
-          <EmptyState title="No receipts in this date range" hint="Adjust the From / To dates or Clear the filter." />
+          <EmptyState
+            title="No matching receipts"
+            hint={q.trim() ? `Nothing matches “${q.trim()}”. Try a different search, or clear it.` : "Adjust the From / To dates or Clear the filter."}
+          />
         ) : (
           <>
             {/* Desktop: a dense table. Hidden on phones, where six columns plus

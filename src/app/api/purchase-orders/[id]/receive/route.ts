@@ -105,14 +105,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (grnItems.length === 0) return { error: "empty" as const };
 
     po.status = poStatus(po);
-    // The invoice is the supplier's final bill: receiving WITH it attached means
-    // this delivery is done. Close the PO so it leaves Receiving and locks — even
-    // if fewer than ordered arrived (the supplier billed what they sent).
-    if (hasInvoice) {
-      po.receivingClosed = true;
-      po.closedAt = new Date().toISOString();
-      po.closedBy = receivedBy;
-    }
+    // ONE RECEIPT PER PO. Receiving closes the PO immediately — the moment goods
+    // are booked against it, it leaves Receiving and locks, so the same delivery
+    // can never be received a second time (which used to happen when the first
+    // receipt had no invoice and the PO stayed open). The supplier invoice can
+    // still be scanned in afterwards from Receipt History, where it attaches to
+    // this receipt without re-opening the PO.
+    po.receivingClosed = true;
+    po.closedAt = new Date().toISOString();
+    po.closedBy = receivedBy;
 
     const n = db.meta.nextGRN++;
 
@@ -165,7 +166,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (result.error === "cancelled")
       return NextResponse.json({ error: "This PO is cancelled" }, { status: 400 });
     if (result.error === "closed")
-      return NextResponse.json({ error: "Receiving is closed for this PO — the invoice was already submitted." }, { status: 400 });
+      return NextResponse.json({ error: "This PO has already been received — a PO can only be received once." }, { status: 400 });
     return NextResponse.json({ error: "Nothing to receive" }, { status: 400 });
   }
 
