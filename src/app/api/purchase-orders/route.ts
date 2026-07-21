@@ -9,11 +9,20 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const db = await readDB();
+  // ONE RECEIPT PER PO: any PO that already has a goods receipt is done and must
+  // leave Receiving. New receipts set `receivingClosed` when they're created, but
+  // POs received before that rule existed (or whose invoice was scanned in later)
+  // don't carry the flag — so derive it here from the receipts on file. This is
+  // read-only: no PO is mutated, the list just reports the true closed state.
+  const receivedPoIds = new Set(db.goodsReceipts.map((g) => g.poId));
   // Open / Partial POs reflect the current product master (name, barcode, unit,
   // cost); received/cancelled keep their snapshot.
   const list = [...db.purchaseOrders]
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-    .map((po) => reflectProductChanges(po, db.products));
+    .map((po) => {
+      const reflected = reflectProductChanges(po, db.products);
+      return receivedPoIds.has(po.id) ? { ...reflected, receivingClosed: true } : reflected;
+    });
   return NextResponse.json(list);
 }
 
