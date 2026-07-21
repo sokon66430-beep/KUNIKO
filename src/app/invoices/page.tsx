@@ -153,20 +153,26 @@ function ReviewModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
       window.print();
       return;
     }
+    // Escape any value going into this printed HTML. `row.supplier` is a Master
+    // Data name a user can set, so without this a name like
+    // `<img src=x onerror=...>` would run script in the app's own origin when an
+    // approver prints the invoice.
+    const esc = (s: unknown) =>
+      String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
     // Each page on its own sheet; only the LAST image triggers print (so all
-    // are loaded first).
+    // are loaded first). The filename is server-generated, but encode it anyway.
     const imgs = pages
       .map(
         (name, i) =>
-          `<img class="pg" src="/api/invoice-image/${name}"${i === pages.length - 1 ? ' onload="window.focus();window.print();"' : ""}>`,
+          `<img class="pg" src="/api/invoice-image/${encodeURIComponent(name)}"${i === pages.length - 1 ? ' onload="window.focus();window.print();"' : ""}>`,
       )
       .join("");
     w.document.write(
-      `<!doctype html><html><head><title>Invoice ${row.grnNo} — ${row.poNo}</title>` +
+      `<!doctype html><html><head><title>Invoice ${esc(row.grnNo)} — ${esc(row.poNo)}</title>` +
         `<style>@page{margin:10mm}body{margin:0;font-family:system-ui,sans-serif}` +
         `.h{font-size:12px;color:#555;padding:6px 2px}img.pg{width:100%;height:auto;display:block;break-after:page}` +
         `img.pg:last-child{break-after:auto}</style></head>` +
-        `<body><div class="h">${row.grnNo} · ${row.poNo} · ${row.supplier}${pages.length > 1 ? ` · ${pages.length} pages` : ""}</div>` +
+        `<body><div class="h">${esc(row.grnNo)} · ${esc(row.poNo)} · ${esc(row.supplier)}${pages.length > 1 ? ` · ${pages.length} pages` : ""}</div>` +
         `${imgs}</body></html>`,
     );
     w.document.close();

@@ -10,8 +10,20 @@ const TEXT_FIELDS = ["name", "address", "phone", "branch", "shipTo", "receivedBy
 const LIST_FIELDS = ["invoiceTo", "poNotes"] as const;
 
 export async function GET() {
+  const s = await getSession();
   const db = await readDB();
-  return NextResponse.json(db.meta.business);
+  const b = db.meta.business;
+  // Approver CODES authorize voiding sales and approving cash. The client never
+  // needs the code values — the server checks a submitted code — and only the
+  // owner edits them in Store Settings. Strip the codes for everyone else so a
+  // cashier can't read a manager's code from this endpoint and self-approve.
+  if (!s || s.role !== "owner") {
+    return NextResponse.json({
+      ...b,
+      approvers: (b.approvers || []).map((a) => ({ role: a.role, name: a.name })),
+    });
+  }
+  return NextResponse.json(b);
 }
 
 export async function PATCH(req: Request) {
@@ -19,6 +31,10 @@ export async function PATCH(req: Request) {
   if (!s) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
+  // Only the owner may change the sensitive fields — approver codes (bypass the
+  // void/cash approval control), the bank account (redirect deposits) and the VAT
+  // rate (changes tax on every sale). Other profile fields stay editable.
+  const isOwner = s.role === "owner";
   const body = await req.json().catch(() => ({}));
 
   const updated = await mutateDB((db) => {
@@ -29,7 +45,7 @@ export async function PATCH(req: Request) {
     for (const f of LIST_FIELDS) {
       if (Array.isArray(body[f])) (b as any)[f] = body[f].map((x: any) => String(x));
     }
-    if (body.vatRate != null) b.vatRate = Math.max(0, Number(body.vatRate) || 0);
+    if (body.vatRate != null && isOwner) b.vatRate = Math.max(0, Number(body.vatRate) || 0);
     // Logo: a small image data-URL, or "" to clear it. Cap at ~1.5 MB.
     if (typeof body.logo === "string") {
       const ok = body.logo === "" || /^data:image\/(png|jpeg|jpg|svg\+xml|webp);base64,/.test(body.logo);
@@ -73,7 +89,7 @@ export async function PATCH(req: Request) {
     }
     // The one bank account the store deposits cash into (used by Bank Deposit at
     // the till). Name + optional account number; empty name clears it.
-    if (body.bankAccount && typeof body.bankAccount === "object") {
+    if (body.bankAccount && typeof body.bankAccount === "object" && isOwner) {
       const name = String(body.bankAccount.name || "").trim().slice(0, 60);
       const number = String(body.bankAccount.number || "").trim().slice(0, 40);
       b.bankAccount = name ? { name, number: number || undefined } : undefined;
@@ -83,7 +99,7 @@ export async function PATCH(req: Request) {
     if (body.cashFloat != null) {
       b.cashFloat = Math.max(0, Math.round((Number(body.cashFloat) || 0) * 100) / 100);
     }
-    if (Array.isArray(body.approvers)) {
+    if (Array.isArray(body.approvers) && isOwner) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers
         .map((a: any) => ({

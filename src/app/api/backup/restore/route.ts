@@ -36,6 +36,10 @@ export async function POST(req: Request) {
   reloadSystem();
   let restored = 0;
   for (const [id, data] of Object.entries(backup.stores)) {
+    // The store id becomes a filename on the file backend — reject anything that
+    // isn't a plain slug so a crafted backup can't write outside the stores dir
+    // (e.g. an id of "../system" overwriting system.json).
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) continue;
     await writeBlob("store", id, JSON.stringify(data));
     invalidateDB(id);
     restored++;

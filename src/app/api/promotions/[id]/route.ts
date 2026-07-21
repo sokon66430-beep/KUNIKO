@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Promotion } from "@/lib/types";
 import { getSession } from "@/lib/session";
-import { canManagePromotions, isReadOnly } from "@/lib/access";
+import { masterDataFor } from "@/lib/caps";
 import { validatePromotionInput, describePromotion } from "@/lib/promotions";
 import { readMaster, mutateMasterPromotions, propagatePromotionsToStores } from "@/lib/master";
 import { readSystem } from "@/lib/system";
@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 async function guard() {
   const session = await getSession();
   if (!session) return { error: "Not signed in", status: 401 };
-  if (isReadOnly(session.role) || !canManagePromotions(session.role)) {
-    return { error: "Your role can't set up promotions.", status: 403 };
+  // Chain-wide change → Master Data (owner / head office) only.
+  if (!(await masterDataFor(session.role))) {
+    return { error: "Only Master Data (owner / head office) can set up promotions.", status: 403 };
   }
   return null;
 }

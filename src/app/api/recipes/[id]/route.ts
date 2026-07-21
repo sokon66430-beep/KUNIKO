@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Recipe } from "@/lib/types";
 import { getSession } from "@/lib/session";
-import { canManageRecipes, isReadOnly } from "@/lib/access";
+import { masterDataFor } from "@/lib/caps";
 import { validateRecipeInput } from "@/lib/recipes";
 import { readMaster, readMasterRecipes, mutateMasterRecipes, propagateRecipesToStores } from "@/lib/master";
 import { readSystem } from "@/lib/system";
@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 async function guard() {
   const session = await getSession();
   if (!session) return { error: "Not signed in", status: 401 };
-  if (isReadOnly(session.role) || !canManageRecipes(session.role)) {
-    return { error: "Your role can't change recipes.", status: 403 };
+  // Chain-wide change → Master Data (owner / head office) only.
+  if (!(await masterDataFor(session.role))) {
+    return { error: "Only Master Data (owner / head office) can change recipes.", status: 403 };
   }
   return null;
 }

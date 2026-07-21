@@ -102,6 +102,9 @@ async function importFromFiles(pool: PgPool): Promise<void> {
 
 function filePath(kind: string, id: string): string {
   if (kind === "system") return path.join(DATA_DIR, "system.json");
+  // A store id is always a plain slug; refuse anything else so a stray id can
+  // never contain "../" or a separator and escape STORES_DIR.
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`Invalid store id: ${id}`);
   return path.join(STORES_DIR, `${id}.json`);
 }
 

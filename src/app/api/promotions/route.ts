@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Promotion } from "@/lib/types";
 import { getSession } from "@/lib/session";
-import { canManagePromotions, isReadOnly } from "@/lib/access";
+import { masterDataFor } from "@/lib/caps";
 import { validatePromotionInput, describePromotion } from "@/lib/promotions";
 import { readMaster, readMasterPromotions, mutateMasterPromotions, propagatePromotionsToStores } from "@/lib/master";
 import { readSystem } from "@/lib/system";
@@ -37,8 +37,10 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  if (isReadOnly(session.role) || !canManagePromotions(session.role)) {
-    return NextResponse.json({ error: "Your role can't set up promotions." }, { status: 403 });
+  // A promotion is chain-wide (it propagates to EVERY store), so it's a Master
+  // Data action — restricted to owner / head-office, not a single-store manager.
+  if (!(await masterDataFor(session.role))) {
+    return NextResponse.json({ error: "Only Master Data (owner / head office) can set up promotions." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));

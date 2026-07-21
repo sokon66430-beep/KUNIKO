@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Recipe } from "@/lib/types";
 import { getSession } from "@/lib/session";
-import { canManageRecipes, isReadOnly } from "@/lib/access";
+import { masterDataFor } from "@/lib/caps";
 import { validateRecipeInput } from "@/lib/recipes";
 import { readMaster, mutateMasterRecipes, propagateRecipesToStores } from "@/lib/master";
 import { logAudit } from "@/lib/audit";
@@ -29,8 +29,10 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  if (isReadOnly(session.role) || !canManageRecipes(session.role)) {
-    return NextResponse.json({ error: "Your role can't change recipes." }, { status: 403 });
+  // A recipe is chain-wide (it propagates to EVERY store), so it's a Master Data
+  // action — owner / head-office only, not a single-store manager.
+  if (!(await masterDataFor(session.role))) {
+    return NextResponse.json({ error: "Only Master Data (owner / head office) can change recipes." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
