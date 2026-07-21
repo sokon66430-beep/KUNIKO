@@ -159,7 +159,7 @@ export async function buildGenericXlsx(r: ReportData): Promise<Buffer> {
 }
 
 // ---------------------------------------------------------------------------
-// PDF (pdf-lib — A4 landscape table with header, striping, pagination, totals)
+// PDF (pdf-lib — A4 PORTRAIT table with header, striping, pagination, totals)
 // ---------------------------------------------------------------------------
 // Standard PDF fonts are WinAnsi; strip anything they can't encode so the
 // document never fails to render on an unexpected character.
@@ -173,8 +173,10 @@ export async function buildPdf(r: ReportData): Promise<Uint8Array> {
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const cols = withNo(r.cols);
 
-  const PAGE_W = 842;
-  const PAGE_H = 595;
+  // A4 PORTRAIT (595 × 842 pt). Every report prints upright on standard A4 —
+  // column widths below are scaled to fit this narrower page automatically.
+  const PAGE_W = 595;
+  const PAGE_H = 842;
   const M = 36;
   const contentW = PAGE_W - M * 2;
 

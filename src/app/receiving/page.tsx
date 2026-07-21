@@ -524,126 +524,111 @@ function ReceiveModal({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
-              <th className="px-3 py-2 font-semibold">Product</th>
-              <th className="px-3 py-2 text-center font-semibold">Ordered</th>
-              <th className="px-3 py-2 text-center font-semibold">Prev.</th>
-              <th className="px-3 py-2 text-center font-semibold">Add</th>
-              <th className="px-3 py-2 text-center font-semibold">Receiving</th>
-              {/* Money value of what's being received — check it line-by-line
-                  against the supplier invoice before confirming. */}
-              <th className="px-3 py-2 text-right font-semibold">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orderedItems.map((it) => {
-              const receivingNow = now[it.productId] || 0;
-              const afterTotal = it.qtyReceived + receivingNow;
-              const short = it.qtyOrdered - afterTotal;
-              return (
-                <tr key={it.productId} className="border-b border-slate-50 last:border-0">
-                  <td className="px-3 py-2">
-                    <p className="font-semibold text-ink-800">{it.name}</p>
-                    {it.barcode && <p className="text-[11px] text-slate-400">{it.barcode}</p>}
-                    <p className="text-xs">
-                      {short > 0 ? (
-                        <span className="text-amber-600">short {short}</span>
-                      ) : short < 0 ? (
-                        <span className="text-rose-500">over {Math.abs(short)}</span>
-                      ) : (
-                        <span className="text-emerald-600">complete</span>
-                      )}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2 text-center text-slate-600">{it.qtyOrdered}</td>
-                  <td className="px-3 py-2 text-center text-slate-400">{it.qtyReceived}</td>
+      {/* Each line is a self-contained card — NOT a wide table — so the whole
+          row (name, ordered/prev, the add box, the running count and the money
+          value) fits on a phone without scrolling sideways. Receiving is done
+          on a handset, so this list is built phone-first. */}
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+        {orderedItems.map((it) => {
+          const receivingNow = now[it.productId] || 0;
+          const afterTotal = it.qtyReceived + receivingNow;
+          const short = it.qtyOrdered - afterTotal;
+          return (
+            <div key={it.productId} className="p-3">
+              {/* Top: product on the left, money value on the right. */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-ink-800">{it.name}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {it.barcode ? `${it.barcode} · ` : ""}Ordered {it.qtyOrdered} · prev {it.qtyReceived}
+                  </p>
+                </div>
+                {/* Line amount = unit cost × quantity received — reconcile it
+                    against the supplier invoice line by line. */}
+                <div className="shrink-0 text-right">
+                  <span
+                    className={`block text-sm font-semibold tabular-nums ${
+                      receivingNow > 0 ? "text-ink-900" : "text-slate-300"
+                    }`}
+                  >
+                    {usd(it.cost * receivingNow)}
+                  </span>
+                  <span className="block text-[10px] tabular-nums text-slate-400">{usd(it.cost)} ea</span>
+                </div>
+              </div>
+
+              {/* Bottom: short/over status on the left, entry controls on the right. */}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium">
+                  {short > 0 ? (
+                    <span className="text-amber-600">short {short}</span>
+                  ) : short < 0 ? (
+                    <span className="text-rose-500">over {Math.abs(short)}</span>
+                  ) : (
+                    <span className="text-emerald-600">complete</span>
+                  )}
+                </span>
+                <div className="flex items-center gap-2">
                   {/* Type an amount and press Enter — it ADDS to the running
-                      total and the box clears itself, ready for the next entry.
-                      It never replaces what's already counted: the same item
-                      often arrives as several boxes, and each one is its own
-                      entry. */}
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                      placeholder="+"
-                      ref={(el) => {
-                        qtyRefs.current[it.productId] = el;
+                      total and the box clears, ready for the next box. It never
+                      replaces: the same item often arrives as several boxes. */}
+                  <input
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    placeholder="+ qty"
+                    ref={(el) => {
+                      qtyRefs.current[it.productId] = el;
+                    }}
+                    value={addBox[it.productId] ?? ""}
+                    onChange={(e) => setAddBox((p) => ({ ...p, [it.productId]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        applyAdd(it.productId);
+                      }
+                    }}
+                    onBlur={() => applyAdd(it.productId, false)}
+                    className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none placeholder:text-slate-300 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                  />
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">recv</span>
+                  <span
+                    className={`min-w-[1.75rem] text-center text-[15px] font-bold tabular-nums ${
+                      receivingNow > 0 ? "text-ink-900" : "text-slate-300"
+                    }`}
+                  >
+                    {receivingNow}
+                  </span>
+                  {/* Additive entry has no undo — resets the line to 0 to recount. */}
+                  {receivingNow > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNow((p) => ({ ...p, [it.productId]: 0 }));
+                        setAddBox((p) => ({ ...p, [it.productId]: "" }));
                       }}
-                      value={addBox[it.productId] ?? ""}
-                      onChange={(e) => setAddBox((p) => ({ ...p, [it.productId]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          applyAdd(it.productId);
-                        }
-                      }}
-                      // Don't strand a typed number: leaving the box banks it
-                      // rather than quietly dropping it.
-                      onBlur={() => applyAdd(it.productId, false)}
-                      className="mx-auto block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none placeholder:text-slate-300 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span
-                        className={`min-w-[2rem] text-center text-[15px] font-bold tabular-nums ${
-                          receivingNow > 0 ? "text-ink-900" : "text-slate-300"
-                        }`}
-                      >
-                        {receivingNow}
-                      </span>
-                      {/* Additive entry has no undo of its own — a mistyped 240
-                          would otherwise be stuck. This resets the line to 0 so
-                          it can be counted again. */}
-                      {receivingNow > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNow((p) => ({ ...p, [it.productId]: 0 }));
-                            setAddBox((p) => ({ ...p, [it.productId]: "" }));
-                          }}
-                          title="Clear this line and count it again"
-                          aria-label={`Clear ${it.name}`}
-                          className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
-                        >
-                          <X size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  {/* Line amount = unit cost × quantity received. The small unit
-                      price underneath is what to reconcile against the invoice. */}
-                  <td className="px-3 py-2 text-right">
-                    <span
-                      className={`block text-sm font-semibold tabular-nums ${
-                        receivingNow > 0 ? "text-ink-900" : "text-slate-300"
-                      }`}
+                      title="Clear this line and count it again"
+                      aria-label={`Clear ${it.name}`}
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
                     >
-                      {usd(it.cost * receivingNow)}
-                    </span>
-                    <span className="block text-[11px] tabular-nums text-slate-400">{usd(it.cost)} ea</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          {/* Grand total of what's being received now — compare it to the
-              invoice grand total to confirm the delivery matches the bill. */}
-          <tfoot>
-            <tr className="border-t border-slate-200 bg-slate-50">
-              <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500" colSpan={4}>
-                Receiving total
-              </td>
-              <td className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500">{totalNow}</td>
-              <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
-            </tr>
-          </tfoot>
-        </table>
+                      <X size={13} />
+                    </button>
+                  ) : (
+                    <span className="h-6 w-6 shrink-0" aria-hidden />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {/* Grand total of what's being received now — compare to the invoice
+            grand total to confirm the delivery matches the bill. */}
+        <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Receiving total · {totalNow} unit{totalNow === 1 ? "" : "s"}
+          </span>
+          <span className="text-sm font-bold tabular-nums text-ink-900">{usd(totalAmount)}</span>
+        </div>
       </div>
 
       {/* Supplier invoice — scanned on the PO card; shown here as status. */}
