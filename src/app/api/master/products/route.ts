@@ -4,6 +4,7 @@ import { masterDataFor } from "@/lib/caps";
 import { readMaster, mutateMaster } from "@/lib/master";
 import { resolveSupplier } from "@/lib/supplierLink";
 import { readDB } from "@/lib/db";
+import { validateSellingUnits } from "@/lib/sellingUnits";
 import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -35,9 +36,20 @@ export async function POST(req: Request) {
   const created = await mutateMaster((products) => {
     const nextNum = products.reduce((max, p) => Math.max(max, parseInt(p.id.slice(1)) || 0), 0) + 1;
     const id = `p${String(nextNum).padStart(4, "0")}`;
+    const sku = String(body.sku || "").trim() || `SKU-${id.slice(1)}`;
+    // Give any packaging levels their own product codes off this product's code,
+    // unique across the master catalogue (`products`, which doesn't yet hold this
+    // new one). An invalid set aborts the create with the reason.
+    let sellingUnits: Product["sellingUnits"];
+    if ("sellingUnits" in body) {
+      const parsed = validateSellingUnits(body.sellingUnits, id, products, sku);
+      if (!parsed.ok) return { error: parsed.error };
+      sellingUnits = parsed.value.length ? parsed.value : undefined;
+    }
     const product: Product = {
       id,
-      sku: String(body.sku || "").trim() || `SKU-${id.slice(1)}`,
+      sku,
+      sellingUnits,
       name: String(body.name).trim(),
       nameKh: body.nameKh?.trim() || undefined,
       ranking: ["A", "B", "C", "D"].includes(body.ranking) ? body.ranking : "A",
@@ -60,5 +72,6 @@ export async function POST(req: Request) {
     return product;
   });
 
+  if (created && "error" in created) return NextResponse.json({ error: created.error }, { status: 400 });
   return NextResponse.json(created, { status: 201 });
 }

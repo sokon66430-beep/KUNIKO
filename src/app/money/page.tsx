@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { Fragment, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { Wallet, Unlock, Lock, ClipboardCheck, BarChart3, Vault, ChevronLeft } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
 import { confirmDialog } from "@/components/confirm";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Table, THead, Th, TBody, Tr, Td, EmptyState } from "@/components/ui";
-import { usd, num, dateTime } from "@/lib/format";
+import { usd, num, dateTime, timeOnly } from "@/lib/format";
+import { storeToday, shortDay } from "@/lib/storetime";
 import { countTotal } from "@/lib/money";
 import { canApproveCash, canReopenShift } from "@/lib/access";
 import { DatePicker } from "@/components/DatePicker";
@@ -20,10 +21,21 @@ import {
   StatusBadge,
   VarianceTag,
   emptyCount,
+  nextShiftName,
   type ShiftsData,
 } from "@/components/shift";
 
 const TERMINAL_KEY = "stookii_pos_terminal";
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+// "Monday, 21 Jul 2026" from a yyyy-mm-dd store-day key. Read off the string
+// (via Date.UTC) so the viewer's own timezone can't shift the weekday or date.
+function dayHeading(key: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return key;
+  const wd = WEEKDAYS[new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()];
+  return `${wd}, ${shortDay(key)} ${m[1]}`;
+}
 
 export default function MoneyPage() {
   const role = useRole();
@@ -49,16 +61,37 @@ export default function MoneyPage() {
   const current = shifts.find((s) => s.posTerminalId === terminal && s.status === "open");
   const pendingCloses = shifts.filter((s) => s.status === "pending_close");
 
-  // Open-shift form
+  // Group recent shifts by the store-calendar day they were OPENED, newest day
+  // first. A day that ran two or three shifts (A/B/C) then shows ONCE — as a day
+  // heading with its shifts beneath — instead of the same date on separate rows.
+  const shiftsByDay = useMemo(() => {
+    const groups = new Map<string, typeof shifts>();
+    for (const s of shifts) {
+      const key = storeToday(new Date(s.openedAt));
+      const arr = groups.get(key);
+      if (arr) arr.push(s);
+      else groups.set(key, [s]);
+    }
+    return [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [shifts]);
+
+  // Open-shift form. Shifts run in a loop (A→B→C→A), so default to the one AFTER
+  // the last shift on this till unless the operator deliberately picks another.
+  const suggestedShift = useMemo(() => nextShiftName(shifts, terminal), [shifts, terminal]);
   const [openShiftName, setOpenShiftName] = useState<"A" | "B" | "C">("A");
+  const [pickedManually, setPickedManually] = useState(false);
   const [openCount, setOpenCount] = useState<CashCount>(emptyCount());
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!pickedManually) setOpenShiftName(suggestedShift);
+  }, [suggestedShift, pickedManually]);
 
   async function openShift() {
     setBusy(true);
     try {
       await api("/api/shifts", { method: "POST", body: JSON.stringify({ posTerminalId: terminal, shift: openShiftName, openingCount: openCount }) });
       setOpenCount(emptyCount());
+      setPickedManually(false); // next open re-suggests from the loop
       reload();
     } catch (e: any) {
       alert(e.message);
@@ -169,14 +202,24 @@ export default function MoneyPage() {
             <DrawerView shift={current} drawerLimit={drawerLimit} rate={rate} onMovement={setMv} onClose={() => setClosing(true)} onChanged={reload} showActions={false} />
           ) : (
             <Card title={`Open a shift on ${terminal}`} subtitle="Count the opening float by denomination, then open the shift." icon={<Wallet size={15} />}>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
                 <div>
                   <label className="label">Shift</label>
-                  <div className="mb-3 inline-flex rounded-xl bg-slate-100 p-1">
+                  <div className="mb-1.5 inline-flex rounded-xl bg-slate-100 p-1">
                     {(["A", "B", "C"] as const).map((s) => (
-                      <button key={s} onClick={() => setOpenShiftName(s)} className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${openShiftName === s ? "bg-white text-ink-900 shadow-sm" : "text-slate-500"}`}>Shift {s}</button>
+                      <button
+                        key={s}
+                        onClick={() => { setPickedManually(true); setOpenShiftName(s); }}
+                        className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${openShiftName === s ? "bg-white text-ink-900 shadow-sm" : "text-slate-500"}`}
+                      >
+                        Shift {s}
+                        {s === suggestedShift && (
+                          <span className="ml-1.5 rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-700 align-middle">Next</span>
+                        )}
+                      </button>
                     ))}
                   </div>
+                  <p className="mb-3 text-[11px] text-slate-400">Follows the loop — Shift {suggestedShift} comes next. Pick another if the team skipped one.</p>
                   <button className="btn-primary w-full" disabled={busy || countTotal(openCount, rate) <= 0} onClick={openShift}>
                     <Unlock size={16} /> {busy ? "Opening…" : `Open shift · float ${usd(countTotal(openCount, rate))}`}
                   </button>
@@ -187,8 +230,9 @@ export default function MoneyPage() {
             </Card>
           )}
 
-          {/* Recent shifts */}
-          <Card title="Recent shifts" subtitle="Newest first">
+          {/* Recent shifts — grouped by day so a day with two or three shifts
+              shows once, not as a repeated date. */}
+          <Card title="Recent shifts" subtitle="By day · newest first">
             {shifts.length === 0 ? (
               <EmptyState title="No shifts yet" hint="Open a shift above to start tracking the drawer." icon={<Wallet size={18} />} />
             ) : (
@@ -197,23 +241,35 @@ export default function MoneyPage() {
                   <Th>Shift</Th><Th>Terminal</Th><Th>Cashier</Th><Th>Opened</Th><Th align="right">Expected</Th><Th align="right">Variance</Th><Th>Status</Th><Th align="right"></Th>
                 </THead>
                 <TBody>
-                  {shifts.map((s) => (
-                    <Tr key={s.id}>
-                      <Td>Shift {s.shift}</Td>
-                      <Td>{s.posTerminalId}</Td>
-                      <Td>{s.cashier}</Td>
-                      <Td className="whitespace-nowrap text-slate-500">{dateTime(s.openedAt)}</Td>
-                      <Td align="right">{usd(s.expectedCash ?? s.drawer.expected)}</Td>
-                      <Td align="right">{s.variance != null ? <VarianceTag v={s.variance} /> : "—"}</Td>
-                      <Td><StatusBadge status={s.status} /></Td>
-                      <Td align="right">
-                        {s.status === "closed" && isManager && (
-                          <button className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-50" onClick={() => reopen(s.id)}>
-                            <Unlock size={13} /> Reopen
-                          </button>
-                        )}
-                      </Td>
-                    </Tr>
+                  {shiftsByDay.map(([day, dayShifts]) => (
+                    <Fragment key={day}>
+                      <Tr>
+                        <Td colSpan={8} className="!py-2 bg-slate-50/70 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                          {dayHeading(day)}
+                          <span className="ml-2 font-semibold normal-case tracking-normal text-slate-400">
+                            · {dayShifts.length} shift{dayShifts.length === 1 ? "" : "s"}
+                          </span>
+                        </Td>
+                      </Tr>
+                      {dayShifts.map((s) => (
+                        <Tr key={s.id}>
+                          <Td>Shift {s.shift}</Td>
+                          <Td>{s.posTerminalId}</Td>
+                          <Td>{s.cashier}</Td>
+                          <Td className="whitespace-nowrap text-slate-500">{timeOnly(s.openedAt)}</Td>
+                          <Td align="right">{usd(s.expectedCash ?? s.drawer.expected)}</Td>
+                          <Td align="right">{s.variance != null ? <VarianceTag v={s.variance} /> : "—"}</Td>
+                          <Td><StatusBadge status={s.status} /></Td>
+                          <Td align="right">
+                            {s.status === "closed" && isManager && (
+                              <button className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-50" onClick={() => reopen(s.id)}>
+                                <Unlock size={13} /> Reopen
+                              </button>
+                            )}
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </TBody>
               </Table>

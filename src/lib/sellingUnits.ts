@@ -1,5 +1,6 @@
 import type { Product, SellingUnit } from "./types";
 import { matchesBarcode } from "./barcodes";
+import { packagingItemId } from "./itemId";
 
 // ---------------------------------------------------------------------------
 // Selling units — one product, several packagings, ONE stock balance
@@ -113,7 +114,9 @@ export function findByBarcode(products: Product[], code: string): BarcodeHit | u
 
   for (const product of products) {
     for (const u of product.sellingUnits || []) {
-      if (u.active !== false && u.barcode && u.barcode === q) {
+      // Its own barcode OR its own product code — either one identifies this
+      // exact packaging, so scanning/typing the code sells that level.
+      if (u.active !== false && ((u.barcode && u.barcode === q) || (u.sku && u.sku === q))) {
         const unit = unitById(product, u.id);
         if (unit) return { product, unit };
       }
@@ -209,6 +212,7 @@ export function validateSellingUnits(
   raw: unknown,
   productId: string,
   allProducts: Product[],
+  baseSku?: string,
 ): ValidationResult {
   const list = Array.isArray(raw) ? raw : [];
   if (list.length > MAX_SELLING_UNITS) {
@@ -218,6 +222,21 @@ export function validateSellingUnits(
   const value: SellingUnit[] = [];
   const seenNames = new Set<string>();
   const seenConversions = new Set<number>();
+
+  // Every product code already in use, so a packaging level's own code can be
+  // made unique against all of them: the base products' Item IDs AND every other
+  // packaging code. This product's OWN current packaging codes are left out —
+  // they're being replaced by the set we're validating now, and any that carry
+  // over keep their code below (a stable code that doesn't reshuffle on edits).
+  const takenCodes = new Set<string>();
+  for (const p of allProducts) {
+    if (p.sku) takenCodes.add(p.sku);
+    for (const u of p.sellingUnits || []) {
+      if (u.sku && p.id !== productId) takenCodes.add(u.sku);
+    }
+  }
+  // Prefix comes from the base product's own code; fall back to the stored one.
+  const prefixSku = (baseSku && baseSku.trim()) || allProducts.find((p) => p.id === productId)?.sku || "";
 
   for (const rawUnit of list as Record<string, unknown>[]) {
     const name = String(rawUnit.name || "").trim();
@@ -254,9 +273,21 @@ export function validateSellingUnits(
       }
     }
 
+    // Its own product code. Keep a carried-over one if it's a real 8-digit code
+    // that hasn't collided with anything, so editing a product never reshuffles
+    // codes; otherwise the system mints a fresh unique one (base's first 4 digits
+    // + a running tail). Reserve it so two new levels can't land on the same code.
+    const givenSku = String(rawUnit.sku || "").trim();
+    const sku =
+      /^\d{8}$/.test(givenSku) && !takenCodes.has(givenSku)
+        ? givenSku
+        : packagingItemId(prefixSku, takenCodes);
+    takenCodes.add(sku);
+
     value.push({
       id: String(rawUnit.id || "").trim() || `su_${name.toLowerCase().replace(/\W+/g, "")}_${conversion}`,
       name,
+      sku,
       conversion,
       price: Math.round(price * 100) / 100,
       barcode: barcode || undefined,

@@ -8,7 +8,7 @@
 // cash in/out, expected drawer) and runs the CLOSE-AND-COUNT flow, using exactly
 // the same drawer engine as the Money Management page.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Wallet, Unlock, X } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
@@ -23,6 +23,7 @@ import {
   CloseModal,
   SurveyModal,
   emptyCount,
+  nextShiftName,
   type ShiftsData,
 } from "@/components/shift";
 
@@ -41,16 +42,24 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
   const current = shifts.find((s) => s.posTerminalId === terminal && s.status === "open");
   const pending = shifts.find((s) => s.posTerminalId === terminal && s.status === "pending_close");
 
-  // Open-shift form (shown only when this till has no open shift)
+  // Open-shift form (shown only when this till has no open shift). Shifts run in
+  // a loop (A→B→C→A), so default to the one AFTER the last shift on this till —
+  // unless the operator deliberately picks another.
+  const suggestedShift = useMemo(() => nextShiftName(shifts, terminal), [shifts, terminal]);
   const [openShiftName, setOpenShiftName] = useState<"A" | "B" | "C">("A");
+  const [pickedManually, setPickedManually] = useState(false);
   const [openCount, setOpenCount] = useState<CashCount>(emptyCount());
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!pickedManually) setOpenShiftName(suggestedShift);
+  }, [suggestedShift, pickedManually]);
 
   async function openShift() {
     setBusy(true);
     try {
       await api("/api/shifts", { method: "POST", body: JSON.stringify({ posTerminalId: terminal, shift: openShiftName, openingCount: openCount }) });
       setOpenCount(emptyCount());
+      setPickedManually(false); // next open re-suggests from the loop
       reload();
     } catch (e: any) {
       alert(e.message);
@@ -153,9 +162,19 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
                       <label className="label">Shift</label>
                       <div className="inline-flex rounded-xl bg-slate-100 p-1">
                         {(["A", "B", "C"] as const).map((s) => (
-                          <button key={s} onClick={() => setOpenShiftName(s)} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${openShiftName === s ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Shift {s}</button>
+                          <button
+                            key={s}
+                            onClick={() => { setPickedManually(true); setOpenShiftName(s); }}
+                            className={`relative rounded-lg px-4 py-2 text-sm font-semibold transition ${openShiftName === s ? "bg-white text-ink-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                          >
+                            Shift {s}
+                            {s === suggestedShift && (
+                              <span className="ml-1.5 rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-700 align-middle">Next</span>
+                            )}
+                          </button>
                         ))}
                       </div>
+                      <p className="mt-1.5 text-[11px] text-slate-400">Follows the loop — Shift {suggestedShift} comes next. Pick another if the team skipped one.</p>
                     </div>
                     <button className="btn-primary w-full py-3 text-base" disabled={busy || countTotal(openCount, rate) <= 0} onClick={openShift}>
                       <Unlock size={17} /> {busy ? "Opening…" : `Open shift · float ${usd(countTotal(openCount, rate))}`}

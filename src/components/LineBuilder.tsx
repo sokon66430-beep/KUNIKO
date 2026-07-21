@@ -147,6 +147,11 @@ export function LineBuilder({
   // going, no tapping the camera open each time. Used by the full-screen PR/PO
   // builders. Off by default so nothing else changes.
   stickyScanner = false,
+  // Force the operator to key a quantity for a just-scanned item BEFORE the next
+  // scan: the new line starts blank (qty 0) and the scanner is locked until a
+  // number is entered. Used by the PR builder so nothing is ever added without
+  // its amount. Off by default, so the PO builder keeps its recommend-qty flow.
+  requireQtyPerScan = false,
   // Content rendered ABOVE the scan/search controls (e.g. an expected-date row).
   topSlot,
   // Extra content rendered at the bottom of the scroll area (e.g. a Note field
@@ -158,6 +163,7 @@ export function LineBuilder({
   setLines: (updater: (prev: Line[]) => Line[]) => void;
   suggestions?: Suggestion[];
   stickyScanner?: boolean;
+  requireQtyPerScan?: boolean;
   topSlot?: ReactNode;
   children?: ReactNode;
 }) {
@@ -180,6 +186,10 @@ export function LineBuilder({
   // must be set before moving to the next item. The tick forces a re-focus even
   // when the same product is scanned again.
   const [focusQty, setFocusQty] = useState<{ id: string; tick: number } | null>(null);
+  // In requireQtyPerScan mode: the id of the just-scanned line still waiting for
+  // its quantity. While it's set the scanner is locked, so a product can't be
+  // added without keying how many. Cleared the moment a qty of 1+ is entered.
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focusQty) return;
@@ -210,10 +220,20 @@ export function LineBuilder({
         if (!focus) return prev.map((l) => (l.product.id === p.id ? updated : l));
         return [updated, ...prev.filter((l) => l.product.id !== p.id)];
       }
-      const newQty = qty ?? recommendQty(p, velocity?.[p.id], coverDays);
+      // In requireQtyPerScan mode a freshly scanned line starts BLANK (qty 0) so
+      // the operator has to key the amount; otherwise it seeds the recommended
+      // order quantity. An explicit qty (batch autofill, a suggestion) always wins.
+      const needsQty = requireQtyPerScan && focus && qty == null;
+      const newQty = qty ?? (needsQty ? 0 : recommendQty(p, velocity?.[p.id], coverDays));
       return focus ? [{ product: p, qty: newQty }, ...prev] : [...prev, { product: p, qty: newQty }];
     });
     if (focus) setFocusQty((f) => ({ id: p.id, tick: (f?.tick || 0) + 1 }));
+    // Lock the scanner until this line's quantity is keyed (require mode only).
+    if (requireQtyPerScan && focus && qty == null) {
+      const existing = lines.find((l) => l.product.id === p.id);
+      // A re-scan of a line that already has a qty doesn't need re-confirming.
+      if (!existing || existing.qty < 1) setPendingId(p.id);
+    }
   }
 
   // codeArg comes from the camera scanner; without it we read the text box.
@@ -221,6 +241,13 @@ export function LineBuilder({
     const fromCamera = codeArg != null;
     const code = (codeArg ?? scan).trim();
     if (!code) return;
+    // Require-qty mode: refuse the next scan until the last one has its amount.
+    if (requireQtyPerScan && pendingId) {
+      const pend = lines.find((l) => l.product.id === pendingId);
+      setNotice({ tone: "warn", text: `Key the quantity for ${pend?.product.name ?? "the last item"} first.` });
+      if (!fromCamera) setScan("");
+      return;
+    }
     const lc = code.toLowerCase();
     // Some barcodes in the master are shared by 2+ products (data re-listing) —
     // never silently guess which one; make the picker resolve it.
@@ -237,7 +264,11 @@ export function LineBuilder({
       products.find((p) => p.name.toLowerCase() === lc);
     if (match) {
       addProduct(match); // moves item to top + focuses its qty box
-      setNotice({ tone: "ok", text: `Added ${match.name}` });
+      setNotice(
+        requireQtyPerScan
+          ? { tone: "warn", text: `Added ${match.name} — key the quantity to continue` }
+          : { tone: "ok", text: `Added ${match.name}` },
+      );
       if (!fromCamera) setScan(""); // clear text; cursor is now in the qty box
     } else if (!fromCamera && scanSuggestions.length > 0) {
       // Partial input with live suggestions showing — keep the text so the
@@ -332,8 +363,16 @@ export function LineBuilder({
     setNotice({ tone: "ok", text: `Added ${added} low-stock item${added === 1 ? "" : "s"}` });
   }
 
-  const changeQty = (id: string, qty: number) =>
-    setLines((prev) => prev.map((x) => (x.product.id === id ? { ...x, qty: Math.max(1, Math.floor(qty) || 1) } : x)));
+  const changeQty = (id: string, qty: number) => {
+    const floored = Math.max(0, Math.floor(Number(qty) || 0));
+    // The just-scanned line may sit at 0 while its amount is being keyed; every
+    // other line keeps a minimum of 1.
+    const min = requireQtyPerScan && pendingId === id ? 0 : 1;
+    const next = Math.max(min, floored);
+    setLines((prev) => prev.map((x) => (x.product.id === id ? { ...x, qty: next } : x)));
+    // A real amount unlocks the scanner for the next item.
+    if (requireQtyPerScan && pendingId === id && next >= 1) setPendingId(null);
+  };
   const removeLine = (id: string) => setLines((prev) => prev.filter((x) => x.product.id !== id));
   const applyRec = (id: string, rec: number) => setLines((prev) => prev.map((x) => (x.product.id === id ? { ...x, qty: rec } : x)));
 
@@ -351,8 +390,9 @@ export function LineBuilder({
             <ScanLine className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
             <input
               ref={scanRef}
-              className="input pl-10 pr-12"
-              placeholder="Scan, type, or tap the camera"
+              disabled={!!(requireQtyPerScan && pendingId)}
+              className="input pl-10 pr-12 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              placeholder={requireQtyPerScan && pendingId ? "Key the quantity above first" : "Scan, type, or tap the camera"}
               value={scan}
               onChange={(e) => setScan(e.target.value)}
               onKeyDown={(e) => {
@@ -524,7 +564,10 @@ export function LineBuilder({
             {lines.map((l) => {
               const rec = Math.max(0, recQtyRaw(l.product, velocity?.[l.product.id], coverDays));
               return (
-                <div key={l.product.id} className="rounded-xl border border-slate-200 p-3">
+                <div
+                  key={l.product.id}
+                  className={`rounded-xl border p-3 ${pendingId === l.product.id ? "border-amber-300 bg-amber-50/60 ring-1 ring-amber-200" : "border-slate-200"}`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold text-ink-800">{l.product.name}</p>
@@ -556,10 +599,11 @@ export function LineBuilder({
                         type="number"
                         min={1}
                         inputMode="numeric"
-                        value={l.qty}
+                        value={pendingId === l.product.id && l.qty === 0 ? "" : l.qty}
+                        placeholder={pendingId === l.product.id ? "Qty" : undefined}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => changeQty(l.product.id, Number(e.target.value))}
-                        className="h-11 w-16 rounded-lg border border-slate-200 text-center text-base font-bold text-ink-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                        className={`h-11 w-16 rounded-lg border text-center text-base font-bold text-ink-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 ${pendingId === l.product.id ? "border-amber-400 ring-2 ring-amber-100 placeholder:text-amber-400" : "border-slate-200"}`}
                       />
                       <button
                         type="button"
@@ -615,7 +659,7 @@ export function LineBuilder({
               </thead>
               <tbody>
                 {lines.map((l) => (
-                  <tr key={l.product.id} className="border-b border-slate-50 last:border-0">
+                  <tr key={l.product.id} className={`border-b border-slate-50 last:border-0 ${pendingId === l.product.id ? "bg-amber-50/60" : ""}`}>
                     <td className="px-3 py-2">
                       <p className="font-semibold text-ink-800">{l.product.name}</p>
                       <p className="text-xs text-slate-400">
@@ -631,16 +675,19 @@ export function LineBuilder({
                         ref={(el) => {
                           qtyRefs.current[l.product.id] = el;
                         }}
-                        value={l.qty}
+                        value={pendingId === l.product.id && l.qty === 0 ? "" : l.qty}
+                        placeholder={pendingId === l.product.id ? "Qty" : undefined}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => changeQty(l.product.id, Number(e.target.value))}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            scanRef.current?.focus();
+                            // Only jump back to the scanner once a real amount is in
+                            // (require-qty mode); otherwise the scan stays locked.
+                            if (!(requireQtyPerScan && (pendingId === l.product.id || l.qty < 1))) scanRef.current?.focus();
                           }
                         }}
-                        className="mx-auto block w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                        className={`mx-auto block w-20 rounded-lg border px-2 py-1.5 text-center text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 ${pendingId === l.product.id ? "border-amber-400 ring-2 ring-amber-100 placeholder:text-amber-400" : "border-slate-200"}`}
                       />
                       {(() => {
                         const rec = Math.max(0, recQtyRaw(l.product, velocity?.[l.product.id], coverDays));

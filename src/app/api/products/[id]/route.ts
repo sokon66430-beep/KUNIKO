@@ -78,7 +78,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // anything else in the catalogue), so they can't go through the plain
     // field loop below.
     if ("sellingUnits" in body) {
-      const parsed = validateSellingUnits(body.sellingUnits, product.id, db.products);
+      // Each level gets its own product code off the base product's — use the
+      // code being saved now (body.sku), not the old stored one, as the prefix.
+      const baseSku = (typeof body.sku === "string" && body.sku.trim()) || product.sku;
+      const parsed = validateSellingUnits(body.sellingUnits, product.id, db.products, baseSku);
       if (!parsed.ok) return { error: parsed.error };
       product.sellingUnits = parsed.value.length ? parsed.value : undefined;
       delete body.sellingUnits;

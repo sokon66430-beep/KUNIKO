@@ -36,6 +36,11 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "supplierCode",
   "showOnPos", // which items the cashier can tap at the till
   "image", // product photo shown on the POS tile
+  // Packaging levels (Pack/Case…) and their own product codes are defined once
+  // in Master Data and pushed to every store, so a "Pack of 6" and its code mean
+  // the same thing chain-wide. Stock still counts per store in the base unit;
+  // only the packaging definition is central.
+  "sellingUnits",
 ];
 
 async function ensureMaster(): Promise<void> {

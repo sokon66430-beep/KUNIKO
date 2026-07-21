@@ -801,31 +801,35 @@ function ReceiveModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {po.items
-                      .filter((it) => (now[it.productId] || 0) > 0)
-                      .map((it) => {
-                        const q = now[it.productId] || 0;
-                        const short = it.qtyOrdered - (it.qtyReceived + q);
-                        return (
-                          <tr key={it.productId} className="border-b border-slate-50 last:border-0">
-                            <td className="px-3 py-2">
-                              <p className="font-semibold text-ink-800">{it.name}</p>
-                              <p className="text-[11px] text-slate-400">ordered {it.qtyOrdered}</p>
-                            </td>
-                            <td className="px-3 py-2 text-center text-[15px] font-bold tabular-nums text-ink-900">{q}</td>
-                            <td className="px-3 py-2 text-center text-xs">
-                              {short > 0 ? (
-                                <span className="font-semibold text-amber-600">short {short}</span>
-                              ) : short < 0 ? (
-                                <span className="font-semibold text-rose-500">over {Math.abs(short)}</span>
-                              ) : (
-                                <span className="font-semibold text-emerald-600">complete</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink-800">{usd(it.cost * q)}</td>
-                          </tr>
-                        );
-                      })}
+                    {/* Every line on the PO — including ones that didn't arrive
+                        this time (qty 0), shown muted — so the whole order can be
+                        checked against the invoice, not just what was received. */}
+                    {po.items.map((it) => {
+                      const q = now[it.productId] || 0;
+                      const short = it.qtyOrdered - (it.qtyReceived + q);
+                      const none = q === 0;
+                      return (
+                        <tr key={it.productId} className={`border-b border-slate-50 last:border-0 ${none ? "bg-slate-50/40" : ""}`}>
+                          <td className="px-3 py-2">
+                            <p className={`font-semibold ${none ? "text-slate-400" : "text-ink-800"}`}>{it.name}</p>
+                            <p className="text-[11px] text-slate-400">ordered {it.qtyOrdered}</p>
+                          </td>
+                          <td className={`px-3 py-2 text-center text-[15px] font-bold tabular-nums ${none ? "text-slate-300" : "text-ink-900"}`}>{q}</td>
+                          <td className="px-3 py-2 text-center text-xs">
+                            {none && it.qtyReceived === 0 ? (
+                              <span className="font-semibold text-slate-400">not received</span>
+                            ) : short > 0 ? (
+                              <span className="font-semibold text-amber-600">short {short}</span>
+                            ) : short < 0 ? (
+                              <span className="font-semibold text-rose-500">over {Math.abs(short)}</span>
+                            ) : (
+                              <span className="font-semibold text-emerald-600">complete</span>
+                            )}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-semibold tabular-nums ${none ? "text-slate-300" : "text-ink-800"}`}>{usd(it.cost * q)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot>
                     {/* Cost (ex-VAT), the VAT and the grand total incl VAT — the

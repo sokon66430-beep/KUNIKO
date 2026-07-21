@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
   Trash2,
@@ -397,6 +397,64 @@ function CreatePRModal({
   const [lines, setLines] = useState<Line[]>(initialLines);
   const [note, setNote] = useState(editing?.note || "");
   const [busy, setBusy] = useState(false);
+  const [resumed, setResumed] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const restoredRef = useRef(false);
+
+  // Auto-save the in-progress request to this device so a half-built PR survives
+  // a closed tab, a reload, or a knocked till. Only the FRESH-PR flow persists
+  // locally — a saved draft that's being continued is already on the server.
+  const persist = !editing;
+  const DRAFT_KEY = "stookii:pr-draft:new";
+
+  // Restore an auto-saved draft once the catalog is loaded — but never over an
+  // explicit start (quick-add, low-stock fill) or a server draft.
+  useEffect(() => {
+    if (!persist || restoredRef.current) return;
+    if (initialLines.length) { restoredRef.current = true; return; }
+    if (!products.length) return;
+    restoredRef.current = true;
+    try {
+      const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+      const items = saved?.items;
+      if (Array.isArray(items) && items.length) {
+        const byId = new Map(products.map((p) => [p.id, p]));
+        const restored = items
+          .map((it: { productId: string; qty: number }) => {
+            const p = byId.get(it.productId);
+            return p ? { product: p, qty: Math.max(1, Math.floor(Number(it.qty)) || 1) } : null;
+          })
+          .filter(Boolean) as Line[];
+        if (restored.length) { setLines(restored); setNote(saved.note || ""); setResumed(true); }
+      }
+    } catch { /* corrupt draft — ignore and start clean */ }
+  }, [persist, products, initialLines]);
+
+  // Save on every change; an empty list clears the draft so a fresh PR next time
+  // doesn't resume stale lines.
+  useEffect(() => {
+    if (!persist) return;
+    try {
+      if (lines.length) {
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ items: lines.map((l) => ({ productId: l.product.id, qty: l.qty })), note }),
+        );
+        setSavedFlash(true);
+        const t = setTimeout(() => setSavedFlash(false), 1400);
+        return () => clearTimeout(t);
+      }
+      localStorage.removeItem(DRAFT_KEY);
+    } catch { /* storage blocked or full — the PR still works, just no auto-save */ }
+  }, [persist, lines, note]);
+
+  const clearDraft = () => {
+    try { if (persist) localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  };
+
+  // Every line must carry an amount before the request can go anywhere — a
+  // just-scanned line sits at 0 until its quantity is keyed.
+  const needsQty = lines.some((l) => l.qty < 1);
 
   async function save(submit: boolean) {
     if (lines.length === 0) return;
@@ -427,6 +485,7 @@ function CreatePRModal({
           body: JSON.stringify({ status: submit ? "Submitted" : "Draft", ...payload }),
         });
       }
+      clearDraft();
       onCreated();
     } catch (e: any) {
       alert(e.message);
@@ -444,19 +503,53 @@ function CreatePRModal({
       title={editing ? `Continue ${editing.prNo} (draft)` : "New Purchase Request"}
       footer={
         <>
+          {needsQty && (
+            <span className="mr-auto self-center text-xs font-semibold text-amber-600">
+              Key the quantity for the highlighted item to continue.
+            </span>
+          )}
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-ghost" disabled={busy || lines.length === 0} onClick={() => save(false)}>
+          <button
+            className="btn-ghost"
+            disabled={busy || lines.length === 0 || needsQty}
+            title={needsQty ? "Enter the amount for every scanned item first" : undefined}
+            onClick={() => save(false)}
+          >
             Save as draft
           </button>
-          <button className="btn-primary" disabled={busy || lines.length === 0} onClick={() => save(true)}>
+          <button
+            className="btn-primary"
+            disabled={busy || lines.length === 0 || needsQty}
+            title={needsQty ? "Enter the amount for every scanned item first" : undefined}
+            onClick={() => save(true)}
+          >
             <Send size={16} /> {busy ? "Submitting…" : "Submit for Approval"}
           </button>
         </>
       }
     >
-      <LineBuilder products={products} lines={lines} setLines={setLines} suggestions={suggestions} stickyScanner>
+      <LineBuilder
+        products={products}
+        lines={lines}
+        setLines={setLines}
+        suggestions={suggestions}
+        stickyScanner
+        requireQtyPerScan
+        topSlot={
+          persist ? (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+              <span className={savedFlash ? "font-semibold text-emerald-600" : "text-slate-400"}>
+                {savedFlash ? "✓ Auto-saved" : "Auto-saves on this device as you scan"}
+              </span>
+              {resumed && (
+                <span className="font-semibold text-brand-600">· Resumed your unfinished request</span>
+              )}
+            </div>
+          ) : undefined
+        }
+      >
         <div className="mt-1">
           <label className="label">Note (optional)</label>
           <input

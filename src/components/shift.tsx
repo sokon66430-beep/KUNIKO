@@ -53,6 +53,18 @@ export type ShiftView = {
 };
 export type ShiftsData = { drawerLimit: number; exchangeRate: number; shifts: ShiftView[] };
 
+// Shifts run in a manual loop, not on a clock: the team closes A, opens B, closes
+// B, opens C, then back to A. So the shift to open next is simply the one AFTER
+// the most recent shift on this till. No history → start at A.
+const SHIFT_CYCLE = ["A", "B", "C"] as const;
+export function nextShiftName(shifts: ShiftView[], terminal: string): "A" | "B" | "C" {
+  const here = shifts.filter((s) => s.posTerminalId === terminal);
+  if (!here.length) return "A";
+  const last = here.reduce((a, b) => (new Date(a.openedAt) >= new Date(b.openedAt) ? a : b));
+  const i = SHIFT_CYCLE.indexOf(last.shift);
+  return SHIFT_CYCLE[(i + 1) % SHIFT_CYCLE.length];
+}
+
 export const emptyCount = (): CashCount => ({
   denoms: CASH_DENOMS.map((d) => ({ denom: d, count: 0 })),
   coins: 0,
@@ -61,33 +73,45 @@ export const emptyCount = (): CashCount => ({
 
 export const khr = (n: number) => `${n.toLocaleString("en-US")}៛`; // riel symbol ៛
 
-// One row of the counter: a denomination label, a "× count" input, and the USD
-// value it comes to. Shared by both currency panels so every row lines up.
+// One row of the counter: a denomination label on the left, and the "× count =
+// value" math kept together on the right so the input never drifts away from the
+// amount it produces. The label width is fixed per panel so every note lines up.
 function CountRow({ label, labelWidth, count, onCount, value }: {
   label: string; labelWidth: string; count: number; onCount: (n: number) => void; value: number;
 }) {
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className={`${labelWidth} shrink-0 text-sm font-semibold text-slate-500`}>{label}</span>
-      <span className="text-slate-300">×</span>
-      <input
-        type="number"
-        min={0}
-        value={count || ""}
-        onChange={(e) => onCount(Number(e.target.value))}
-        placeholder="0"
-        className="h-10 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-      />
-      <span className="ml-auto w-20 text-right text-sm font-bold tabular-nums text-ink-800">{usd(value)}</span>
+    <div className="flex items-center gap-2 px-1 py-1.5">
+      <span className={`${labelWidth} shrink-0 text-sm font-semibold text-slate-600`}>{label}</span>
+      <div className="ml-auto flex items-center gap-2">
+        <span className="text-xs text-slate-300">×</span>
+        <input
+          type="number"
+          min={0}
+          value={count || ""}
+          onChange={(e) => onCount(Number(e.target.value))}
+          placeholder="0"
+          className="h-9 w-16 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+        />
+        <span className={`w-20 text-right text-sm font-bold tabular-nums ${value ? "text-ink-800" : "text-slate-300"}`}>{usd(value)}</span>
+      </div>
     </div>
   );
 }
 
-function CurrencyPanel({ title, children }: { title: string; children: ReactNode }) {
+// A currency column: title, the note rows, and a subtotal pinned to the bottom.
+// `flex flex-col` + the caller's equal-height grid keep the dollar and riel cards
+// the same height even though one has more notes than the other.
+function CurrencyPanel({ title, footer, children }: { title: string; footer?: ReactNode; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{title}</p>
-      <div className="space-y-0.5">{children}</div>
+    <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-3.5">
+      <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{title}</p>
+      <div className="space-y-1">{children}</div>
+      {footer && (
+        <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-2.5 pl-1.5">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Subtotal</span>
+          <span className="text-sm font-extrabold tabular-nums text-ink-800">{footer}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -97,21 +121,23 @@ function CurrencyPanel({ title, children }: { title: string; children: ReactNode
 // grand total is in USD, riel converted at the store rate.
 export function DenomCounter({ value, onChange, rate }: { value: CashCount; onChange: (c: CashCount) => void; rate: number }) {
   const total = countTotal(value, rate);
+  const usdSubtotal = value.denoms.reduce((s, d) => s + d.denom * d.count, 0);
+  const rielSubtotal = (value.riel || []).reduce((s, d) => s + d.denom * d.count, 0);
   const setUsd = (denom: number, count: number) =>
     onChange({ ...value, denoms: value.denoms.map((d) => (d.denom === denom ? { ...d, count: Math.max(0, Math.floor(count) || 0) } : d)) });
   const setRiel = (denom: number, count: number) =>
     onChange({ ...value, riel: (value.riel || []).map((d) => (d.denom === denom ? { ...d, count: Math.max(0, Math.floor(count) || 0) } : d)) });
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <CurrencyPanel title="US Dollars">
+      <div className="grid items-stretch gap-4 md:grid-cols-2">
+        <CurrencyPanel title="US Dollars" footer={usd(usdSubtotal)}>
           {value.denoms.map((d) => (
-            <CountRow key={d.denom} label={`$${d.denom}`} labelWidth="w-16" count={d.count} onCount={(n) => setUsd(d.denom, n)} value={d.denom * d.count} />
+            <CountRow key={d.denom} label={`$${d.denom}`} labelWidth="w-14" count={d.count} onCount={(n) => setUsd(d.denom, n)} value={d.denom * d.count} />
           ))}
         </CurrencyPanel>
-        <CurrencyPanel title={`Khmer Riel · ÷ ${rate.toLocaleString()}`}>
+        <CurrencyPanel title={`Khmer Riel · ÷ ${rate.toLocaleString()}`} footer={khr(rielSubtotal)}>
           {(value.riel || []).map((d) => (
-            <CountRow key={d.denom} label={khr(d.denom)} labelWidth="w-20" count={d.count} onCount={(n) => setRiel(d.denom, n)} value={(d.denom * d.count) / (rate || 4100)} />
+            <CountRow key={d.denom} label={khr(d.denom)} labelWidth="w-16" count={d.count} onCount={(n) => setRiel(d.denom, n)} value={(d.denom * d.count) / (rate || 4100)} />
           ))}
         </CurrencyPanel>
       </div>

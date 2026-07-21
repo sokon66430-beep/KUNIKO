@@ -504,6 +504,7 @@ export default function ProductsPage() {
           suppliers={suppliers || []}
           categories={categories}
           busy={busy}
+          packagingReadOnly
           onClose={() => setEditing(null)}
           onSave={saveProduct}
         />

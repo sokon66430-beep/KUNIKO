@@ -1,15 +1,23 @@
 import type { DB, Sale } from "./types";
+import { storeToday, storeInstant, shortDay } from "./storetime";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const startOfDay = (d: Date) => {
-  const x = new Date(d);
+const DAY_MS = 86_400_000;
+
+// Store-local midnight (a real UTC instant) for the store-day that contains `d`.
+// The shop runs on Phnom Penh time while the server runs on UTC, so a plain
+// setHours(0,0,0,0) would cut the day at 07:00 local — pushing a 2am sale onto
+// the day before and starting "today" at 7am. Cutting on the STORE day fixes it.
+const startOfDay = (d: Date): Date => {
+  const inst = storeInstant(storeToday(d), "00:00");
+  if (inst) return inst;
+  const x = new Date(d); // fallback: server-local midnight (shouldn't be reached)
   x.setHours(0, 0, 0, 0);
   return x;
 };
 
-/** yyyy-mm-dd on the LOCAL calendar — never toISOString(), which is UTC. */
-const dayKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** yyyy-mm-dd on the STORE calendar (Asia/Phnom_Penh), so every bucket is a real shop day. */
+const dayKey = (d: Date) => storeToday(d);
 
 function inRange(s: Sale, from: Date, to: Date) {
   const t = +new Date(s.createdAt);
@@ -22,13 +30,12 @@ export type RangeKey = "today" | "yesterday" | "7d" | "30d" | "90d";
 // as a single-day window. Read straight off the string into a LOCAL date so the
 // day the user tapped is the day that's summed, on any server timezone.
 function customDayBounds(day: string): { from: Date; to: Date; days: number } | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  if (!m) return null;
-  const from = new Date(+m[1], +m[2] - 1, +m[3]);
-  from.setHours(0, 0, 0, 0);
-  if (isNaN(+from)) return null;
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  // Store-local midnight of the picked day → the next store midnight. So the day
+  // the user tapped is the shop's calendar day, on any server timezone.
+  const from = storeInstant(day, "00:00");
+  if (!from) return null;
+  const to = new Date(from.getTime() + DAY_MS);
   return { from, to, days: 1 };
 }
 
@@ -50,22 +57,21 @@ export function rangeBounds(
     }
   }
   const to = new Date();
-  const from = startOfDay(new Date());
-  if (range === "today") return { from, to, days: 1 };
+  const todayMidnight = startOfDay(new Date()); // store midnight today
+  if (range === "today") return { from: todayMidnight, to, days: 1 };
 
   // Yesterday is the only range that ENDS in the past — every other one runs up
-  // to this moment. It stops at midnight today, which `inRange` excludes since
-  // it tests `t < to`, so a sale rung up this morning can't leak into it. A
+  // to this moment. It stops at store midnight today, which `inRange` excludes
+  // (it tests `t < to`), so a sale rung up this morning can't leak into it. A
   // closed day is the one figure that shouldn't move while you look at it.
+  // Cambodia has no DST, so one store day back is exactly 24h earlier.
   if (range === "yesterday") {
-    const f = startOfDay(new Date());
-    f.setDate(f.getDate() - 1);
-    return { from: f, to: startOfDay(new Date()), days: 1 };
+    const f = new Date(todayMidnight.getTime() - DAY_MS);
+    return { from: f, to: todayMidnight, days: 1 };
   }
 
   const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-  const f = startOfDay(new Date());
-  f.setDate(f.getDate() - (days - 1));
+  const f = new Date(todayMidnight.getTime() - (days - 1) * DAY_MS);
   return { from: f, to, days };
 }
 
@@ -126,25 +132,14 @@ export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string, 
   const todayRevenue = sum(todaySales, (s) => s.total);
   const todayProfit = sum(todaySales, (s) => s.profit);
 
-  // Daily revenue/profit series across the range.
-  //
-  // Bucketed on the LOCAL calendar date, because that's the day the range was
-  // cut on. This used to key buckets with toISOString() — UTC — while building
-  // them from local midnight, so anywhere east of Greenwich the bucket for
-  // local 16 Jul was labelled 15 Jul, and a sale made that afternoon keyed to
-  // 16 Jul and matched no bucket at all. The money vanished off the chart while
-  // the cards above it still counted it.
+  // Daily revenue/profit series across the range, bucketed on the STORE calendar
+  // day (Asia/Phnom_Penh). Both the buckets and each sale are keyed with
+  // storeToday, so a sale always lands on the shop day it was actually rung up —
+  // an 11pm sale stays on tonight, a 2am sale stays on today, not yesterday.
   const seriesMap = new Map<string, { label: string; revenue: number; profit: number }>();
   for (let i = 0; i < days; i++) {
-    const d = new Date(from);
-    d.setDate(from.getDate() + i);
-    seriesMap.set(dayKey(d), {
-      // Built from the Date itself. Re-parsing the key would read it back as
-      // UTC midnight and shift the label a day the other way.
-      label: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
-      revenue: 0,
-      profit: 0,
-    });
+    const key = dayKey(new Date(from.getTime() + i * DAY_MS));
+    seriesMap.set(key, { label: shortDay(key), revenue: 0, profit: 0 });
   }
   for (const s of sales) {
     const cur = seriesMap.get(dayKey(new Date(s.createdAt)));

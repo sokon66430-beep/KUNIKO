@@ -5,7 +5,7 @@ import { Check, Truck, Tag, Sparkles, Upload, Image as ImageIcon, X } from "luci
 import type { Product, Supplier, SellingUnit } from "@/lib/types";
 import { Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
-import { itemIdPrefix } from "@/lib/itemId";
+import { itemIdPrefix, packagingPrefix } from "@/lib/itemId";
 import { defaultShowOnPos } from "@/lib/pos";
 import { normalizeUnit, unitDimension } from "@/lib/units";
 import { baseUnitName } from "@/lib/sellingUnits";
@@ -34,15 +34,28 @@ function SellingUnitsEditor({
   units,
   baseName,
   basePrice,
+  baseSku,
+  readOnly = false,
   onChange,
 }: {
   units: SellingUnit[];
   baseName: string;
   basePrice: number;
+  baseSku?: string;
+  // Packaging is owned by Master Data — a store sees it but can't change it here.
+  readOnly?: boolean;
   onChange: (units: SellingUnit[]) => void;
 }) {
   const update = (index: number, patch: Partial<SellingUnit>) =>
     onChange(units.map((u, i) => (i === index ? { ...u, ...patch } : u)));
+
+  // Each packaging level carries its own product code: the base product's first
+  // 4 digits + a 4-digit tail the system fills in (uniquely) on save. Until then
+  // a new row shows the family prefix with the tail as dots — same as the Item ID
+  // preview above.
+  const codePrefix = packagingPrefix(baseSku);
+  const hasBaseSku = /\d/.test(baseSku || "");
+  const codeOf = (u: SellingUnit) => u.sku || (hasBaseSku ? `${codePrefix}••••` : "auto on save");
 
   function add() {
     // Start on the first packaging that isn't taken, at the size it usually
@@ -74,8 +87,18 @@ function SellingUnitsEditor({
         </p>
       </div>
       <p className="mb-3 text-[11.5px] text-slate-500">
-        Add a pack or a case and give it its own barcode; scanning it sells that whole packaging and takes the right
-        number of {baseName.toLowerCase()}s off the shelf.
+        {readOnly ? (
+          <>
+            Packaging levels and their product codes are set once in{" "}
+            <span className="font-semibold text-slate-600">Master Data</span> and apply to every store — so a Pack and
+            its code mean the same thing everywhere. To change them, edit the product in Master Data.
+          </>
+        ) : (
+          <>
+            Add a pack or a case and give it its own barcode; scanning it sells that whole packaging and takes the right
+            number of {baseName.toLowerCase()}s off the shelf.
+          </>
+        )}
       </p>
 
       {/* The base level, shown but not editable. It IS this product's own unit,
@@ -91,10 +114,52 @@ function SellingUnitsEditor({
         <span className="text-[11px] text-slate-400">set above · always 1</span>
       </div>
 
-      {units.length > 0 && (
+      {readOnly && (
+        <div className="space-y-1.5">
+          {units.length === 0 && (
+            <p className="rounded-lg bg-white px-2.5 py-2 text-[12px] text-slate-400 ring-1 ring-slate-200">
+              No extra packaging — this product sells in {baseName.toLowerCase()}s only.
+            </p>
+          )}
+          {units.map((u) => (
+            <div
+              key={u.id}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200"
+            >
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[12px] font-semibold tracking-[0.12em] text-ink-900">
+                {u.sku || `${codePrefix}••••`}
+              </span>
+              <span className="text-[13px] font-semibold text-ink-900">{u.name || "—"}</span>
+              <span className="text-[12px] text-slate-500">= {u.conversion} {baseName.toLowerCase()}s</span>
+              <span className="ml-auto text-[12px] font-semibold tabular-nums text-slate-600">${u.price.toFixed(2)}</span>
+              {u.isDefault && (
+                <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600">
+                  Default at till
+                </span>
+              )}
+              {u.active === false && (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                  Inactive
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!readOnly && units.length > 0 && (
         <div className="mb-3 space-y-2">
           {units.map((u, i) => (
             <div key={u.id} className="rounded-lg bg-white p-2.5 ring-1 ring-slate-200">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Product code</span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[12px] font-semibold tracking-[0.12em] text-ink-900">
+                  {codeOf(u)}
+                </span>
+                {!u.sku && (
+                  <span className="text-[10.5px] text-slate-400">system-generated · won&apos;t duplicate</span>
+                )}
+              </div>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-[7rem] flex-1">
                   <label className="label !mb-1 !text-[10px]">Unit name</label>
@@ -217,13 +282,15 @@ function SellingUnitsEditor({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={add}
-        className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 ring-1 ring-slate-200 transition hover:ring-brand-300"
-      >
-        + Add packaging level
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={add}
+          className="rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 ring-1 ring-slate-200 transition hover:ring-brand-300"
+        >
+          + Add packaging level
+        </button>
+      )}
     </div>
   );
 }
@@ -250,6 +317,7 @@ export function ProductModal({
   suppliers,
   categories = [],
   busy,
+  packagingReadOnly = false,
   onClose,
   onSave,
 }: {
@@ -257,6 +325,9 @@ export function ProductModal({
   suppliers: Supplier[];
   categories?: string[];
   busy: boolean;
+  // At store level packaging is view-only — it's owned by Master Data. The
+  // Master Data screen leaves this false so packaging can be defined there.
+  packagingReadOnly?: boolean;
   onClose: () => void;
   onSave: (p: Partial<Product>) => void;
 }) {
@@ -677,6 +748,8 @@ export function ProductModal({
           units={form.sellingUnits || []}
           baseName={baseUnitName({ unit: form.unit || "" })}
           basePrice={priceN}
+          baseSku={form.sku || prefix || undefined}
+          readOnly={packagingReadOnly}
           onChange={(units) => set("sellingUnits", units.length ? units : undefined)}
         />
 

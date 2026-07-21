@@ -4,6 +4,7 @@ import { masterDataFor } from "@/lib/caps";
 import { mutateMaster } from "@/lib/master";
 import { resolveSupplier } from "@/lib/supplierLink";
 import { readDB } from "@/lib/db";
+import { validateSellingUnits } from "@/lib/sellingUnits";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const result = await mutateMaster((products) => {
     const product = products.find((p) => p.id === params.id);
     if (!product) return null;
+    // Packaging levels are validated as a set and each gets its own product code
+    // off the base code — codes are made unique across the whole master catalogue
+    // here, then pushed to every store on sync. Handled before the field loop so
+    // it can't fall through the plain string/number rules.
+    if ("sellingUnits" in body) {
+      const baseSku = (typeof body.sku === "string" && body.sku.trim()) || product.sku;
+      const parsed = validateSellingUnits(body.sellingUnits, product.id, products, baseSku);
+      if (!parsed.ok) return { error: parsed.error };
+      product.sellingUnits = parsed.value.length ? parsed.value : undefined;
+      delete body.sellingUnits;
+    }
     for (const [key, value] of Object.entries(body)) {
       if (key === "id") continue;
       if (NUMERIC.has(key)) (product as any)[key] = Math.max(0, Number(value) || 0);
@@ -47,6 +59,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
 
   if (!result) return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   return NextResponse.json(result);
 }
 

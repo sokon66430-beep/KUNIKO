@@ -261,6 +261,43 @@ export default function DashboardPage() {
             </div>
           </Card>
 
+          {/* Daily sales — one row per shop day, with the day's total. The chart
+              above shows the shape; this shows the exact number per day. */}
+          <Card>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-ink-900">Daily Sales</h3>
+                <p className="text-xs text-slate-500">One row per day · total for the selected period</p>
+              </div>
+            </div>
+            {(() => {
+              const dayRows = data.series.filter((d) => d.revenue !== 0 || d.profit !== 0).reverse();
+              if (dayRows.length === 0) return <p className="py-6 text-center text-sm text-slate-400">No sales in this period.</p>;
+              return (
+                <div className="max-h-72 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                        <th className="py-2 pr-3 font-semibold">Day</th>
+                        <th className="px-3 py-2 text-right font-semibold">Revenue</th>
+                        {showProfit && <th className="pl-3 py-2 text-right font-semibold">Profit</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayRows.map((d) => (
+                        <tr key={d.date} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                          <td className="py-2 pr-3 font-semibold text-ink-800">{d.label}</td>
+                          <td className="px-3 py-2 text-right font-bold tabular-nums text-ink-900">{usd(d.revenue)}</td>
+                          {showProfit && <td className="pl-3 py-2 text-right tabular-nums font-semibold text-emerald-600">{usd(d.profit)}</td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+          </Card>
+
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Top products */}
             <Card className="lg:col-span-2">

@@ -73,6 +73,11 @@ export type Product = {
 export type SellingUnit = {
   id: string;
   name: string; // "Pack", "Case", "Carton"
+  // Its own 8-digit product code (Item ID). Shares the first 4 digits with the
+  // base product (sub-group + category), with a system-generated 4-digit tail
+  // that's unique across every product AND packaging code. Assigned on save; see
+  // packagingItemId in lib/itemId and validateSellingUnits in lib/sellingUnits.
+  sku?: string;
   conversion: number; // base units in one of these — always 2 or more
   price: number; // USD for one of these (NOT per base unit)
   barcode?: string; // its own barcode; scanning it sells this level

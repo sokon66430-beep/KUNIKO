@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -19,8 +19,19 @@ import type { Stats, RangeKey } from "@/lib/analytics";
 import type { Sale } from "@/lib/types";
 import { PageHeader, Card, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
-import { usd, num, pct, dateTime } from "@/lib/format";
+import { usd, num, pct, timeOnly } from "@/lib/format";
+import { storeToday, shortDay } from "@/lib/storetime";
 import { canSeeProfit } from "@/lib/access";
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+// "Monday, 21 Jul 2026" from a yyyy-mm-dd store-day key (read off the string so
+// the viewer's timezone can't shift the weekday or date).
+function dayHeading(key: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return key;
+  const wd = WEEKDAYS[new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()];
+  return `${wd}, ${shortDay(key)} ${m[1]}`;
+}
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
@@ -237,7 +248,7 @@ export default function ReportsPage() {
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
                     <th className="px-5 py-3 font-semibold">Invoice</th>
-                    <th className="px-5 py-3 font-semibold">Date</th>
+                    <th className="px-5 py-3 font-semibold">Time</th>
                     <th className="px-5 py-3 font-semibold">Customer</th>
                     <th className="px-5 py-3 font-semibold">Payment</th>
                     <th className="px-5 py-3 text-right font-semibold">Items</th>
@@ -245,20 +256,52 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(sales || []).map((s) => (
-                    <tr key={s.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                      <td className="px-5 py-3 font-mono text-xs font-semibold text-brand-600">{s.invoiceNo}</td>
-                      <td className="px-5 py-3 text-slate-500">{dateTime(s.createdAt)}</td>
-                      <td className="px-5 py-3 text-slate-700">{s.customerName || "Walk-in"}</td>
-                      <td className="px-5 py-3">
-                        <Badge tone="slate">{s.paymentMethod}</Badge>
-                      </td>
-                      <td className="px-5 py-3 text-right text-slate-600">
-                        {s.items.reduce((a, it) => a + it.qty, 0)}
-                      </td>
-                      <td className="px-5 py-3 text-right font-bold text-ink-900">{usd(s.total)}</td>
-                    </tr>
-                  ))}
+                  {/* Grouped by store day so a day with several sales shows once —
+                      a day heading with that day's transactions beneath it (each
+                      with just its time), not the same date repeated per row. */}
+                  {(() => {
+                    const list = sales || [];
+                    const groups: { key: string; items: Sale[] }[] = [];
+                    const idx = new Map<string, { key: string; items: Sale[] }>();
+                    for (const s of list) {
+                      const key = storeToday(new Date(s.createdAt));
+                      let g = idx.get(key);
+                      if (!g) { g = { key, items: [] }; idx.set(key, g); groups.push(g); }
+                      g.items.push(s);
+                    }
+                    return groups.map((g) => {
+                      const dayItems = g.items.reduce((a, s) => a + s.items.reduce((b, it) => b + it.qty, 0), 0);
+                      const dayTotal = g.items.reduce((a, s) => a + s.total, 0);
+                      return (
+                      <Fragment key={g.key}>
+                        <tr className="bg-slate-50/70">
+                          <td colSpan={4} className="px-5 py-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                            {dayHeading(g.key)}
+                            <span className="ml-2 font-semibold normal-case tracking-normal text-slate-400">
+                              · {g.items.length} sale{g.items.length === 1 ? "" : "s"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-2 text-right text-xs font-bold tabular-nums text-slate-500">{num(dayItems)}</td>
+                          <td className="px-5 py-2 text-right text-sm font-extrabold tabular-nums text-ink-900">{usd(dayTotal)}</td>
+                        </tr>
+                        {g.items.map((s) => (
+                          <tr key={s.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                            <td className="px-5 py-3 font-mono text-xs font-semibold text-brand-600">{s.invoiceNo}</td>
+                            <td className="px-5 py-3 text-slate-500">{timeOnly(s.createdAt)}</td>
+                            <td className="px-5 py-3 text-slate-700">{s.customerName || "Walk-in"}</td>
+                            <td className="px-5 py-3">
+                              <Badge tone="slate">{s.paymentMethod}</Badge>
+                            </td>
+                            <td className="px-5 py-3 text-right text-slate-600">
+                              {s.items.reduce((a, it) => a + it.qty, 0)}
+                            </td>
+                            <td className="px-5 py-3 text-right font-bold text-ink-900">{usd(s.total)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                      );
+                    });
+                  })()}
                   {(!sales || sales.length === 0) && (
                     <tr>
                       <td colSpan={6} className="px-5 py-12 text-center text-slate-400">
