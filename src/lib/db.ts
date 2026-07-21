@@ -1,15 +1,11 @@
-import { promises as fs } from "fs";
-import path from "path";
 import type { DB } from "./types";
 import { buildSeed } from "./seed";
 import { getSession } from "./session";
 import { repairBarcodes } from "./barcodes";
-import { STORES_DIR, DEFAULT_STORE_ID, readSystem } from "./system";
+import { DEFAULT_STORE_ID, readSystem } from "./system";
+import { readBlob, writeBlob } from "./blobStore";
 
-// One JSON file per store; the active store comes from the logged-in session.
-const storeFile = (storeId: string) => path.join(STORES_DIR, `${storeId}.json`);
-
-// In-process write lock so concurrent API calls don't clobber a store file.
+// In-process write lock so concurrent API calls don't clobber a store's document.
 let writeChain: Promise<unknown> = Promise.resolve();
 
 // Resolve the store in the REQUEST scope (cookies() needs the request's async
@@ -144,27 +140,44 @@ function backfill(db: DB): DB {
   return db;
 }
 
-async function ensureStoreFile(storeId: string): Promise<void> {
-  const file = storeFile(storeId);
-  try {
-    await fs.access(file);
-    return;
-  } catch {
-    /* seed it */
-  }
+// Seed a brand-new store's document (used the first time a store is opened).
+async function seedStore(storeId: string): Promise<DB> {
   const sys = await readSystem();
   const store = sys.stores.find((s) => s.id === storeId);
   // The default store keeps the ON Mart demo data; new stores start clean.
   const seed = buildSeed({ storeName: store?.name, withDemo: storeId === DEFAULT_STORE_ID });
-  await fs.mkdir(STORES_DIR, { recursive: true });
-  await fs.writeFile(file, JSON.stringify(seed, null, 2), "utf8");
+  await writeBlob("store", storeId, JSON.stringify(seed));
+  return backfill(seed as DB);
+}
+
+// In-memory cache of each store's parsed DB.
+//
+// The store document holds THOUSANDS of products; re-reading and re-parsing it
+// (and re-running backfill over every product) on every single request was
+// churning so much memory that the instance was being OOM-killed (exit 139) in a
+// loop. One web instance owns the data, so a per-store cache is safe: reads
+// reuse the parsed object, and writes mutate that SAME object in place before
+// persisting — so the cache never drifts from the store. A failed write drops
+// the entry so the next read re-loads the last good copy.
+const dbCache = new Map<string, DB>();
+
+async function loadDB(sid: string): Promise<DB> {
+  const cached = dbCache.get(sid);
+  if (cached) return cached;
+  const raw = await readBlob("store", sid);
+  const db = raw == null ? await seedStore(sid) : backfill(JSON.parse(raw) as DB);
+  dbCache.set(sid, db);
+  return db;
+}
+
+/** Drop a store's cached copy (e.g. after an out-of-band change). */
+export function invalidateDB(storeId: string): void {
+  dbCache.delete(storeId);
 }
 
 export async function readDB(storeId?: string): Promise<DB> {
   const sid = await currentStoreId(storeId);
-  await ensureStoreFile(sid);
-  const raw = await fs.readFile(storeFile(sid), "utf8");
-  return backfill(JSON.parse(raw) as DB);
+  return loadDB(sid);
 }
 
 export async function mutateDB<T>(
@@ -173,12 +186,17 @@ export async function mutateDB<T>(
 ): Promise<T> {
   const sid = await currentStoreId(storeId); // captured in request scope
   const run = async (): Promise<T> => {
-    await ensureStoreFile(sid);
-    const raw = await fs.readFile(storeFile(sid), "utf8");
-    const db = backfill(JSON.parse(raw) as DB);
-    const result = await mutator(db);
-    await fs.writeFile(storeFile(sid), JSON.stringify(db, null, 2), "utf8");
-    return result;
+    const db = await loadDB(sid);
+    try {
+      const result = await mutator(db);
+      await writeBlob("store", sid, JSON.stringify(db));
+      return result;
+    } catch (e) {
+      // The mutation may have partly changed the cached object without being
+      // persisted — drop it so the next read reloads the last saved state.
+      dbCache.delete(sid);
+      throw e;
+    }
   };
   const next = writeChain.then(run, run);
   writeChain = next.catch(() => undefined);

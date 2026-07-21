@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
 import { getSession } from "@/lib/session";
-import { readSystem, STORES_DIR } from "@/lib/system";
+import { readSystem } from "@/lib/system";
+import { readBlob } from "@/lib/blobStore";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +16,10 @@ export async function GET() {
   const sys = await readSystem();
   const stores: Record<string, unknown> = {};
   for (const st of sys.stores) {
-    try {
-      const raw = await fs.readFile(path.join(STORES_DIR, `${st.id}.json`), "utf8");
-      stores[st.id] = JSON.parse(raw);
-    } catch {
-      /* store file not created yet — skip */
-    }
+    // Read through the storage layer, so a backup works on both the file and the
+    // Postgres backend.
+    const raw = await readBlob("store", st.id);
+    if (raw != null) stores[st.id] = JSON.parse(raw);
   }
 
   const backup = { version: 1, exportedAt: new Date().toISOString(), system: sys, stores };

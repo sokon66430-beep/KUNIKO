@@ -1,12 +1,10 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { hashPassword } from "./password";
 import type { Role } from "./auth";
+import { readBlob, writeBlob } from "./blobStore";
 
-// Root data directory — set DATA_DIR to a persistent disk path in production.
-export const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
-export const STORES_DIR = path.join(DATA_DIR, "stores");
-const SYSTEM_FILE = path.join(DATA_DIR, "system.json");
+// Path constants live in ./paths (to avoid an import cycle with blobStore).
+// Re-exported here so existing `import { DATA_DIR } from "@/lib/system"` keeps working.
+export { DATA_DIR, STORES_DIR } from "./paths";
 
 export type Store = { id: string; name: string; createdAt: string };
 export type User = {
@@ -89,33 +87,40 @@ function buildSystemSeed(): SystemData {
   };
 }
 
-async function ensureSystem(): Promise<void> {
-  try {
-    await fs.access(SYSTEM_FILE);
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(SYSTEM_FILE, JSON.stringify(buildSystemSeed(), null, 2), "utf8");
-  }
+// Cache the parsed system document (users, stores, permissions). It's read on
+// almost every request (auth), so parsing it each time is wasted work. Writes go
+// through mutateSystem, which updates this same object before persisting.
+let sysCache: SystemData | null = null;
+
+/** Drop the cached system document (e.g. after a restore writes it directly). */
+export function reloadSystem(): void {
+  sysCache = null;
 }
 
 export async function readSystem(): Promise<SystemData> {
-  await ensureSystem();
-  const raw = await fs.readFile(SYSTEM_FILE, "utf8");
-  const sys = JSON.parse(raw) as SystemData;
+  if (sysCache) return sysCache;
+  const raw = await readBlob("system", "system");
+  const sys = raw == null ? buildSystemSeed() : (JSON.parse(raw) as SystemData);
+  if (raw == null) await writeBlob("system", "system", JSON.stringify(sys));
   if (!sys.stores) sys.stores = [];
   if (!sys.users) sys.users = [];
   if (sys.nextStore == null) sys.nextStore = sys.stores.length + 1;
   if (sys.nextUser == null) sys.nextUser = sys.users.length + 1;
+  sysCache = sys;
   return sys;
 }
 
 export async function mutateSystem<T>(mutator: (sys: SystemData) => T | Promise<T>): Promise<T> {
   const run = async (): Promise<T> => {
     const sys = await readSystem();
-    const result = await mutator(sys);
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(SYSTEM_FILE, JSON.stringify(sys, null, 2), "utf8");
-    return result;
+    try {
+      const result = await mutator(sys);
+      await writeBlob("system", "system", JSON.stringify(sys));
+      return result;
+    } catch (e) {
+      sysCache = null; // drop a possibly half-mutated copy; reload next time
+      throw e;
+    }
   };
   const next = sysWriteChain.then(run, run);
   sysWriteChain = next.catch(() => undefined);

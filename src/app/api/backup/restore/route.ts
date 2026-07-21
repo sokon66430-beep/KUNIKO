@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
 import { getSession } from "@/lib/session";
-import { DATA_DIR, STORES_DIR } from "@/lib/system";
+import { writeBlob } from "@/lib/blobStore";
+import { invalidateDB } from "@/lib/db";
+import { reloadSystem } from "@/lib/system";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +30,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "That doesn't look like a Stookii backup" }, { status: 400 });
   }
 
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(path.join(DATA_DIR, "system.json"), JSON.stringify(backup.system, null, 2), "utf8");
-  await fs.mkdir(STORES_DIR, { recursive: true });
+  // Write through the storage layer (files or Postgres), then drop the in-memory
+  // caches so the next read serves the restored data, not the pre-restore copy.
+  await writeBlob("system", "system", JSON.stringify(backup.system));
+  reloadSystem();
   let restored = 0;
   for (const [id, data] of Object.entries(backup.stores)) {
-    await fs.writeFile(path.join(STORES_DIR, `${id}.json`), JSON.stringify(data, null, 2), "utf8");
+    await writeBlob("store", id, JSON.stringify(data));
+    invalidateDB(id);
     restored++;
   }
 
