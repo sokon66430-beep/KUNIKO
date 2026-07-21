@@ -23,6 +23,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (!grn) return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
 
   const prodById = new Map(db.products.map((p) => [p.id, p]));
+  const vatRate = db.meta.business.vatRate ?? 0.1;
   const rows = grn.items.map((it) => {
     const p = prodById.get(it.productId);
     // The cost AS RECEIVED. Falling back to the product's current cost only for
@@ -36,7 +37,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       sku: it.sku,
       barcode: p?.barcode || "",
       name: it.name,
-      cost,
+      cost, // unit cost, EX-VAT
+      vat: round2(cost * vatRate), // input VAT on the cost (e.g. 10%)
+      sell: round2(p?.price ?? 0), // current shelf/selling price
       qty: it.qtyReceived,
       lineCost: round2(cost * it.qtyReceived),
     };
@@ -56,6 +59,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       { header: "Barcode", get: (r: any) => r.barcode },
       { header: "Item Name", get: (r: any) => r.name, width: 2 },
       { header: "Cost", get: (r: any) => r.cost, money: true },
+      { header: `VAT ${Math.round(vatRate * 100)}%`, get: (r: any) => r.vat, money: true },
+      { header: "Sell Price", get: (r: any) => r.sell, money: true },
       { header: "Qty", get: (r: any) => r.qty, num: true },
       { header: "Line Cost", get: (r: any) => r.lineCost, money: true },
     ],

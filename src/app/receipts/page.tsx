@@ -13,8 +13,10 @@ import {
   ShieldCheck,
   Truck,
   ArrowRight,
+  Lock,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
+import { receiptEditOpen, RECEIPT_EDIT_WINDOW_DAYS } from "@/lib/procurement";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
 import { PdfViewer } from "@/components/PdfViewer";
 import { DatePicker } from "@/components/DatePicker";
@@ -312,13 +314,22 @@ export default function ReceiptsPage() {
                             >
                               <ShieldCheck size={14} /> Review &amp; approve
                             </button>
-                          ) : (
+                          ) : receiptEditOpen(g.createdAt) ? (
                             <button
                               onClick={() => setEditing(g)}
                               className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                             >
                               <Pencil size={14} /> Edit
                             </button>
+                          ) : (
+                            // Past the 2-day window: locked, with a reason so it
+                            // reads as a rule, not a missing button.
+                            <span
+                              title={`Locked — receipts can only be edited within ${RECEIPT_EDIT_WINDOW_DAYS} days of being logged`}
+                              className="inline-flex cursor-default items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-300"
+                            >
+                              <Lock size={13} /> Locked
+                            </span>
                           )}
                         </div>
                       </td>

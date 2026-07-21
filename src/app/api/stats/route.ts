@@ -32,6 +32,8 @@ export async function GET(req: Request) {
     margin: 0,
     todayProfit: 0,
     series: stats.series.map((s) => ({ ...s, profit: 0 })),
-    topProducts: stats.topProducts.map((p) => ({ ...p, profit: 0 })),
+    // Cost and profit are the sensitive columns; VAT / revenue / qty stay.
+    topProducts: stats.topProducts.map((p) => ({ ...p, cost: 0, profit: 0, margin: 0 })),
+    productReport: stats.productReport.map((p) => ({ ...p, cost: 0, profit: 0, margin: 0 })),
   });
 }

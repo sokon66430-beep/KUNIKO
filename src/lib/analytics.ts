@@ -160,21 +160,32 @@ export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string, 
     profit: v.profit,
   }));
 
-  // Top products by revenue
-  const prodMap = new Map<string, { name: string; sku: string; qty: number; revenue: number; profit: number }>();
+  // Per-product sales: units sold, revenue, cost (COGS), VAT and profit.
+  //
+  // VAT is charged on the whole basket, not the line — so each product's VAT is
+  // its share of the invoice VAT, split by the line's revenue. Summed across
+  // every product it comes back to the reported VAT total, which is the point:
+  // the per-product column has to reconcile to the header figure.
+  const prodMap = new Map<string, { name: string; sku: string; qty: number; revenue: number; cost: number; vat: number; profit: number }>();
   for (const s of sales) {
+    const saleRevenue = s.items.reduce((a, it) => a + it.price * it.qty, 0);
     for (const it of s.items) {
-      const cur = prodMap.get(it.productId) || { name: it.name, sku: it.sku, qty: 0, revenue: 0, profit: 0 };
+      const cur = prodMap.get(it.productId) || { name: it.name, sku: it.sku, qty: 0, revenue: 0, cost: 0, vat: 0, profit: 0 };
+      const lineRev = it.price * it.qty;
       cur.qty += it.qty;
-      cur.revenue = round2(cur.revenue + it.price * it.qty);
+      cur.revenue = round2(cur.revenue + lineRev);
+      cur.cost = round2(cur.cost + it.cost * it.qty);
+      cur.vat = round2(cur.vat + (saleRevenue > 0 ? s.tax * (lineRev / saleRevenue) : 0));
       cur.profit = round2(cur.profit + (it.price - it.cost) * it.qty);
       prodMap.set(it.productId, cur);
     }
   }
-  const topProducts = Array.from(prodMap.entries())
-    .map(([id, v]) => ({ id, ...v }))
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 8);
+  // Full list (every product sold in the range) — drives the Excel export.
+  const productReport = Array.from(prodMap.entries())
+    .map(([id, v]) => ({ id, ...v, margin: v.revenue ? round2((v.profit / v.revenue) * 100) : 0 }))
+    .sort((a, b) => b.revenue - a.revenue);
+  // Top slice for the on-screen table.
+  const topProducts = productReport.slice(0, 8);
 
   // Sales by category
   const catMap = new Map<string, number>();
@@ -234,6 +245,7 @@ export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string, 
     todayTx: todaySales.length,
     series,
     topProducts,
+    productReport,
     byCategory,
     byPayment,
     peakHours,

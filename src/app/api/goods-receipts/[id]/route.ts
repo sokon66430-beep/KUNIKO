@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { receiptEditOpen, RECEIPT_EDIT_WINDOW_DAYS } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const result = await mutateDB((db) => {
     const grn = db.goodsReceipts.find((g) => g.id === params.id);
     if (!grn) return { error: "not_found" as const };
+    // Past the edit window, the receipt is final — no more corrections.
+    if (!receiptEditOpen(grn.createdAt)) return { error: "window_closed" as const };
 
     // Only existing lines can be corrected; anything else is ignored.
     const edits = grn.items.map((li) => {
@@ -48,6 +51,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ("error" in result) {
     if (result.error === "not_found")
       return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
+    if (result.error === "window_closed")
+      return NextResponse.json(
+        { error: `This receipt is more than ${RECEIPT_EDIT_WINDOW_DAYS} days old and can no longer be edited. Adjust stock with a stock count or write-off instead.` },
+        { status: 400 },
+      );
     return NextResponse.json({ error: "No changes to submit" }, { status: 400 });
   }
   return NextResponse.json(result.grn);

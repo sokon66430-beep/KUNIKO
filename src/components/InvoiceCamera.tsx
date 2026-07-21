@@ -26,6 +26,7 @@ export function InvoiceCamera({
   const [error, setError] = useState("");
   const [shot, setShot] = useState<string | null>(null);
   const [pages, setPages] = useState<string[]>([]); // pages captured so far
+  const [reviewing, setReviewing] = useState(false); // showing the all-pages review
   const [mode, setMode] = useState<"scan" | "color">("scan");
   const [torch, setTorch] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -35,6 +36,7 @@ export function InvoiceCamera({
     setError("");
     setShot(null);
     setPages([]);
+    setReviewing(false);
     setMode("scan");
     setTorch(false);
 
@@ -204,11 +206,32 @@ export function InvoiceCamera({
     setShot(null);
     rawRef.current = null;
   }
-  // Finish — hand back every captured page (including the one on screen).
-  function finish() {
+  // Done scanning → go to the review screen (banks the page on screen first).
+  function goToReview() {
     const all = shot ? [...pages, shot] : pages;
     if (!all.length) return;
-    onCapture(all);
+    setPages(all);
+    setShot(null);
+    rawRef.current = null;
+    setReviewing(true);
+  }
+  // Remove one page from the review; if none are left, go back to the camera.
+  function removePage(i: number) {
+    setPages((p) => {
+      const next = p.filter((_, idx) => idx !== i);
+      if (next.length === 0) setReviewing(false);
+      return next;
+    });
+  }
+  // Re-take a page: drop it and return to the camera to shoot it again.
+  function retakePage(i: number) {
+    setPages((p) => p.filter((_, idx) => idx !== i));
+    setReviewing(false);
+  }
+  // Submit the reviewed pages — hand them all back.
+  function submit() {
+    if (!pages.length) return;
+    onCapture(pages);
     onClose();
   }
 
@@ -245,7 +268,40 @@ export function InvoiceCamera({
 
       {/* Camera / review */}
       <div className="relative flex-1 overflow-hidden">
-        {error ? (
+        {reviewing ? (
+          <div className="h-full overflow-y-auto bg-ink-900 p-4">
+            <p className="mb-4 text-center text-sm font-medium text-white/85">
+              Review the {pages.length} page{pages.length === 1 ? "" : "s"} — remove or re-take any, then submit.
+            </p>
+            <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3">
+              {pages.map((src, i) => (
+                <div key={i} className="relative overflow-hidden rounded-xl border border-white/15 bg-black">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={`Invoice page ${i + 1}`} className="aspect-[210/297] w-full object-contain" />
+                  <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white">
+                    Page {i + 1}
+                  </span>
+                  <div className="absolute right-2 top-2 flex gap-1.5">
+                    <button
+                      onClick={() => retakePage(i)}
+                      title="Re-take this page"
+                      className="grid h-8 w-8 place-items-center rounded-lg bg-white/15 text-white transition hover:bg-white/30"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                    <button
+                      onClick={() => removePage(i)}
+                      title="Remove this page"
+                      className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/90 text-white transition hover:bg-rose-500"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : error ? (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white/80">{error}</div>
         ) : (
           <>
@@ -327,7 +383,24 @@ export function InvoiceCamera({
 
       {/* Bottom controls */}
       <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-5">
-        {shot ? (
+        {reviewing ? (
+          <>
+            {/* Review screen: scan more, or submit what's captured. */}
+            <button
+              onClick={() => setReviewing(false)}
+              className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold text-white hover:bg-white/25"
+            >
+              <Plus size={17} /> Add more pages
+            </button>
+            <button
+              onClick={submit}
+              disabled={pages.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
+            >
+              <Check size={17} /> Submit {pages.length} page{pages.length === 1 ? "" : "s"}
+            </button>
+          </>
+        ) : shot ? (
           <>
             <button
               onClick={() => {
@@ -345,20 +418,20 @@ export function InvoiceCamera({
               <Plus size={17} /> Add page
             </button>
             <button
-              onClick={finish}
+              onClick={goToReview}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-600"
             >
-              <Check size={17} /> Done · {pages.length + 1} page{pages.length + 1 === 1 ? "" : "s"}
+              <Check size={17} /> Review · {pages.length + 1} page{pages.length + 1 === 1 ? "" : "s"}
             </button>
           </>
         ) : !error ? (
           <>
             {pages.length > 0 && (
               <button
-                onClick={finish}
+                onClick={goToReview}
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-600"
               >
-                <Check size={17} /> Done · {pages.length} page{pages.length === 1 ? "" : "s"}
+                <Check size={17} /> Review · {pages.length} page{pages.length === 1 ? "" : "s"}
               </button>
             )}
             <button

@@ -1,5 +1,16 @@
 import type { DB, Product, PurchaseOrder, POItem, POStatus, Supplier } from "./types";
 
+// A submitted goods receipt can be corrected only for a short window after it's
+// logged; after that its quantities are final. This keeps late, unreviewed
+// edits off the books — the correct fix for an old receipt is a stock count or
+// write-off, both of which leave their own trail.
+export const RECEIPT_EDIT_WINDOW_DAYS = 2;
+export function receiptEditOpen(createdAt: string, now: number = Date.now()): boolean {
+  const t = new Date(createdAt).getTime();
+  if (!Number.isFinite(t)) return true; // no/blank timestamp → don't lock it out
+  return now - t <= RECEIPT_EDIT_WINDOW_DAYS * 86_400_000;
+}
+
 /**
  * The supplier code a PO is really for.
  *

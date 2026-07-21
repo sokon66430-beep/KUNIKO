@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Download, RotateCcw } from "lucide-react";
+import { Download, RotateCcw, FileSpreadsheet } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
 import type { Sale } from "@/lib/types";
@@ -96,8 +96,13 @@ export default function ReportsPage() {
         subtitle="Sales performance, margins and transaction history"
         actions={
           <div className="flex items-center gap-2">
+            {/* Per-product Excel: units sold, revenue, VAT, cost, profit — the
+                figures below, for the selected range. */}
+            <a className="btn-ghost" href={`/api/reports/products/export?range=${range}`}>
+              <FileSpreadsheet size={16} /> Export Excel
+            </a>
             <button className="btn-ghost" onClick={exportCsv}>
-              <Download size={16} /> Export CSV
+              <Download size={16} /> Invoices CSV
             </button>
             <button className="btn-ghost" onClick={resetDemo} disabled={resetting}>
               <RotateCcw size={16} /> {resetting ? "Resetting…" : "Reset demo"}
@@ -197,6 +202,8 @@ export default function ReportsPage() {
                     <th className="px-5 py-3 font-semibold">Product</th>
                     <th className="px-5 py-3 text-right font-semibold">Qty Sold</th>
                     <th className="px-5 py-3 text-right font-semibold">Revenue</th>
+                    <th className="px-5 py-3 text-right font-semibold">VAT</th>
+                    {showProfit && <th className="px-5 py-3 text-right font-semibold">Cost</th>}
                     {showProfit && <th className="px-5 py-3 text-right font-semibold">Profit</th>}
                   </tr>
                 </thead>
@@ -210,6 +217,8 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-5 py-3 text-right text-slate-600">{num(p.qty)}</td>
                       <td className="px-5 py-3 text-right font-semibold text-ink-900">{usd(p.revenue)}</td>
+                      <td className="px-5 py-3 text-right text-slate-500">{usd(p.vat)}</td>
+                      {showProfit && <td className="px-5 py-3 text-right text-slate-500">{usd(p.cost)}</td>}
                       {showProfit && <td className="px-5 py-3 text-right text-emerald-600">{usd(p.profit)}</td>}
                     </tr>
                   ))}

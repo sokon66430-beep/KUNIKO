@@ -540,19 +540,21 @@ export function buildGRNReportWorkbook(
   const ws = wb.addWorksheet("Receiving Report", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
-  // No · Date · Time · GRN · PO · Supplier · Item Code · Barcode · Item Name · Cost · Qty · Line Cost
+  const vatRate = business.vatRate ?? 0.1;
+  // No · Date · Time · GRN · PO · Supplier · Item Code · Barcode · Item Name · Cost · VAT · Sell · Qty · Line Cost
   ws.columns = [
     { width: 5 }, { width: 12 }, { width: 8 }, { width: 15 }, { width: 16 }, { width: 26 },
-    { width: 12 }, { width: 15 }, { width: 34 }, { width: 11 }, { width: 7 }, { width: 13 },
+    { width: 12 }, { width: 15 }, { width: 34 }, { width: 11 }, { width: 11 }, { width: 12 }, { width: 7 }, { width: 13 },
   ];
 
   const prodById = new Map(products.map((p) => [p.id, p]));
-  let row = reportHeader(ws, "GOODS RECEIVING REPORT", [`${business.name} · ${business.branch}`, filterNote], 12);
+  let row = reportHeader(ws, "GOODS RECEIVING REPORT", [`${business.name} · ${business.branch}`, filterNote], 14);
 
   tableHead(ws, row, [
     { label: "No" }, { label: "Date" }, { label: "Time" }, { label: "GRN No" }, { label: "PO Number" }, { label: "Supplier" },
     { label: "Item Code" }, { label: "Barcode" }, { label: "Item Name" },
-    { label: "Cost", align: "right" }, { label: "Qty", align: "right" }, { label: "Line Cost", align: "right" },
+    { label: "Cost", align: "right" }, { label: `VAT ${Math.round(vatRate * 100)}%`, align: "right" },
+    { label: "Sell Price", align: "right" }, { label: "Qty", align: "right" }, { label: "Line Cost", align: "right" },
   ]);
 
   // Flatten to one row per received item, enriched with barcode + cost.
@@ -575,6 +577,8 @@ export function buildGRNReportWorkbook(
         barcode: p?.barcode || "",
         name: it.name,
         cost,
+        vat: round2(cost * vatRate),
+        sell: round2(p?.price ?? 0),
         qty: it.qtyReceived,
         lineCost: round2(cost * it.qtyReceived),
       };
@@ -591,7 +595,8 @@ export function buildGRNReportWorkbook(
     const cells: [ExcelJS.CellValue, ("right" | "center" | "left")?, string?][] = [
       [i + 1, "center"], [li.date, "center"], [li.time, "center"], [li.grnNo], [li.poNo], [li.supplier],
       [li.sku], [li.barcode], [li.name],
-      [round2(li.cost), "right", MONEY], [li.qty, "right"], [li.lineCost, "right", MONEY],
+      [round2(li.cost), "right", MONEY], [round2(li.vat), "right", MONEY], [round2(li.sell), "right", MONEY],
+      [li.qty, "right"], [li.lineCost, "right", MONEY],
     ];
     cells.forEach(([val, align, fmt], c) => {
       const cell = r.getCell(c + 1);
@@ -610,19 +615,21 @@ export function buildGRNReportWorkbook(
   lbl.font = { name: CALIBRI, size: 11, bold: true };
   lbl.alignment = { horizontal: "right" };
   lbl.border = allThin;
-  const qCell = tr.getCell(11);
+  const qCell = tr.getCell(13);
   qCell.value = grandQty;
   qCell.font = { name: CALIBRI, size: 11, bold: true };
   qCell.alignment = { horizontal: "right" };
   qCell.border = allThin;
-  const cCell = tr.getCell(12);
+  const cCell = tr.getCell(14);
   cCell.value = round2(grandCost);
   cCell.numFmt = MONEY;
   cCell.font = { name: CALIBRI, size: 11, bold: true };
   cCell.alignment = { horizontal: "right" };
   cCell.border = allThin;
-  // border the gap cell for a clean total band
+  // border the gap cells (Cost · VAT · Sell) for a clean total band
   tr.getCell(10).border = allThin;
+  tr.getCell(11).border = allThin;
+  tr.getCell(12).border = allThin;
 
   ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;
@@ -964,6 +971,59 @@ export function buildSalesReportWorkbook(
   ]);
   salesSheet(wb, "By Category", "SALES REPORT — BY CATEGORY", meta, catCols, catRows);
 
+  return wb;
+}
+
+// ---------------------------------------------------------------------------
+// Product Sales report — one row per product sold in the range, with units
+// sold, revenue, VAT (each product's share of the basket VAT), and — for roles
+// allowed to see it — cost (COGS) and profit. Drives the /reports "Export
+// Excel" button. VAT always shows; cost/profit follow the profit permission.
+// ---------------------------------------------------------------------------
+export type ProductSalesRow = {
+  name: string;
+  sku: string;
+  qty: number;
+  revenue: number;
+  vat: number;
+  cost: number;
+  profit: number;
+  margin: number;
+};
+
+export function buildProductSalesWorkbook(
+  rows: ProductSalesRow[],
+  business: Business,
+  filterNote: string,
+  showProfit = true,
+): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  const meta = [`${business.name} · ${business.branch}`, filterNote];
+  const cols: SalesCol[] = [
+    { label: "No", align: "center", width: 6 },
+    { label: "Item Code", width: 14 },
+    { label: "Item Name", width: 42 },
+    { label: "Qty Sold", align: "right", num: true, total: true, width: 11 },
+    { label: "Revenue", align: "right", money: true, total: true, width: 14 },
+    { label: "VAT", align: "right", money: true, total: true, width: 12 },
+    ...(showProfit
+      ? ([
+          { label: "Cost", align: "right", money: true, total: true, width: 13 },
+          { label: "Profit", align: "right", money: true, total: true, width: 13 },
+          { label: "Margin %", align: "right", width: 10 },
+        ] as SalesCol[])
+      : []),
+  ];
+  const body: ExcelJS.CellValue[][] = rows.map((p, i) => [
+    i + 1,
+    p.sku,
+    p.name,
+    p.qty,
+    round2(p.revenue),
+    round2(p.vat),
+    ...(showProfit ? [round2(p.cost), round2(p.profit), `${p.margin.toFixed(1)}%`] : []),
+  ]);
+  salesSheet(wb, "By Product", "PRODUCT SALES REPORT", meta, cols, body);
   return wb;
 }
 
