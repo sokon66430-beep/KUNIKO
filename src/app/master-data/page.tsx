@@ -397,15 +397,18 @@ export default function MasterDataPage() {
             <CheckCircle2 size={16} /> Synced {num(syncResult.masterCount)} master products to {syncResult.stores.length}{" "}
             store{syncResult.stores.length === 1 ? "" : "s"}.
           </p>
+          {/* Fixed-width columns so the store names, the "added" and the
+              "updated" figures line up in straight columns regardless of how
+              long each store name is. */}
           <div className="mt-2 space-y-1 text-xs text-emerald-700">
             {syncResult.stores.map((s) => (
-              <div key={s.store} className="flex flex-wrap gap-x-3">
-                <span className="font-medium">{s.store}:</span>
-                <span>{num(s.added)} added</span>
-                <span>· {num(s.updated)} updated</span>
-                {s.removed > 0 && <span className="text-rose-600">· {num(s.removed)} removed</span>}
+              <div key={s.store} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+                <span className="w-40 shrink-0 truncate font-medium text-emerald-800">{s.store}</span>
+                <span className="w-20 shrink-0 tabular-nums">{num(s.added)} added</span>
+                <span className="w-28 shrink-0 tabular-nums">{num(s.updated)} updated</span>
+                {s.removed > 0 && <span className="tabular-nums text-rose-600">{num(s.removed)} removed</span>}
                 {s.keptWithStock > 0 && (
-                  <span className="text-amber-600">· {num(s.keptWithStock)} kept (still has stock)</span>
+                  <span className="tabular-nums text-amber-600">{num(s.keptWithStock)} kept (still has stock)</span>
                 )}
               </div>
             ))}

@@ -296,6 +296,10 @@ function ReceiveModal({
   // "Received by" is always the signed-in user — recorded automatically, not editable.
   const { data: session } = useFetch<{ user?: { name?: string } }>("/api/auth/session");
   const receivedBy = session?.user?.name || "—";
+  // Store VAT rate (a fraction, e.g. 0.10) so the review can show the VAT and the
+  // total including VAT to check against the supplier invoice.
+  const { data: business } = useFetch<{ vatRate?: number }>("/api/business");
+  const vatRate = business?.vatRate ?? 0.1;
   const [flash, setFlash] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<typeof po.items | null>(null);
   const [busy, setBusy] = useState(false);
@@ -464,6 +468,11 @@ function ReceiveModal({
   // Money value of everything being received now — the figure to match against
   // the supplier invoice's grand total.
   const totalAmount = po.items.reduce((s, it) => s + it.cost * (now[it.productId] || 0), 0);
+  // VAT and the grand total including VAT — per-unit VAT (rounded) × quantity,
+  // summed, the same way the goods-receipt document computes it.
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const totalVat = po.items.reduce((s, it) => s + round2(it.cost * vatRate) * (now[it.productId] || 0), 0);
+  const totalInclVat = round2(totalAmount + totalVat);
 
   return (
     <Modal
@@ -764,10 +773,11 @@ function ReceiveModal({
           anything is posted. This is the ONLY place stock is actually committed:
           the main screen's button just opens this. */}
       {reviewing && (
-        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-0 sm:items-center sm:p-4">
-          <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-[3px]" onClick={() => setReviewing(false)} />
-          <div className="relative z-10 flex w-full max-w-lg flex-col overflow-hidden bg-white shadow-lift ring-1 ring-slate-900/[0.08] max-sm:h-full sm:max-h-[85vh] sm:rounded-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
+        // Full screen on every device — no floating popup — so the whole receipt
+        // is reviewed against the invoice with nothing cramped.
+        <div className="fixed inset-0 z-[60] flex">
+          <div className="relative z-10 flex h-full w-full flex-col overflow-hidden bg-white">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
               <h3 className="text-base font-bold text-ink-900">Review receipt · {po.poNo}</h3>
               <button
                 onClick={() => setReviewing(false)}
@@ -818,11 +828,29 @@ function ReceiveModal({
                       })}
                   </tbody>
                   <tfoot>
+                    {/* Cost (ex-VAT), the VAT and the grand total incl VAT — the
+                        three figures to reconcile against the supplier invoice. */}
                     <tr className="border-t border-slate-200 bg-slate-50">
-                      <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Total</td>
+                      <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Total cost (ex-VAT)
+                      </td>
                       <td className="px-3 py-2.5 text-center font-bold tabular-nums text-ink-900">{totalNow}</td>
                       <td />
                       <td className="px-3 py-2.5 text-right font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
+                    </tr>
+                    <tr className="bg-slate-50">
+                      <td className="px-3 py-1.5 text-xs font-medium text-slate-500" colSpan={3}>
+                        VAT {Math.round(vatRate * 100)}%
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-slate-600">{usd(totalVat)}</td>
+                    </tr>
+                    <tr className="border-t border-slate-200 bg-brand-50">
+                      <td className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-800" colSpan={3}>
+                        Total incl. VAT
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-sm font-extrabold tabular-nums text-ink-900">
+                        {usd(totalInclVat)}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
