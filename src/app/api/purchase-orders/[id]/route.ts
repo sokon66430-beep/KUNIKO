@@ -124,7 +124,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (typeof body.note === "string") po.note = body.note.trim() || undefined;
     if (typeof body.expectedDate === "string") po.expectedDate = body.expectedDate || undefined;
     // Tick/untick "sent to supplier" — a workflow marker so the team can see
-    // at a glance which POs have already gone out.
+    // at a glance which POs have already gone out. A cancelled PO can't be sent.
+    if (typeof body.sentToSupplier === "boolean" && po.status === "Cancelled") {
+      return { error: "This PO is cancelled — it can't be marked as sent." };
+    }
     if (typeof body.sentToSupplier === "boolean") {
       // Ticking "sent" FREEZES the lines — so first write down what's actually
       // going out. Until this moment an Open PO only *displays* live product

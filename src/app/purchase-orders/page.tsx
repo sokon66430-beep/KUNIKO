@@ -153,6 +153,7 @@ export default function PurchaseOrdersPage() {
 
   // Tick once the PO has actually been sent out to the supplier.
   async function markSent(po: PurchaseOrder, sent: boolean) {
+    if (po.status === "Cancelled") return; // a cancelled PO can't be sent
     await api(`/api/purchase-orders/${po.id}`, {
       method: "PATCH",
       body: JSON.stringify({ sentToSupplier: sent }),
@@ -393,23 +394,39 @@ export default function PurchaseOrdersPage() {
                     className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:flex-nowrap sm:justify-end"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {/* Sent to supplier — tick it once the PO has gone out */}
+                    {/* Sent to supplier — tick it once the PO has gone out. A
+                        CANCELLED PO can't be sent, so the tick is disabled. */}
                     <label
-                      className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 sm:w-28"
+                      className={`flex items-center gap-1.5 text-xs font-medium sm:w-28 ${
+                        po.status === "Cancelled"
+                          ? "cursor-not-allowed text-slate-300"
+                          : "cursor-pointer text-slate-500"
+                      }`}
                       title={
-                        po.sentToSupplier
-                          ? `Sent${po.sentBy ? ` by ${po.sentBy}` : ""}${po.sentAt ? ` · ${dateTime(po.sentAt)}` : ""}`
-                          : "Tick when this PO has been sent to the supplier"
+                        po.status === "Cancelled"
+                          ? "This PO is cancelled — it can't be sent"
+                          : po.sentToSupplier
+                            ? `Sent${po.sentBy ? ` by ${po.sentBy}` : ""}${po.sentAt ? ` · ${dateTime(po.sentAt)}` : ""}`
+                            : "Tick when this PO has been sent to the supplier"
                       }
                     >
                       <input
                         type="checkbox"
                         checked={!!po.sentToSupplier}
+                        disabled={po.status === "Cancelled"}
                         onChange={(e) => markSent(po, e.target.checked)}
-                        className="h-4 w-4 shrink-0 accent-brand-600"
+                        className="h-4 w-4 shrink-0 accent-brand-600 disabled:cursor-not-allowed"
                       />
-                      <span className={`truncate ${po.sentToSupplier ? "font-semibold text-emerald-600" : ""}`}>
-                        {po.sentToSupplier ? (po.sentBy ? `Sent · ${po.sentBy}` : "Sent") : "Send?"}
+                      <span
+                        className={`truncate ${
+                          po.status === "Cancelled"
+                            ? "line-through"
+                            : po.sentToSupplier
+                              ? "font-semibold text-emerald-600"
+                              : ""
+                        }`}
+                      >
+                        {po.status === "Cancelled" ? "Can't send" : po.sentToSupplier ? (po.sentBy ? `Sent · ${po.sentBy}` : "Sent") : "Send?"}
                       </span>
                     </label>
                     <div className="flex items-center gap-2 sm:w-32">
