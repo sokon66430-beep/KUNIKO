@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShieldCheck, Check } from "lucide-react";
+import { ShieldCheck, Check, Search, X } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import type { Role } from "@/lib/auth";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
@@ -43,6 +43,9 @@ export default function PermissionsPage() {
   // instead of waiting on the next background refetch.
   const [denied, setDenied] = useState<Partial<Record<Role, string[]>> | null>(null);
   const [saving, setSaving] = useState<string | null>(null); // `${role}:${href}` in flight
+  // Filter the function rows by name — the list has grown long enough that
+  // finding one page to toggle meant scrolling the whole grid.
+  const [q, setQ] = useState("");
 
   useEffect(() => {
     if (data && !denied) setDenied(data.permissions);
@@ -51,6 +54,11 @@ export default function PermissionsPage() {
   if (loading && !denied) return <Spinner label="Loading permissions…" />;
   if (error) return <ErrorBox message={error} />;
   if (!data || !denied) return null;
+
+  const query = q.trim().toLowerCase();
+  const shownPages = query
+    ? data.pages.filter((p) => p.label.toLowerCase().includes(query) || (p.note || "").toLowerCase().includes(query))
+    : data.pages;
 
   async function toggle(role: Role, href: string, currentlyAllowed: boolean) {
     const key = `${role}:${href}`;
@@ -78,6 +86,35 @@ export default function PermissionsPage() {
         title="Permissions"
         subtitle="Control which functions each role can see and use. The owner always has full access."
       />
+
+      {/* Search the function rows by name — filters the grid without touching
+          the role columns. */}
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:w-96">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            className="input pl-9 !py-2 text-sm"
+            placeholder="Search a function… (e.g. Mark Down, Inventory, Reports)"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            inputMode="search"
+            autoComplete="off"
+          />
+          {q && (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <span className="text-xs font-medium text-slate-400">
+          {query ? `${shownPages.length} of ${data.pages.length} functions` : `${data.pages.length} functions`}
+        </span>
+      </div>
 
       {/* The card is the scroll area (both directions), so the header row can
           stay frozen on top and the Function column frozen on the left. */}
@@ -113,7 +150,17 @@ export default function PermissionsPage() {
             </tr>
           </thead>
           <tbody>
-            {data.pages.map((page) => (
+            {shownPages.length === 0 && (
+              <tr>
+                <td
+                  colSpan={1 + FIXED_ROLES.length + data.roles.length}
+                  className="border-b border-slate-50 px-5 py-10 text-center text-sm text-slate-400"
+                >
+                  No function matches “{q.trim()}”.
+                </td>
+              </tr>
+            )}
+            {shownPages.map((page) => (
               <tr key={page.href} className="hover:bg-slate-50/40">
                 <td className="sticky left-0 z-10 w-60 min-w-[15rem] border-b border-slate-50 bg-white px-5 py-3 font-medium text-ink-800">
                   {page.label}

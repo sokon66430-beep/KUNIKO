@@ -77,7 +77,7 @@ export default function ReceivingPage() {
 
       {error && <ErrorBox message={error} />}
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Awaiting Delivery" value={num(openPOs.length)} icon={<Truck size={18} />} accent="amber" />
         <StatCard
           label="Partially Received"
@@ -144,7 +144,7 @@ export default function ReceivingPage() {
           <EmptyState title="No matching PO" hint={`No open purchase order matches “${poSearch}”.`} />
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {shownPOs.map((po) => {
             const ordered = po.items.reduce((s, i) => s + i.qtyOrdered, 0);
             const received = po.items.reduce((s, i) => s + Math.min(i.qtyReceived, i.qtyOrdered), 0);
@@ -152,7 +152,10 @@ export default function ReceivingPage() {
             const invoicePageCount = invoiceByPo[po.id]?.length || 0;
             const hasInvoice = invoicePageCount > 0;
             return (
-              <div key={po.id} className="card p-4 sm:p-5">
+              // Compact by design — a Sunmi L3's short screen should show several
+              // POs at once, so padding and gaps are tight and the two meta lines
+              // are merged into one.
+              <div key={po.id} className="card p-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-bold text-ink-900">{po.poNo}</p>
@@ -160,7 +163,7 @@ export default function ReceivingPage() {
                   </div>
                   <Badge tone={po.status === "Partial" ? "amber" : "brand"}>{po.status}</Badge>
                 </div>
-                <div className="mt-4 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2">
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
                     <div
                       className={`h-full rounded-full ${pct > 0 ? "bg-amber-500" : "bg-slate-300"}`}
@@ -171,19 +174,20 @@ export default function ReceivingPage() {
                     {received}/{ordered}
                   </span>
                 </div>
-                <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-                  <Clock size={12} className="shrink-0 text-slate-400" /> Ordered {dateTime(po.createdAt)}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {po.items.length} line{po.items.length === 1 ? "" : "s"}
+                {/* One meta line — lines, order date and due date together — so the
+                    card stays short. */}
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                  <Clock size={12} className="shrink-0 text-slate-400" />
+                  {po.items.length} line{po.items.length === 1 ? "" : "s"} · Ordered {dateTime(po.createdAt)}
                   {po.expectedDate ? ` · due ${shortDate(po.expectedDate)}` : ""}
                 </p>
-                {/* Step 1: scan the supplier invoice · Step 2: receive the goods */}
+                {/* Step 1: scan the supplier invoice · Step 2: receive the goods.
+                    Buttons are py-2.5 for a comfortable finger tap on the handset. */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setInvoiceCamPo(po.id)}
-                    className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition ${
                       hasInvoice
                         ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -195,7 +199,7 @@ export default function ReceivingPage() {
                   <button
                     type="button"
                     onClick={() => setReceiving(po)}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2.5 text-xs font-bold text-white transition hover:bg-brand-700"
                   >
                     <ScanLine size={14} /> Receive
                   </button>
@@ -249,12 +253,33 @@ function ReceiveModal({
   // delivery, so Confirm would book in goods nobody had checked, or that were
   // never on the truck. The receiver adds what actually turned up, by scanning
   // it or typing it; what wasn't received stays 0 and the PO stays open for it.
+  //
+  // The running count AUTO-SAVES to this device (below), so a big delivery
+  // counted over an interruption — a break, a dropped connection, the app
+  // closing — resumes exactly where it left off instead of being recounted.
+  const draftKey = `stookii:recv-draft:${po.id}`;
   const initial = useMemo(() => {
     const m: Record<string, number> = {};
     for (const it of po.items) m[it.productId] = 0;
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(localStorage.getItem(draftKey) || "{}");
+        for (const it of po.items) {
+          const v = Math.max(0, Math.floor(Number(saved[it.productId]) || 0));
+          if (v > 0) m[it.productId] = v;
+        }
+      } catch {
+        /* corrupt draft — ignore and start clean */
+      }
+    }
     return m;
-  }, [po]);
+  }, [po, draftKey]);
   const [now, setNow] = useState<Record<string, number>>(initial);
+  // True when we reopened onto a saved count — shows a one-line "resumed" note.
+  const [resumed] = useState(() => Object.values(initial).some((v) => v > 0));
+  // Flashes "Saved" for a moment after each change, so staff can see the count
+  // is being kept without a heavy banner.
+  const [savedFlash, setSavedFlash] = useState(false);
   // What's typed in each line's "Add" box, before it's banked into the total.
   // Kept as a string so the field can be empty or mid-type without React
   // fighting the cursor.
@@ -295,6 +320,24 @@ function ReceiveModal({
   useEffect(() => {
     scanRef.current?.focus();
   }, []);
+
+  // Auto-save the running count to this device on every change. Only the lines
+  // with a count are stored; an empty draft is cleared so a fresh PO doesn't
+  // resume onto stale numbers. The draft is removed for good once the receipt
+  // is submitted (see confirm()).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const nonzero = Object.fromEntries(Object.entries(now).filter(([, v]) => v > 0));
+      if (Object.keys(nonzero).length) localStorage.setItem(draftKey, JSON.stringify(nonzero));
+      else localStorage.removeItem(draftKey);
+    } catch {
+      /* storage full or blocked — receiving still works, just no resume */
+    }
+    setSavedFlash(true);
+    const t = setTimeout(() => setSavedFlash(false), 1400);
+    return () => clearTimeout(t);
+  }, [now, draftKey]);
 
   /**
    * Bank the typed amount onto the line's running total.
@@ -394,6 +437,13 @@ function ReceiveModal({
         method: "POST",
         body: JSON.stringify({ items, receivedBy, invoices: invoicePages }),
       });
+      // Submitted — the draft has served its purpose; clear it so the PO
+      // doesn't reopen onto a count that's already been posted.
+      try {
+        if (typeof window !== "undefined") localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
       onDone();
     } catch (e: any) {
       alert(e.message);
@@ -461,6 +511,13 @@ function ReceiveModal({
           Supplier <b className="text-ink-700">{po.supplier}</b> · scan each item above, then key in the quantity.
           Stock updates on confirm.
         </p>
+
+        {resumed && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700">
+            <History size={14} className="shrink-0" />
+            Resumed your saved count on this device — carry on where you left off.
+          </div>
+        )}
 
         {/* Manual entry — for a handheld scanner gun, or typing the code/quantity
             by hand when the camera can't get a read. */}
@@ -624,8 +681,16 @@ function ReceiveModal({
         {/* Grand total of what's being received now — compare to the invoice
             grand total to confirm the delivery matches the bill. */}
         <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Receiving total · {totalNow} unit{totalNow === 1 ? "" : "s"}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal transition ${
+                savedFlash ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"
+              }`}
+              title="Your count is saved on this device — you can leave and come back"
+            >
+              <CheckCircle2 size={11} /> {savedFlash ? "Saved" : "Auto-saved"}
+            </span>
           </span>
           <span className="text-sm font-bold tabular-nums text-ink-900">{usd(totalAmount)}</span>
         </div>

@@ -104,6 +104,122 @@ export default function ReceiptsPage() {
     setPdfView(null);
   }
 
+  // The status badges and the action buttons are shared by the desktop table and
+  // the phone cards below, so both always show the same thing.
+  const statusBadges = (g: GoodsReceipt) => {
+    const pending = g.status === "PendingApproval";
+    return (
+      <>
+        {pending && (
+          <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+            <Clock size={11} /> Edit pending approval
+          </span>
+        )}
+        {!g.invoice ? (
+          <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+            <FileType2 size={11} /> Incomplete — invoice missing
+          </span>
+        ) : g.invoice.status === "Rejected" ? (
+          <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+            <FileType2 size={11} /> Invoice rejected — re-scan
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+              g.invoice.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            <FileType2 size={11} /> Invoice {g.invoice.status === "Approved" ? "approved" : "pending review"}
+          </span>
+        )}
+      </>
+    );
+  };
+
+  // variant "row" = the desktop table, where each action gets a FIXED-WIDTH,
+  // right-aligned slot so Excel / PDF / the edit-state button line up in clean
+  // vertical columns even when some rows have a "Scan invoice" button and some
+  // don't. variant "card" = the phone cards, where the buttons simply wrap.
+  const rowActions = (g: GoodsReceipt, variant: "row" | "card" = "card") => {
+    const pending = g.status === "PendingApproval";
+    const needsInvoice = !g.invoice || g.invoice.status === "Rejected";
+
+    // A quiet icon-link like Excel / PDF — not a loud filled button — so the
+    // whole actions row reads as one consistent set. The red "Incomplete —
+    // invoice missing" status badge is what draws the eye to act.
+    const scanBtn = needsInvoice ? (
+      <button
+        onClick={() => setInvoiceCamGrn(g.id)}
+        title="Scan the supplier invoice to complete this receipt"
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+      >
+        <Camera size={14} /> Scan invoice
+      </button>
+    ) : null;
+    const excelBtn = (
+      <a
+        href={`/api/goods-receipts/${g.id}/export`}
+        title="Download this receipt as Excel"
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
+      >
+        <FileSpreadsheet size={14} /> Excel
+      </a>
+    );
+    const pdfBtn = (
+      <button
+        onClick={() => openPdf(g)}
+        disabled={pdfLoading === g.id}
+        title="View this receipt as PDF (with print)"
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+      >
+        <FileType2 size={14} /> {pdfLoading === g.id ? "Opening…" : "PDF"}
+      </button>
+    );
+    const stateBtn = pending ? (
+      <button
+        onClick={() => setReviewing(g)}
+        className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+      >
+        <ShieldCheck size={14} /> Review
+      </button>
+    ) : receiptEditOpen(g.createdAt) ? (
+      <button
+        onClick={() => setEditing(g)}
+        className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+      >
+        <Pencil size={14} /> Edit
+      </button>
+    ) : (
+      // Past the 2-day window: locked, with a reason so it reads as a rule.
+      <span
+        title={`Locked — receipts can only be edited within ${RECEIPT_EDIT_WINDOW_DAYS} days of being logged`}
+        className="inline-flex cursor-default items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-300"
+      >
+        <Lock size={13} /> Locked
+      </span>
+    );
+
+    if (variant === "row") {
+      // Fixed-width slots, each right-aligned → the buttons form neat columns.
+      return (
+        <div className="flex items-center justify-end gap-1">
+          <div className="flex w-[108px] justify-end">{scanBtn}</div>
+          <div className="flex w-[72px] justify-end">{excelBtn}</div>
+          <div className="flex w-[62px] justify-end">{pdfBtn}</div>
+          <div className="flex w-[92px] justify-end">{stateBtn}</div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {scanBtn}
+        {excelBtn}
+        {pdfBtn}
+        {stateBtn}
+      </div>
+    );
+  };
+
   return (
     <div>
       <PageHeader
@@ -137,52 +253,15 @@ export default function ReceiptsPage() {
         />
       </div>
 
+      {/* Heading row — the section title on the left, the export actions on the
+          right (they act on the whole list, so they belong with the title). */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
           <History size={16} /> Recent Receipts
           {all.length > 0 && <span className="font-semibold normal-case text-slate-400">({num(sortedGrns.length)})</span>}
         </h2>
         {all.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Date range — track/adjust stock for a period */}
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-              <span>From</span>
-              <DatePicker value={from} max={to || undefined} onChange={setFrom} />
-              <span>To</span>
-              <DatePicker value={to} min={from || undefined} onChange={setTo} />
-              <button
-                type="button"
-                onClick={setToday}
-                className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-200"
-              >
-                Today
-              </button>
-              {(from || to) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFrom("");
-                    setTo("");
-                  }}
-                  className="rounded-lg px-2 py-1 text-slate-400 hover:text-rose-500"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              Sort by
-              <SearchSelect
-                className="w-44"
-                value={sortBy}
-                onChange={(v) => setSortBy(v as any)}
-                options={[
-                  { value: "date-desc", label: "Date · newest first" },
-                  { value: "date-asc", label: "Date · oldest first" },
-                  { value: "grn", label: "Receipt number" },
-                ]}
-              />
-            </div>
+          <div className="flex items-center gap-2">
             <a
               href={`/api/reports/goods-receipts/export${rangeQs ? `?${rangeQs}` : ""}`}
               className="btn-ghost !py-1.5 text-xs"
@@ -198,6 +277,51 @@ export default function ReceiptsPage() {
           </div>
         )}
       </div>
+
+      {/* Filter bar — its own tidy row, with the date range and the sort each in
+          a clearly labelled group instead of one long cramped line. */}
+      {all.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Date range</span>
+            <DatePicker value={from} max={to || undefined} onChange={setFrom} />
+            <span className="text-slate-400">→</span>
+            <DatePicker value={to} min={from || undefined} onChange={setTo} />
+            <button
+              type="button"
+              onClick={setToday}
+              className="rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600 hover:bg-slate-200"
+            >
+              Today
+            </button>
+            {(from || to) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFrom("");
+                  setTo("");
+                }}
+                className="rounded-lg px-2 py-1 text-slate-400 hover:text-rose-500"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sort by</span>
+            <SearchSelect
+              className="w-44"
+              value={sortBy}
+              onChange={(v) => setSortBy(v as any)}
+              options={[
+                { value: "date-desc", label: "Date · newest first" },
+                { value: "date-asc", label: "Date · oldest first" },
+                { value: "grn", label: "Receipt number" },
+              ]}
+            />
+          </div>
+        </div>
+      )}
 
       {pendingApprovals > 0 && (
         <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
@@ -226,51 +350,28 @@ export default function ReceiptsPage() {
         ) : sortedGrns.length === 0 ? (
           <EmptyState title="No receipts in this date range" hint="Adjust the From / To dates or Clear the filter." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Receipt</th>
-                  <th className="px-4 py-3 font-semibold">PO / Supplier</th>
-                  <th className="px-4 py-3 text-center font-semibold">Items</th>
-                  <th className="px-4 py-3 text-center font-semibold">Units</th>
-                  <th className="px-4 py-3 font-semibold">Received by</th>
-                  <th className="px-4 py-3 text-right font-semibold"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedGrns.map((g) => {
-                  const pending = g.status === "PendingApproval";
-                  return (
+          <>
+            {/* Desktop: a dense table. Hidden on phones, where six columns plus
+                a row of action buttons can't fit and got cut off. */}
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                    <th className="px-4 py-3 font-semibold">Receipt</th>
+                    <th className="px-4 py-3 font-semibold">PO / Supplier</th>
+                    <th className="px-4 py-3 text-center font-semibold">Items</th>
+                    <th className="px-4 py-3 text-center font-semibold">Units</th>
+                    <th className="px-4 py-3 font-semibold">Received by</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedGrns.map((g) => (
                     <tr key={g.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
                       <td className="px-4 py-3">
                         <p className="font-semibold text-ink-800">{g.grnNo}</p>
                         <p className="text-xs text-slate-400">{dateTime(g.createdAt)}</p>
-                        {pending && (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                            <Clock size={11} /> Edit pending approval
-                          </span>
-                        )}
-                        {!g.invoice ? (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
-                            <FileType2 size={11} /> Incomplete — invoice missing
-                          </span>
-                        ) : g.invoice.status === "Rejected" ? (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
-                            <FileType2 size={11} /> Invoice rejected — re-scan
-                          </span>
-                        ) : (
-                          <span
-                            className={`mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-                              g.invoice.status === "Approved"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            <FileType2 size={11} /> Invoice{" "}
-                            {g.invoice.status === "Approved" ? "approved" : "pending review"}
-                          </span>
-                        )}
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-slate-700">{g.poNo}</p>
@@ -281,64 +382,45 @@ export default function ReceiptsPage() {
                         +{g.items.reduce((s, i) => s + i.qtyReceived, 0)}
                       </td>
                       <td className="px-4 py-3 text-slate-600">{g.receivedBy}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {(!g.invoice || g.invoice.status === "Rejected") && (
-                            <button
-                              onClick={() => setInvoiceCamGrn(g.id)}
-                              title="Scan the supplier invoice to complete this receipt"
-                              className="inline-flex items-center gap-1 rounded-lg bg-rose-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
-                            >
-                              <Camera size={14} /> Scan invoice
-                            </button>
-                          )}
-                          <a
-                            href={`/api/goods-receipts/${g.id}/export`}
-                            title="Download this receipt as Excel"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
-                          >
-                            <FileSpreadsheet size={14} /> Excel
-                          </a>
-                          <button
-                            onClick={() => openPdf(g)}
-                            disabled={pdfLoading === g.id}
-                            title="View this receipt as PDF (with print)"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            <FileType2 size={14} /> {pdfLoading === g.id ? "Opening…" : "PDF"}
-                          </button>
-                          {pending ? (
-                            <button
-                              onClick={() => setReviewing(g)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
-                            >
-                              <ShieldCheck size={14} /> Review &amp; approve
-                            </button>
-                          ) : receiptEditOpen(g.createdAt) ? (
-                            <button
-                              onClick={() => setEditing(g)}
-                              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                            >
-                              <Pencil size={14} /> Edit
-                            </button>
-                          ) : (
-                            // Past the 2-day window: locked, with a reason so it
-                            // reads as a rule, not a missing button.
-                            <span
-                              title={`Locked — receipts can only be edited within ${RECEIPT_EDIT_WINDOW_DAYS} days of being logged`}
-                              className="inline-flex cursor-default items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-300"
-                            >
-                              <Lock size={13} /> Locked
-                            </span>
-                          )}
-                        </div>
+                      {/* Status now has its OWN aligned column instead of being
+                          tucked under the receipt number. */}
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">{statusBadges(g)}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end">{rowActions(g, "row")}</div>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Phone: one card per receipt so the number, supplier, units and
+                every action stay on-screen without sideways scrolling. */}
+            <div className="divide-y divide-slate-100 sm:hidden">
+              {sortedGrns.map((g) => (
+                <div key={g.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-800">{g.grnNo}</p>
+                      <p className="text-xs text-slate-400">{dateTime(g.createdAt)}</p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-emerald-600">
+                      +{g.items.reduce((s, i) => s + i.qtyReceived, 0)} units
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">{statusBadges(g)}</div>
+                  <p className="mt-2 text-sm font-medium text-slate-700">{g.poNo}</p>
+                  <p className="text-xs text-slate-400">{g.supplier}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {g.items.length} item{g.items.length === 1 ? "" : "s"} · Received by {g.receivedBy}
+                  </p>
+                  <div className="mt-3 border-t border-slate-100 pt-3">{rowActions(g)}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Card>
 

@@ -588,10 +588,14 @@ export function buildGRNReportWorkbook(
   const firstDataRow = row + 1;
   let grandQty = 0;
   let grandCost = 0;
+  let grandVat = 0;
   lineRows.forEach((li, i) => {
     const r = ws.getRow(firstDataRow + i);
     grandQty += li.qty;
     grandCost += li.lineCost;
+    // VAT total is the per-unit VAT times the quantity received — the real tax
+    // on the whole line, not the per-unit figure shown in the column.
+    grandVat += round2(li.vat * li.qty);
     const cells: [ExcelJS.CellValue, ("right" | "center" | "left")?, string?][] = [
       [i + 1, "center"], [li.date, "center"], [li.time, "center"], [li.grnNo], [li.poNo], [li.supplier],
       [li.sku], [li.barcode], [li.name],
@@ -630,6 +634,31 @@ export function buildGRNReportWorkbook(
   tr.getCell(10).border = allThin;
   tr.getCell(11).border = allThin;
   tr.getCell(12).border = allThin;
+
+  // Money summary below the table — total cost (ex-VAT), the total VAT and the
+  // grand total including VAT, so the sheet reconciles against the supplier
+  // invoice's own subtotal / tax / grand-total lines.
+  const summary: [string, number, boolean?][] = [
+    ["Total cost (ex-VAT)", round2(grandCost)],
+    [`Total VAT ${Math.round(vatRate * 100)}%`, round2(grandVat)],
+    ["Grand total (incl. VAT)", round2(grandCost + grandVat), true],
+  ];
+  summary.forEach(([label, value, strong], i) => {
+    const sr = ws.getRow(totalRow + 1 + i);
+    // Label spans the wide middle so long text ("Grand total (incl. VAT)") fits.
+    ws.mergeCells(`I${totalRow + 1 + i}:M${totalRow + 1 + i}`);
+    const lc = sr.getCell(9);
+    lc.value = label;
+    lc.font = { name: CALIBRI, size: strong ? 11 : 10, bold: !!strong, color: { argb: "FF0C1322" } };
+    lc.alignment = { horizontal: "right", vertical: "middle" };
+    const vc = sr.getCell(14);
+    vc.value = value;
+    vc.numFmt = MONEY;
+    vc.font = { name: CALIBRI, size: strong ? 11 : 10, bold: true, color: { argb: "FF0C1322" } };
+    vc.alignment = { horizontal: "right", vertical: "middle" };
+    vc.border = allThin;
+    if (strong) vc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF3C4" } };
+  });
 
   ws.views = [{ state: "frozen", ySplit: firstDataRow - 1 }];
   return wb;
