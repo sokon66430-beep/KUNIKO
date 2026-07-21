@@ -643,6 +643,14 @@ export type PurchaseOrder = {
   sentToSupplier?: boolean; // ticked once the team has actually sent it out
   sentBy?: string; // who ticked "sent to supplier"
   sentAt?: string; // when it was marked sent (ISO)
+  // Receiving is DONE once goods were received against this PO with the supplier
+  // invoice attached — the invoice is the final bill, so that delivery is closed.
+  // A closed PO drops off the Receiving list and can no longer be edited or
+  // received. Set by the receive/attach-invoice routes; never by the poStatus
+  // quantity check (a supplier can bill fewer than ordered and still be done).
+  receivingClosed?: boolean;
+  closedAt?: string; // when receiving was closed (ISO)
+  closedBy?: string; // who submitted the closing receipt / invoice
 };
 
 export type GRNItem = {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import { readMaster, mutateMaster } from "@/lib/master";
 import { resolveSupplier } from "@/lib/supplierLink";
 import { readDB } from "@/lib/db";
@@ -7,13 +8,13 @@ import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function requireOwner() {
+async function requireMasterAccess() {
   const session = await getSession();
-  return session && session.role === "owner" ? session : null;
+  return session && (await masterDataFor(session.role)) ? session : null;
 }
 
 export async function GET() {
-  if (!(await requireOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!(await requireMasterAccess())) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const products = await readMaster();
   return NextResponse.json(products);
 }
@@ -21,8 +22,8 @@ export async function GET() {
 // Add a product to the master catalog. It reaches the stores when the owner
 // clicks "Sync to stores".
 export async function POST(req: Request) {
-  const session = await requireOwner();
-  if (!session) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  const session = await requireMasterAccess();
+  if (!session) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   if (!body?.name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
 

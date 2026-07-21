@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { canAccessPage, canSwitchStores } from "@/lib/access";
+import { canAccessPage, canSwitchStores, canUseMasterData } from "@/lib/access";
 import { useTheme } from "@/components/theme";
 import { NotificationBell } from "@/components/NotificationBell";
 import type { Role } from "@/lib/auth";
@@ -47,6 +47,7 @@ type SessionInfo = {
   user: { name: string; role: string; storeId: string; storeName: string };
   stores: { id: string; name: string }[];
   denied: string[];
+  caps?: Record<string, boolean>;
 };
 
 const OPERATIONS = {
@@ -292,7 +293,13 @@ export default function Sidebar() {
       items: g.hrefs
         .map((h) => ITEM_BY_HREF[h])
         .filter(Boolean)
-        .filter((it) => canAccessPage(role, it.href, denied)),
+        // Master Data is a capability, not a denied-list page: hidden until the
+        // owner grants it on /permissions (owner/management always see it).
+        .filter((it) =>
+          it.href === "/master-data"
+            ? canUseMasterData(role, session?.caps)
+            : canAccessPage(role, it.href, denied),
+        ),
     }))
     .filter((g) => g.items.length > 0);
 

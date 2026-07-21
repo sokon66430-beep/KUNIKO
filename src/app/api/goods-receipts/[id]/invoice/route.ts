@@ -48,12 +48,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       uploadedBy: s.name,
       status: "Pending",
     };
+    // Scanning the invoice in afterwards completes the delivery — close the PO
+    // so it leaves Receiving and locks, same as receiving with the invoice.
+    const po = db.purchaseOrders.find((p) => p.id === grn.poId);
+    if (po && !po.receivingClosed) {
+      po.receivingClosed = true;
+      po.closedAt = new Date().toISOString();
+      po.closedBy = s.name;
+    }
     logAudit(db, {
       actor: s.name,
       action: "Scanned invoice",
       entityType: "GRN",
       entity: grn.grnNo,
-      detail: "Invoice attached — awaiting Accounting review",
+      detail: "Invoice attached — receiving closed, awaiting Accounting review",
     });
     return { grn };
   });

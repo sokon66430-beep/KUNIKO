@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import { readMasterSuppliers, propagateSuppliersToStores, parseStoreIds } from "@/lib/master";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 // — same concept as the product "Sync".
 export async function POST(req: Request) {
   const s = await getSession();
-  if (!s || s.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!s || !(await masterDataFor(s.role))) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
 
   const target = await parseStoreIds(req.url);
   if (!target.ok) return NextResponse.json({ error: target.error }, { status: 400 });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import {
   mutateMasterSuppliers,
   propagateSuppliersToStores,
@@ -11,9 +12,9 @@ import type { Supplier } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function requireOwner() {
+async function requireMasterAccess() {
   const s = await getSession();
-  return s && s.role === "owner" ? s : null;
+  return s && (await masterDataFor(s.role)) ? s : null;
 }
 
 const FIELDS: (keyof Supplier)[] = [
@@ -33,7 +34,7 @@ const FIELDS: (keyof Supplier)[] = [
 
 // Edit a master supplier and mirror the change into every store.
 export async function PATCH(req: Request, { params }: { params: { code: string } }) {
-  if (!(await requireOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!(await requireMasterAccess())) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const code = decodeURIComponent(params.code);
   const body = await req.json().catch(() => ({}));
 
@@ -70,7 +71,7 @@ export async function PATCH(req: Request, { params }: { params: { code: string }
 // Delete a master supplier — blocked while any master product is still linked
 // to it (so no product is orphaned), then removed from every store.
 export async function DELETE(_req: Request, { params }: { params: { code: string } }) {
-  if (!(await requireOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!(await requireMasterAccess())) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const code = decodeURIComponent(params.code);
 
   const master = await readMaster();

@@ -19,7 +19,8 @@ import {
   ChefHat,
   Sparkles,
 } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useAccess } from "@/lib/client";
+import { canUseMasterData } from "@/lib/access";
 import type { Product, Supplier } from "@/lib/types";
 import RecipesManager from "@/components/RecipesManager";
 import PromotionsManager from "@/components/PromotionsManager";
@@ -39,6 +40,10 @@ type SyncResult = {
 };
 
 export default function MasterDataPage() {
+  // Access is a capability granted per role on /permissions (owner always).
+  // The APIs enforce it server-side; this guard just explains instead of
+  // showing a page of failed requests.
+  const { role, caps } = useAccess();
   const { data: products, loading, error, reload } = useFetch<Product[]>("/api/master/products");
   const { data: suppliers, reload: reloadSuppliers } = useFetch<Supplier[]>("/api/master/suppliers");
   const { data: stores } = useFetch<{ id: string; name: string }[]>("/api/stores");
@@ -269,6 +274,21 @@ export default function MasterDataPage() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  // All hooks are above this line — the guard return must not sit between them.
+  if (role && !canUseMasterData(role, caps)) {
+    return (
+      <Card>
+        <div className="px-6 py-14 text-center">
+          <p className="text-sm font-semibold text-slate-600">Master Data needs permission</p>
+          <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">
+            The company-wide master file is owner-controlled. Ask the owner to grant your role
+            <b> Master Data</b> on the Permissions page.
+          </p>
+        </div>
+      </Card>
+    );
   }
 
   return (

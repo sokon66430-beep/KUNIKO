@@ -24,7 +24,7 @@ import { CameraScanner } from "@/components/CameraScanner";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
 import type { PurchaseOrder } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
-import { num, dateTime, shortDate } from "@/lib/format";
+import { num, usd, dateTime, shortDate } from "@/lib/format";
 
 /**
  * Receiving — the deliveries still to be counted in.
@@ -45,7 +45,9 @@ export default function ReceivingPage() {
   const [invoiceByPo, setInvoiceByPo] = useState<Record<string, string[]>>({});
   const [invoiceCamPo, setInvoiceCamPo] = useState<string | null>(null);
 
-  const openPOs = (pos || []).filter((p) => p.status === "Open" || p.status === "Partial");
+  // A PO whose receiving is CLOSED (invoice submitted) is done — it leaves this
+  // list even if its quantity status is still Open/Partial.
+  const openPOs = (pos || []).filter((p) => (p.status === "Open" || p.status === "Partial") && !p.receivingClosed);
   const poQuery = poSearch.trim().toLowerCase();
   const shownPOs = poQuery
     ? openPOs.filter(
@@ -264,6 +266,14 @@ function ReceiveModal({
   const [flash, setFlash] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<typeof po.items | null>(null);
   const [busy, setBusy] = useState(false);
+  // The live camera can be turned off — closing it stops the camera and gives
+  // the whole screen to the list (staff who scan with a handheld gun or type
+  // don't need it). It starts on, the way most people receive.
+  const [cameraOn, setCameraOn] = useState(true);
+  // Two-step confirm: "Confirm receipt" opens a REVIEW of everything counted
+  // (with short/over flags) so it can be checked against the invoice; only the
+  // review's "Submit receipt" actually posts and moves stock.
+  const [reviewing, setReviewing] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // Scan order: the just-scanned item floats to the TOP row and its quantity box
@@ -393,6 +403,9 @@ function ReceiveModal({
   }
 
   const totalNow = Object.values(now).reduce((s, v) => s + (Number(v) || 0), 0);
+  // Money value of everything being received now — the figure to match against
+  // the supplier invoice's grand total.
+  const totalAmount = po.items.reduce((s, it) => s + it.cost * (now[it.productId] || 0), 0);
 
   return (
     <Modal
@@ -409,20 +422,38 @@ function ReceiveModal({
           <button
             className="btn-primary"
             disabled={busy || totalNow === 0}
-            title={!invoicePages.length ? "You can confirm now, but the receipt stays incomplete until the invoice is scanned" : undefined}
-            onClick={confirm}
+            title={totalNow === 0 ? "Enter at least one quantity first" : "Review everything before it's posted"}
+            onClick={() => setReviewing(true)}
           >
-            <CheckCircle2 size={16} /> {busy ? "Posting…" : `Confirm receipt (+${totalNow})`}
+            <CheckCircle2 size={16} /> Review receipt (+{totalNow})
           </button>
         </>
       }
     >
-      {/* Top ~30% — the camera is ALWAYS on. Point it at a box; the item jumps
-          to the top of the list and its quantity box takes focus, so the count
-          can be keyed in straight away. No tapping the camera open each time. */}
-      <div className="h-[30vh] shrink-0 border-b border-slate-200 bg-black">
-        <CameraScanner variant="inline" open onClose={() => {}} onScan={(code) => handleScan(code)} />
-      </div>
+      {/* Top ~30% — a live camera. Point it at a box; the item jumps to the top
+          of the list and its quantity box takes focus, so the count can be keyed
+          in straight away. Staff can hide it (stops the camera, frees the whole
+          screen) and bring it back any time. */}
+      {cameraOn ? (
+        <div className="relative h-[30vh] shrink-0 border-b border-slate-200 bg-black">
+          <CameraScanner variant="inline" open onClose={() => {}} onScan={(code) => handleScan(code)} />
+          <button
+            type="button"
+            onClick={() => setCameraOn(false)}
+            className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/70"
+          >
+            <X size={13} /> Hide camera
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCameraOn(true)}
+          className="flex shrink-0 items-center justify-center gap-2 border-b border-slate-200 bg-slate-50 py-2.5 text-[13px] font-semibold text-brand-600 transition hover:bg-slate-100"
+        >
+          <Camera size={16} /> Show camera scanner
+        </button>
+      )}
 
       {/* Bottom ~70% — the work area scrolls under the fixed camera. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
@@ -502,6 +533,9 @@ function ReceiveModal({
               <th className="px-3 py-2 text-center font-semibold">Prev.</th>
               <th className="px-3 py-2 text-center font-semibold">Add</th>
               <th className="px-3 py-2 text-center font-semibold">Receiving</th>
+              {/* Money value of what's being received — check it line-by-line
+                  against the supplier invoice before confirming. */}
+              <th className="px-3 py-2 text-right font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -582,10 +616,33 @@ function ReceiveModal({
                       )}
                     </div>
                   </td>
+                  {/* Line amount = unit cost × quantity received. The small unit
+                      price underneath is what to reconcile against the invoice. */}
+                  <td className="px-3 py-2 text-right">
+                    <span
+                      className={`block text-sm font-semibold tabular-nums ${
+                        receivingNow > 0 ? "text-ink-900" : "text-slate-300"
+                      }`}
+                    >
+                      {usd(it.cost * receivingNow)}
+                    </span>
+                    <span className="block text-[11px] tabular-nums text-slate-400">{usd(it.cost)} ea</span>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
+          {/* Grand total of what's being received now — compare it to the
+              invoice grand total to confirm the delivery matches the bill. */}
+          <tfoot>
+            <tr className="border-t border-slate-200 bg-slate-50">
+              <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500" colSpan={4}>
+                Receiving total
+              </td>
+              <td className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500">{totalNow}</td>
+              <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -644,6 +701,112 @@ function ReceiveModal({
           </div>
         </div>
       </div>
+
+      {/* Review step — a checkable summary of everything being received before
+          anything is posted. This is the ONLY place stock is actually committed:
+          the main screen's button just opens this. */}
+      {reviewing && (
+        <div className="fixed inset-0 z-[60] flex items-stretch justify-center p-0 sm:items-center sm:p-4">
+          <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-[3px]" onClick={() => setReviewing(false)} />
+          <div className="relative z-10 flex w-full max-w-lg flex-col overflow-hidden bg-white shadow-lift ring-1 ring-slate-900/[0.08] max-sm:h-full sm:max-h-[85vh] sm:rounded-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="text-base font-bold text-ink-900">Review receipt · {po.poNo}</h3>
+              <button
+                onClick={() => setReviewing(false)}
+                className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <p className="mb-3 text-sm text-slate-500">
+                Check this against the supplier invoice — nothing is posted yet. <b>Submit</b> books it into stock.
+              </p>
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                      <th className="px-3 py-2 font-semibold">Product</th>
+                      <th className="px-3 py-2 text-center font-semibold">Qty</th>
+                      <th className="px-3 py-2 text-center font-semibold">Status</th>
+                      <th className="px-3 py-2 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {po.items
+                      .filter((it) => (now[it.productId] || 0) > 0)
+                      .map((it) => {
+                        const q = now[it.productId] || 0;
+                        const short = it.qtyOrdered - (it.qtyReceived + q);
+                        return (
+                          <tr key={it.productId} className="border-b border-slate-50 last:border-0">
+                            <td className="px-3 py-2">
+                              <p className="font-semibold text-ink-800">{it.name}</p>
+                              <p className="text-[11px] text-slate-400">ordered {it.qtyOrdered}</p>
+                            </td>
+                            <td className="px-3 py-2 text-center text-[15px] font-bold tabular-nums text-ink-900">{q}</td>
+                            <td className="px-3 py-2 text-center text-xs">
+                              {short > 0 ? (
+                                <span className="font-semibold text-amber-600">short {short}</span>
+                              ) : short < 0 ? (
+                                <span className="font-semibold text-rose-500">over {Math.abs(short)}</span>
+                              ) : (
+                                <span className="font-semibold text-emerald-600">complete</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink-800">{usd(it.cost * q)}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-slate-50">
+                      <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Total</td>
+                      <td className="px-3 py-2.5 text-center font-bold tabular-nums text-ink-900">{totalNow}</td>
+                      <td />
+                      <td className="px-3 py-2.5 text-right font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Lines the PO still owes after this receipt. */}
+              {(() => {
+                const owed = po.items.filter((it) => it.qtyOrdered - (it.qtyReceived + (now[it.productId] || 0)) > 0);
+                if (!owed.length) return null;
+                return (
+                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    <b>{owed.length}</b> line{owed.length === 1 ? "" : "s"} still short — not everything ordered has arrived.
+                  </p>
+                );
+              })()}
+
+              {/* Invoice status — decides whether submitting closes the PO. */}
+              <div
+                className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                  invoicePages.length ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                }`}
+              >
+                {invoicePages.length ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <Camera size={14} className="mt-0.5 shrink-0" />}
+                <span>
+                  {invoicePages.length
+                    ? `Invoice attached${invoicePages.length > 1 ? ` · ${invoicePages.length} pages` : ""} — submitting closes this PO (done).`
+                    : "No invoice yet — the receipt will be incomplete and the PO stays open until the invoice is scanned."}
+                </span>
+              </div>
+              <p className="mt-3 text-xs text-slate-400">Received by {receivedBy} · recorded automatically.</p>
+            </div>
+            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4">
+              <button className="btn-ghost" disabled={busy} onClick={() => setReviewing(false)}>
+                Back
+              </button>
+              <button className="btn-primary" disabled={busy} onClick={confirm}>
+                <CheckCircle2 size={16} /> {busy ? "Submitting…" : `Submit receipt (+${totalNow})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

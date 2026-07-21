@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import { readMaster } from "@/lib/master";
 import { buildProductsWorkbook } from "@/lib/excelExport";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 // template, so it round-trips: export → edit → re-import).
 export async function GET() {
   const session = await getSession();
-  if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!session || !(await masterDataFor(session.role))) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
 
   const products = await readMaster();
   const wb = buildProductsWorkbook(products);

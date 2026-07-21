@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import { readMasterSuppliers, mutateMasterSuppliers, propagateSuppliersToStores } from "@/lib/master";
 import type { Supplier } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function requireOwner() {
+async function requireMasterAccess() {
   const s = await getSession();
-  return s && s.role === "owner" ? s : null;
+  return s && (await masterDataFor(s.role)) ? s : null;
 }
 
 // The master supplier list — the single place suppliers are controlled.
 export async function GET() {
-  if (!(await requireOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!(await requireMasterAccess())) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const list = (await readMasterSuppliers()).sort((a, b) => a.name.localeCompare(b.name));
   return NextResponse.json(list);
 }
 
 // Add a supplier to the master and mirror it into every store immediately.
 export async function POST(req: Request) {
-  if (!(await requireOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!(await requireMasterAccess())) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   const name = String(body?.name || "").trim();
   if (!name) return NextResponse.json({ error: "Supplier name is required" }, { status: 400 });

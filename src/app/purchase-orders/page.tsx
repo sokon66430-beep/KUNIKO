@@ -427,7 +427,7 @@ export default function PurchaseOrdersPage() {
                       <Badge tone={STATUS_TONE[po.status]}>{po.status}</Badge>
                     </div>
                     <div className="flex items-center gap-1 sm:w-[124px] sm:justify-end">
-                      {(po.status === "Open" || po.status === "Partial") && (
+                      {(po.status === "Open" || po.status === "Partial") && !po.receivingClosed && (
                         <Link href="/receiving" className="btn-primary !px-3 !py-1.5 text-xs">
                           <ReceiveIcon size={14} /> Receive
                         </Link>
@@ -930,7 +930,9 @@ function ViewPOModal({
   // document, and editing our copy would only put the two out of step. Untick
   // "Sent" on the list to reopen it. Receiving is unaffected — that's the whole
   // point of having sent it.
-  const locked = po.status === "Cancelled" || !!po.sentToSupplier;
+  // Also locked once receiving is closed (invoice submitted) — the delivery is
+  // final, so the order can't be edited or received against any more.
+  const locked = po.status === "Cancelled" || !!po.sentToSupplier || !!po.receivingClosed;
   // Deletable only when NOTHING was received — otherwise the stock would orphan.
   const hasReceipts = po.items.some((i) => i.qtyReceived > 0);
   const showActions = canEdit && !locked; // per-line trash column
@@ -1238,7 +1240,7 @@ function ViewPOModal({
                               <Trash2 size={15} /> Delete PO
                             </button>
                           )}
-                          {(po.status === "Open" || po.status === "Partial") && (
+                          {(po.status === "Open" || po.status === "Partial") && !po.receivingClosed && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1255,7 +1257,7 @@ function ViewPOModal({
                     )}
                   </div>
                 )}
-                {(po.status === "Open" || po.status === "Partial") && (
+                {(po.status === "Open" || po.status === "Partial") && !po.receivingClosed && (
                   <Link href="/receiving" className="btn-primary">
                     <ReceiveIcon size={16} /> Receive Goods
                   </Link>
@@ -1337,6 +1339,16 @@ function ViewPOModal({
           <span>
             Sent to {po.supplier} — locked, and its item names and costs are frozen exactly as they went out. Untick
             <b> Sent</b> on the orders list if it genuinely needs changing. Receiving still works as normal.
+          </span>
+        </p>
+      )}
+      {po.receivingClosed && !editing && (
+        <p className="mb-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+          <Check size={14} className="mt-0.5 shrink-0 text-emerald-600" />
+          <span>
+            Receiving is done — the supplier invoice was submitted{po.closedBy ? ` by ${po.closedBy}` : ""}
+            {po.closedAt ? ` on ${dateTime(po.closedAt)}` : ""}. This order is closed: it can&apos;t be edited or
+            received again, and it no longer appears in Receiving.
           </span>
         </p>
       )}

@@ -11,7 +11,12 @@ const OWNER_ONLY = [
   "/all-stores",
   "/permissions",
   "/menu-layout",
-  "/master-data",
+  // "/master-data" is NOT here: it's owner-configurable per role on
+  // /permissions, as the cap:master-data capability (see below). A capability
+  // (explicit true/false, undefined = denied) rather than a denied-list entry,
+  // because every list saved before the toggle existed can't mention it — and
+  // in a denied-list, absent reads as allowed, which would have silently handed
+  // the company-wide master file to every configured role.
   // Migration surfaces: opening inventory rewrites stock wholesale, purchase
   // history is company-level data, and the ledger is the book behind both.
   "/opening-inventory",
@@ -106,6 +111,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
 // ---------------------------------------------------------------------------
 
 export const PROFIT_CAP = "cap:profit";
+export const MASTER_DATA_CAP = "cap:master-data";
 
 export type RoleCaps = Partial<Record<string, boolean>>;
 
@@ -117,6 +123,11 @@ export const PERMISSION_CAPS: { href: string; label: string; note: string }[] = 
     label: "Profit & Cost",
     note: "Profit, margin and cost prices on the Dashboard, Reports, POS and exports",
   },
+  {
+    href: MASTER_DATA_CAP,
+    label: "Master Data",
+    note: "The company-wide master file — create and edit products, suppliers, recipes and deals for every store",
+  },
 ];
 
 // Who gets a capability until the owner says otherwise. Profit/margin figures
@@ -125,6 +136,9 @@ export const PERMISSION_CAPS: { href: string; label: string; note: string }[] = 
 // side by side lets anyone back out the profit anyway.
 const CAP_BASELINE: Record<string, Role[]> = {
   [PROFIT_CAP]: ["procurement"],
+  // Nobody gets the master file until the owner grants it by hand — one master
+  // edit rewrites products for every store, so there is no safe default.
+  [MASTER_DATA_CAP]: [],
 };
 
 export function hasCap(role: Role, cap: string, caps?: RoleCaps): boolean {
@@ -281,6 +295,13 @@ export function reachesAllStores(role: Role): boolean {
 // behaviour: Owner, Management and Procurement.
 export function canSeeProfit(role: Role, caps?: RoleCaps): boolean {
   return hasCap(role, PROFIT_CAP, caps);
+}
+
+// Master Data (company-wide products/suppliers/recipes/deals). Owner always;
+// other roles only when granted on /permissions. Pass the live caps where
+// available (server: `masterDataFor` in lib/caps.ts; client: `useAccess`).
+export function canUseMasterData(role: Role, caps?: RoleCaps): boolean {
+  return hasCap(role, MASTER_DATA_CAP, caps);
 }
 
 // Who may put a product on markdown. Cutting a price 30–70% is a margin

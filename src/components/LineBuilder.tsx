@@ -166,6 +166,9 @@ export function LineBuilder({
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<Product[] | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // The pinned live camera (sticky mode) can be turned off — stops the camera
+  // and gives the whole panel to the list. Starts on.
+  const [liveCam, setLiveCam] = useState(true);
   const { data: velocityData } = useFetch<VelocityData>("/api/product-velocity");
   const velocity = velocityData?.velocity;
   const days = velocityData?.days ?? [];
@@ -700,9 +703,26 @@ export function LineBuilder({
   if (stickyScanner) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="h-[30vh] shrink-0 border-b border-slate-200 bg-black">
-          <CameraScanner variant="inline" open onClose={() => {}} onScan={(code) => handleScan(code)} />
-        </div>
+        {liveCam ? (
+          <div className="relative h-[30vh] shrink-0 border-b border-slate-200 bg-black">
+            <CameraScanner variant="inline" open onClose={() => {}} onScan={(code) => handleScan(code)} />
+            <button
+              type="button"
+              onClick={() => setLiveCam(false)}
+              className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/70"
+            >
+              <X size={13} /> Hide camera
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLiveCam(true)}
+            className="flex shrink-0 items-center justify-center gap-2 border-b border-slate-200 bg-slate-50 py-2.5 text-[13px] font-semibold text-brand-600 transition hover:bg-slate-100"
+          >
+            <Camera size={16} /> Show camera scanner
+          </button>
+        )}
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
           {topSlot}
           {controls}

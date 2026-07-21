@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import {
   readMaster,
   applyMasterFields,
@@ -33,7 +34,7 @@ export const dynamic = "force-dynamic";
 // owner can add them to the master or write them off first.
 export async function POST(req: Request) {
   const session = await getSession();
-  if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!session || !(await masterDataFor(session.role))) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const actor = await currentActor();
 
   // Bring every product's supplier NAME back in line with the supplier record

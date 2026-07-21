@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { masterDataFor } from "@/lib/caps";
 import { mutateMaster } from "@/lib/master";
 import { resolveSupplier } from "@/lib/supplierLink";
 import { readDB } from "@/lib/db";
@@ -16,7 +17,7 @@ const BOOLEAN_FIELDS = new Set(["showOnPos"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
-  if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!session || !(await masterDataFor(session.role))) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const body = await req.json().catch(() => ({}));
 
   // Resolve supplier against the owner's current store (suppliers are per-store).
@@ -51,7 +52,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
-  if (!session || session.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  if (!session || !(await masterDataFor(session.role))) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
   const ok = await mutateMaster((products) => {
     const idx = products.findIndex((p) => p.id === params.id);
     if (idx === -1) return false;
