@@ -158,7 +158,12 @@ export default function ReceivingPage() {
               // Compact by design — a Sunmi L3's short screen should show several
               // POs at once, so padding and gaps are tight and the two meta lines
               // are merged into one.
-              <div key={po.id} className="card p-3.5">
+              //
+              // min-w-0 is essential: a grid item defaults to min-width:auto, so a
+              // long supplier name ("… TRADE CO., LTD.") would stretch the card
+              // past the screen edge and the truncate never engaged. min-w-0 lets
+              // the track shrink to the screen and the name ellipsizes instead.
+              <div key={po.id} className="card min-w-0 p-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-bold text-ink-900">{po.poNo}</p>
