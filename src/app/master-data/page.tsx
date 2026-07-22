@@ -208,18 +208,24 @@ export default function MasterDataPage() {
   }, [products]);
 
   const filtered = useMemo(() => {
-    const list = products || [];
     const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        barcodeIncludes(p, q) ||
-        (p.category || "").toLowerCase().includes(q) ||
-        (p.supplier || "").toLowerCase().includes(q) ||
-        (p.supplierCode || "").toLowerCase().includes(q),
-    );
+    const list = q
+      ? (products || []).filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            p.sku.toLowerCase().includes(q) ||
+            barcodeIncludes(p, q) ||
+            (p.category || "").toLowerCase().includes(q) ||
+            (p.supplier || "").toLowerCase().includes(q) ||
+            (p.supplierCode || "").toLowerCase().includes(q),
+        )
+      : products || [];
+    // Newest first: every product's id is a running number (p0001, p0002…), so
+    // the highest id is the most recently added. Sorting by it descending makes
+    // a product you just created land at the TOP of the list, where you're
+    // looking for it — instead of at the bottom of thousands of rows.
+    const idNum = (p: Product) => parseInt(p.id.replace(/\D/g, ""), 10) || 0;
+    return [...list].sort((a, b) => idNum(b) - idNum(a));
   }, [products, query]);
 
   async function saveProduct(p: Partial<Product>) {
