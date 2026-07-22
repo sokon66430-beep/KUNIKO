@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { masterDataFor } from "@/lib/caps";
-import { mutateMaster } from "@/lib/master";
+import { mutateMaster, applyMasterFields } from "@/lib/master";
 import { resolveSupplier } from "@/lib/supplierLink";
-import { readDB } from "@/lib/db";
+import { readDB, mutateDB } from "@/lib/db";
+import { readSystem } from "@/lib/system";
 import { validateSellingUnits } from "@/lib/sellingUnits";
+import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   if (!result) return NextResponse.json({ error: "Product not found" }, { status: 404 });
   if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+
+  // Push the shared fields straight to every store's copy, so a rename / price /
+  // category change in Master Data shows through everywhere immediately —
+  // receiving, the till, inventory — without waiting for a full Sync. Only the
+  // master-owned fields are copied (see applyMasterFields); each store keeps its
+  // own stock, reorder level and shelf location. A store that doesn't stock this
+  // product yet is simply skipped — adding new products is still the Sync's job.
+  try {
+    const master = result as Product;
+    const sys = await readSystem();
+    for (const store of sys.stores) {
+      await mutateDB((db) => {
+        const sp = db.products.find((p) => p.id === params.id);
+        if (sp) applyMasterFields(sp, master);
+      }, store.id);
+    }
+  } catch {
+    /* best-effort — the master edit already saved; a Sync would reconcile stores */
+  }
+
   return NextResponse.json(result);
 }
 

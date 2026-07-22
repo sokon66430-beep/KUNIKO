@@ -23,7 +23,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (!grn) return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
 
   const prodById = new Map(db.products.map((p) => [p.id, p]));
-  const vatRate = db.meta.business.vatRate ?? 0.1;
+  // VAT follows the SUPPLIER: one that isn't VAT-registered (taxPct 0) adds no
+  // VAT, so the receipt carries none. Fall back to the store rate only when the
+  // supplier can't be matched by name.
+  const supplier = db.suppliers.find((s) => s.name === grn.supplier);
+  const vatRate = supplier ? (supplier.taxPct ?? 10) / 100 : db.meta.business.vatRate ?? 0.1;
+  const showVat = vatRate > 0;
   const rows = grn.items.map((it) => {
     const p = prodById.get(it.productId);
     // The cost AS RECEIVED. Falling back to the product's current cost only for
@@ -60,18 +65,23 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     filename: grn.grnNo,
     subtitle: `${db.meta.business.name} · ${db.meta.business.branch}   ·   ${note}`,
     rows,
-    summary: [
-      { label: "Total cost (ex-VAT)", value: usd(grandCost) },
-      { label: `Total VAT ${Math.round(vatRate * 100)}%`, value: usd(grandVat) },
-      { label: "Grand total (incl. VAT)", value: usd(round2(grandCost + grandVat)), strong: true },
-    ],
-    fancyXlsx: async () => buildGRNReportWorkbook([grn], db.products, db.meta.business, note),
+    // A VAT-registered supplier shows ex-VAT cost, the VAT and the incl-VAT total;
+    // a non-registered one shows just the single total (no VAT line at all).
+    summary: showVat
+      ? [
+          { label: "Total cost (ex-VAT)", value: usd(grandCost) },
+          { label: `Total VAT ${Math.round(vatRate * 100)}%`, value: usd(grandVat) },
+          { label: "Grand total (incl. VAT)", value: usd(round2(grandCost + grandVat)), strong: true },
+        ]
+      : [{ label: "Total cost", value: usd(grandCost), strong: true }],
+    fancyXlsx: async () => buildGRNReportWorkbook([grn], db.products, db.meta.business, note, vatRate),
     cols: [
       { header: "Item Code", get: (r: any) => r.sku },
       { header: "Barcode", get: (r: any) => r.barcode },
       { header: "Item Name", get: (r: any) => r.name, width: 2 },
       { header: "Cost", get: (r: any) => r.cost, money: true },
-      { header: `VAT ${Math.round(vatRate * 100)}%`, get: (r: any) => r.vat, money: true },
+      // The VAT column is dropped entirely when the supplier isn't VAT-registered.
+      ...(showVat ? [{ header: `VAT ${Math.round(vatRate * 100)}%`, get: (r: any) => r.vat, money: true }] : []),
       { header: "Sell Price", get: (r: any) => r.sell, money: true },
       { header: "Qty", get: (r: any) => r.qty, num: true },
       { header: "Line Cost", get: (r: any) => r.lineCost, money: true },

@@ -132,6 +132,28 @@ export function findByBarcode(products: Product[], code: string): BarcodeHit | u
 }
 
 /**
+ * The effective per-unit BUY cost, honouring case pricing.
+ *
+ * A case usually costs less than 24× a single, so once a packaging level carries
+ * its own buy cost the REAL per-unit cost is that case cost split across the
+ * units in it. The biggest packaging with a cost set wins — buying by the case
+ * is the cheapest, and that's the price the shop actually pays. Falls back to the
+ * product's own `cost` when no packaging cost is set, so nothing changes for a
+ * product until a case price is actually entered.
+ *
+ * Used everywhere purchasing books a cost — purchase requests, POs, receiving and
+ * the stock value that flows from them — so all four agree.
+ */
+export function purchaseUnitCost(product: Pick<Product, "cost" | "sellingUnits">): number {
+  const levels = (product.sellingUnits || []).filter((u) => (u.cost ?? 0) > 0 && u.conversion > 1);
+  if (!levels.length) return product.cost || 0;
+  const biggest = levels.reduce((a, b) => (b.conversion > a.conversion ? b : a));
+  // Keep extra precision here; callers round the line total to cents so a full
+  // case (e.g. $10.00 / 24 × 24) lands back exactly on the case price.
+  return Math.round((biggest.cost! / biggest.conversion) * 1e6) / 1e6;
+}
+
+/**
  * Type-ahead search over a product's PACKAGING levels.
  *
  * The base unit is found by product name / Item ID / barcode elsewhere; this

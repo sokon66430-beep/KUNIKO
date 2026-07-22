@@ -8,6 +8,7 @@ import { poStatus } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
 import type { GoodsReceipt, GRNItem } from "@/lib/types";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         // The unit cost AS RECEIVED. Without it the receipt has no cost of its
         // own and its documents read the product's price of the day they're
         // opened — so last month's receipt quietly changes when a cost does.
-        cost: poLine.cost,
+        // Booked at the CASE rate when a case price is set (else the PO cost),
+        // so the receipt and stock value reflect what was really paid.
+        cost: product ? purchaseUnitCost(product) : poLine.cost,
       });
     }
 

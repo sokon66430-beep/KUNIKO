@@ -535,12 +535,15 @@ export function buildGRNReportWorkbook(
   products: Product[],
   business: Business,
   filterNote: string,
+  // The VAT rate to apply. A single-supplier receipt passes that supplier's rate
+  // (0 for a supplier that isn't VAT-registered → no VAT is added); the general
+  // multi-supplier report leaves it at the store default.
+  vatRate: number = business.vatRate ?? 0.1,
 ): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Receiving Report", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
   });
-  const vatRate = business.vatRate ?? 0.1;
   // No · Date · Time · GRN · PO · Supplier · Item Code · Barcode · Item Name · Cost · VAT · Sell · Qty · Line Cost
   ws.columns = [
     { width: 5 }, { width: 12 }, { width: 8 }, { width: 15 }, { width: 16 }, { width: 26 },

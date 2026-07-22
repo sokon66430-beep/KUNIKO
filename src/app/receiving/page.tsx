@@ -22,7 +22,8 @@ import {
 import { useFetch, api } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
-import type { PurchaseOrder } from "@/lib/types";
+import type { PurchaseOrder, Supplier, Product } from "@/lib/types";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState } from "@/components/ui";
 import { num, usd, dateTime, shortDate } from "@/lib/format";
 
@@ -299,7 +300,27 @@ function ReceiveModal({
   // Store VAT rate (a fraction, e.g. 0.10) so the review can show the VAT and the
   // total including VAT to check against the supplier invoice.
   const { data: business } = useFetch<{ vatRate?: number }>("/api/business");
-  const vatRate = business?.vatRate ?? 0.1;
+  const { data: suppliers } = useFetch<Supplier[]>("/api/suppliers");
+  // VAT is the SUPPLIER's rate, not the store's: a supplier that isn't VAT-
+  // registered (taxPct 0) charges no VAT, so the receipt shows none at all.
+  // Fall back to the store rate only when the supplier can't be matched by name.
+  const poSupplier = (suppliers || []).find((s) => s.name === po.supplier);
+  const vatRate = poSupplier ? (poSupplier.taxPct ?? 10) / 100 : business?.vatRate ?? 0.1;
+  const showVat = vatRate > 0;
+  // Cost is the CASE rate when a case price is set on the product (a case usually
+  // costs less than 24× a single) — read live from the product so even an older
+  // PO reflects it. Falls back to the PO line's own cost when there's no match.
+  const { data: products } = useFetch<Product[]>("/api/products");
+  const productMap = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
+  const costOf = (it: { productId: string; cost: number }) => {
+    const p = productMap.get(it.productId);
+    return p ? purchaseUnitCost(p) : it.cost;
+  };
+  // Show the CURRENT product name from Master Data, not the one snapshotted onto
+  // the PO when it was raised — so renaming a product in Master Data shows through
+  // here on the open order. Falls back to the PO line's own name if the product
+  // has since been removed from the catalogue.
+  const nameOf = (it: { productId: string; name: string }) => productMap.get(it.productId)?.name || it.name;
   const [flash, setFlash] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<typeof po.items | null>(null);
   const [busy, setBusy] = useState(false);
@@ -467,11 +488,11 @@ function ReceiveModal({
   const totalNow = Object.values(now).reduce((s, v) => s + (Number(v) || 0), 0);
   // Money value of everything being received now — the figure to match against
   // the supplier invoice's grand total.
-  const totalAmount = po.items.reduce((s, it) => s + it.cost * (now[it.productId] || 0), 0);
+  const totalAmount = po.items.reduce((s, it) => s + costOf(it) * (now[it.productId] || 0), 0);
   // VAT and the grand total including VAT — per-unit VAT (rounded) × quantity,
   // summed, the same way the goods-receipt document computes it.
   const round2 = (n: number) => Math.round(n * 100) / 100;
-  const totalVat = po.items.reduce((s, it) => s + round2(it.cost * vatRate) * (now[it.productId] || 0), 0);
+  const totalVat = po.items.reduce((s, it) => s + round2(costOf(it) * vatRate) * (now[it.productId] || 0), 0);
   const totalInclVat = round2(totalAmount + totalVat);
 
   return (
@@ -582,7 +603,7 @@ function ReceiveModal({
                   onClick={() => resolveAmbiguous(it)}
                   className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-left text-xs hover:bg-amber-100"
                 >
-                  <span className="font-semibold text-ink-800">{it.name}</span>
+                  <span className="font-semibold text-ink-800">{nameOf(it)}</span>
                   <span className="ml-1.5 text-slate-400">{it.sku}</span>
                 </button>
               ))}
@@ -612,7 +633,7 @@ function ReceiveModal({
               {/* Top: product on the left, money value on the right. */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink-800">{it.name}</p>
+                  <p className="truncate font-semibold text-ink-800">{nameOf(it)}</p>
                   <p className="mt-0.5 text-[11px] text-slate-400">
                     {it.barcode ? `${it.barcode} · ` : ""}Ordered {it.qtyOrdered} · prev {it.qtyReceived}
                   </p>
@@ -625,9 +646,9 @@ function ReceiveModal({
                       receivingNow > 0 ? "text-ink-900" : "text-slate-300"
                     }`}
                   >
-                    {usd(it.cost * receivingNow)}
+                    {usd(costOf(it) * receivingNow)}
                   </span>
-                  <span className="block text-[10px] tabular-nums text-slate-400">{usd(it.cost)} ea</span>
+                  <span className="block text-[10px] tabular-nums text-slate-400">{usd(costOf(it))} ea</span>
                 </div>
               </div>
 
@@ -682,7 +703,7 @@ function ReceiveModal({
                         setAddBox((p) => ({ ...p, [it.productId]: "" }));
                       }}
                       title="Clear this line and count it again"
-                      aria-label={`Clear ${it.name}`}
+                      aria-label={`Clear ${nameOf(it)}`}
                       className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
                     >
                       <X size={13} />
@@ -811,7 +832,7 @@ function ReceiveModal({
                       return (
                         <tr key={it.productId} className={`border-b border-slate-50 last:border-0 ${none ? "bg-slate-50/40" : ""}`}>
                           <td className="px-3 py-2">
-                            <p className={`font-semibold ${none ? "text-slate-400" : "text-ink-800"}`}>{it.name}</p>
+                            <p className={`font-semibold ${none ? "text-slate-400" : "text-ink-800"}`}>{nameOf(it)}</p>
                             <p className="text-[11px] text-slate-400">ordered {it.qtyOrdered}</p>
                           </td>
                           <td className={`px-3 py-2 text-center text-[15px] font-bold tabular-nums ${none ? "text-slate-300" : "text-ink-900"}`}>{q}</td>
@@ -826,36 +847,53 @@ function ReceiveModal({
                               <span className="font-semibold text-emerald-600">complete</span>
                             )}
                           </td>
-                          <td className={`px-3 py-2 text-right font-semibold tabular-nums ${none ? "text-slate-300" : "text-ink-800"}`}>{usd(it.cost * q)}</td>
+                          <td className={`px-3 py-2 text-right font-semibold tabular-nums ${none ? "text-slate-300" : "text-ink-800"}`}>{usd(costOf(it) * q)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    {/* Cost (ex-VAT), the VAT and the grand total incl VAT — the
-                        three figures to reconcile against the supplier invoice. */}
-                    <tr className="border-t border-slate-200 bg-slate-50">
-                      <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Total cost (ex-VAT)
-                      </td>
-                      <td className="px-3 py-2.5 text-center font-bold tabular-nums text-ink-900">{totalNow}</td>
-                      <td />
-                      <td className="px-3 py-2.5 text-right font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
-                    </tr>
-                    <tr className="bg-slate-50">
-                      <td className="px-3 py-1.5 text-xs font-medium text-slate-500" colSpan={3}>
-                        VAT {Math.round(vatRate * 100)}%
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-slate-600">{usd(totalVat)}</td>
-                    </tr>
-                    <tr className="border-t border-slate-200 bg-brand-50">
-                      <td className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-800" colSpan={3}>
-                        Total incl. VAT
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-sm font-extrabold tabular-nums text-ink-900">
-                        {usd(totalInclVat)}
-                      </td>
-                    </tr>
+                    {showVat ? (
+                      /* Cost (ex-VAT), the VAT and the grand total incl VAT — the
+                         three figures to reconcile against the supplier invoice. */
+                      <>
+                        <tr className="border-t border-slate-200 bg-slate-50">
+                          <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Total cost (ex-VAT)
+                          </td>
+                          <td className="px-3 py-2.5 text-center font-bold tabular-nums text-ink-900">{totalNow}</td>
+                          <td />
+                          <td className="px-3 py-2.5 text-right font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
+                        </tr>
+                        <tr className="bg-slate-50">
+                          <td className="px-3 py-1.5 text-xs font-medium text-slate-500" colSpan={3}>
+                            VAT {Math.round(vatRate * 100)}%
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-slate-600">{usd(totalVat)}</td>
+                        </tr>
+                        <tr className="border-t border-slate-200 bg-brand-50">
+                          <td className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-800" colSpan={3}>
+                            Total incl. VAT
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-sm font-extrabold tabular-nums text-ink-900">
+                            {usd(totalInclVat)}
+                          </td>
+                        </tr>
+                      </>
+                    ) : (
+                      /* This supplier isn't VAT-registered — no VAT line at all,
+                         just the single grand total (there's nothing to add). */
+                      <tr className="border-t border-slate-200 bg-brand-50">
+                        <td className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-800">
+                          Total cost
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold tabular-nums text-ink-900">{totalNow}</td>
+                        <td />
+                        <td className="px-3 py-2.5 text-right text-sm font-extrabold tabular-nums text-ink-900">
+                          {usd(totalAmount)}
+                        </td>
+                      </tr>
+                    )}
                   </tfoot>
                 </table>
               </div>

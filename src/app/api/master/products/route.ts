@@ -3,7 +3,8 @@ import { getSession } from "@/lib/session";
 import { masterDataFor } from "@/lib/caps";
 import { readMaster, mutateMaster } from "@/lib/master";
 import { resolveSupplier } from "@/lib/supplierLink";
-import { readDB } from "@/lib/db";
+import { readDB, mutateDB } from "@/lib/db";
+import { readSystem } from "@/lib/system";
 import { validateSellingUnits } from "@/lib/sellingUnits";
 import type { Product } from "@/lib/types";
 
@@ -20,8 +21,8 @@ export async function GET() {
   return NextResponse.json(products);
 }
 
-// Add a product to the master catalog. It reaches the stores when the owner
-// clicks "Sync to stores".
+// Add a product to the master catalog. It's pushed into every store right away
+// (see below) so it's ready to sell/receive without a separate "Sync to stores".
 export async function POST(req: Request) {
   const session = await requireMasterAccess();
   if (!session) return NextResponse.json({ error: "Master Data access required" }, { status: 403 });
@@ -73,5 +74,30 @@ export async function POST(req: Request) {
   });
 
   if (created && "error" in created) return NextResponse.json({ error: created.error }, { status: 400 });
+
+  // Push the new product straight into every store so it's ready to sell and
+  // receive right away — no separate Sync click. Mirrors the Sync's add: stock
+  // starts at 0, the reorder level is seeded from the master, and the master's
+  // shelf location is dropped (each store registers its own). Removing
+  // discontinued products stays a manual Sync, so nothing is deleted by surprise.
+  if (created && !("error" in created)) {
+    try {
+      const master = created as Product;
+      const sys = await readSystem();
+      for (const store of sys.stores) {
+        await mutateDB((db) => {
+          if (db.products.some((p) => p.id === master.id)) return;
+          const product: Product = { ...master, stock: 0, reorderLevel: Math.max(0, Number(master.reorderLevel) || 0) };
+          delete product.gondola;
+          delete product.shelf;
+          delete product.locations;
+          db.products.push(product);
+        }, store.id);
+      }
+    } catch {
+      /* best-effort — a Sync would still add it to stores later */
+    }
+  }
+
   return NextResponse.json(created, { status: 201 });
 }

@@ -216,6 +216,130 @@ html.dark .hover\:bg-brand-100:hover {
   background-color: #1d2c4d;
 }
 
+/* Status tints (amber / emerald / rose / sky / violet) ------------------- */
+/* These pastel chips and panels — "on order" flags, success/error notices,
+   the pending-quantity row — are light washes in day mode. Untouched they
+   glare as muddy grey-cream patches on the dark theme (exactly the "messy"
+   look on the PR line), so remap each tint to a subtle dark-tinted surface
+   and lift its text/border so the meaning still reads. Same treatment the
+   neutral and brand surfaces above already get. */
+/* Amber — warnings, pending rows, on-order flag */
+html.dark .bg-amber-50,
+html.dark .bg-amber-50\/60,
+html.dark .bg-amber-50\/70,
+html.dark .hover\:bg-amber-50:hover {
+  background-color: #241b0b;
+}
+html.dark .bg-amber-100,
+html.dark .hover\:bg-amber-100:hover {
+  background-color: #33270e;
+}
+html.dark .text-amber-800 {
+  color: #fcd34d;
+}
+html.dark .text-amber-700 {
+  color: #fbbf24;
+}
+html.dark .text-amber-600 {
+  color: #f0b429;
+}
+html.dark .border-amber-100,
+html.dark .border-amber-200,
+html.dark .border-amber-300 {
+  border-color: #4a3a12;
+}
+html.dark .border-amber-400 {
+  border-color: #7a5f14;
+}
+html.dark .ring-amber-100,
+html.dark .ring-amber-200,
+html.dark .ring-amber-300 {
+  --tw-ring-color: #4a3a12;
+}
+html.dark .placeholder\:text-amber-400::placeholder {
+  color: #a9812a;
+}
+/* Emerald — success / "added" / recommended */
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-50\/40,
+html.dark .bg-emerald-50\/60,
+html.dark .hover\:bg-emerald-50:hover {
+  background-color: #0e2019;
+}
+html.dark .bg-emerald-100,
+html.dark .hover\:bg-emerald-100:hover {
+  background-color: #123026;
+}
+html.dark .text-emerald-800 {
+  color: #6ee7b7;
+}
+html.dark .text-emerald-700 {
+  color: #34d399;
+}
+html.dark .text-emerald-600 {
+  color: #2fb488;
+}
+html.dark .border-emerald-100,
+html.dark .border-emerald-200 {
+  border-color: #14402f;
+}
+html.dark .border-emerald-400 {
+  border-color: #1f7a54;
+}
+html.dark .ring-emerald-200 {
+  --tw-ring-color: #14402f;
+}
+/* Rose — errors / negative stock / danger */
+html.dark .bg-rose-50,
+html.dark .bg-rose-50\/40,
+html.dark .hover\:bg-rose-50:hover {
+  background-color: #261316;
+}
+html.dark .bg-rose-100,
+html.dark .hover\:bg-rose-100:hover {
+  background-color: #33151a;
+}
+html.dark .text-rose-800 {
+  color: #fda4af;
+}
+html.dark .text-rose-700 {
+  color: #fb7185;
+}
+html.dark .text-rose-600 {
+  color: #f2617a;
+}
+html.dark .border-rose-200 {
+  border-color: #4a1d24;
+}
+html.dark .border-rose-400 {
+  border-color: #7a2230;
+}
+html.dark .ring-rose-200,
+html.dark .ring-rose-300 {
+  --tw-ring-color: #4a1d24;
+}
+/* Sky — chilled shelf-life flag */
+html.dark .bg-sky-50 {
+  background-color: #0c2233;
+}
+html.dark .bg-sky-100 {
+  background-color: #0e2a3f;
+}
+html.dark .text-sky-700,
+html.dark .text-sky-600 {
+  color: #38bdf8;
+}
+/* Violet — ABC "B" class badges */
+html.dark .bg-violet-50 {
+  background-color: #191534;
+}
+html.dark .bg-violet-100 {
+  background-color: #201941;
+}
+html.dark .text-violet-700 {
+  color: #a78bfa;
+}
+
 /* Cards & panels --------------------------------------------------------- */
 html.dark .card {
   background-color: #161d2e;

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { findByBarcode as findProductsByBarcode } from "@/lib/barcodes";
 import { ScanLine, Search, Trash2, Sparkles, X, Camera, Minus, Plus } from "lucide-react";
 import type { Product } from "@/lib/types";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 import { usd } from "@/lib/format";
 import { useFetch } from "@/lib/client";
 import { CameraScanner } from "@/components/CameraScanner";
@@ -81,7 +82,7 @@ function ShelfFlag({ shelf }: { shelf: number | null }) {
 // Compact sales-performance readout for one order line: ABC class, shelf-life
 // flag and days-of-cover on top; then 30/7/3-day units sold, on-hand, and a tiny
 // bar chart of the last 7 days (oldest → today, today highlighted).
-function SalesMini({ v, product, days }: { v?: Velocity; product: Product; days: string[] }) {
+function SalesMini({ v, product, days, pipe }: { v?: Velocity; product: Product; days: string[]; pipe?: string | null }) {
   const d3 = v?.d3 ?? 0;
   const d7 = v?.d7 ?? 0;
   const d30 = v?.d30 ?? 0;
@@ -102,6 +103,16 @@ function SalesMini({ v, product, days }: { v?: Velocity; product: Product; days:
           : "text-slate-500";
   return (
     <div className="mt-1 space-y-1">
+      {/* Already in the pipeline — a loud amber flag so nobody re-orders stock
+          that's on its way. */}
+      {pipe && (
+        <div
+          className="flex w-fit items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800"
+          title="Already ordered or requested and not received yet — check before ordering more"
+        >
+          ⏳ {pipe} · not received yet
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         {v?.abc && <AbcBadge abc={v.abc} />}
         <ShelfFlag shelf={shelf} />
@@ -178,6 +189,18 @@ export function LineBuilder({
   const { data: velocityData } = useFetch<VelocityData>("/api/product-velocity");
   const velocity = velocityData?.velocity;
   const days = velocityData?.days ?? [];
+  // What's already coming for each product — units on open POs (on order) and on
+  // Submitted/Approved PRs (requested), so the buyer doesn't order it twice.
+  const { data: incomingData } = useFetch<Record<string, { onOrder: number; requested: number }>>("/api/incoming");
+  const incoming = incomingData || {};
+  const pipeText = (id: string): string | null => {
+    const inc = incoming[id];
+    if (!inc) return null;
+    const parts: string[] = [];
+    if (inc.onOrder > 0) parts.push(`${inc.onOrder} on order`);
+    if (inc.requested > 0) parts.push(`${inc.requested} requested`);
+    return parts.length ? parts.join(" · ") : null;
+  };
   // How many days of sales the recommendation should cover — the user picks.
   const [coverDays, setCoverDays] = useState(7);
   const scanRef = useRef<HTMLInputElement>(null);
@@ -376,7 +399,7 @@ export function LineBuilder({
   const removeLine = (id: string) => setLines((prev) => prev.filter((x) => x.product.id !== id));
   const applyRec = (id: string, rec: number) => setLines((prev) => prev.map((x) => (x.product.id === id ? { ...x, qty: rec } : x)));
 
-  const total = lines.reduce((s, l) => s + l.product.cost * l.qty, 0);
+  const total = lines.reduce((s, l) => s + purchaseUnitCost(l.product) * l.qty, 0);
 
   const controls = (
     <>
@@ -422,8 +445,11 @@ export function LineBuilder({
                     <span className="min-w-0">
                       <span className="block truncate font-semibold text-ink-800">{p.name}</span>
                       <span className="text-[11px] text-slate-400">{p.barcode || p.sku}</span>
+                      {pipeText(p.id) && (
+                        <span className="mt-0.5 block text-[10px] font-bold text-amber-600">⏳ {pipeText(p.id)} · not received</span>
+                      )}
                     </span>
-                    <span className="shrink-0 text-xs text-slate-500">{usd(p.cost)}</span>
+                    <span className="shrink-0 text-xs text-slate-500">{usd(purchaseUnitCost(p))}</span>
                   </button>
                 ))}
               </div>
@@ -467,8 +493,11 @@ export function LineBuilder({
                         {p.supplier !== "—" ? `${p.supplier} · ` : ""}
                         {p.category}
                       </span>
+                      {pipeText(p.id) && (
+                        <span className="mt-0.5 block text-[10px] font-bold text-amber-600">⏳ {pipeText(p.id)} · not received</span>
+                      )}
                     </span>
-                    <span className="shrink-0 text-xs text-slate-500">{usd(p.cost)}</span>
+                    <span className="shrink-0 text-xs text-slate-500">{usd(purchaseUnitCost(p))}</span>
                   </button>
                 ))}
               </div>
@@ -584,7 +613,7 @@ export function LineBuilder({
                       <Trash2 size={18} />
                     </button>
                   </div>
-                  <SalesMini v={velocity?.[l.product.id]} product={l.product} days={days} />
+                  <SalesMini v={velocity?.[l.product.id]} product={l.product} days={days} pipe={pipeText(l.product.id)} />
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5">
                       <button
@@ -615,8 +644,8 @@ export function LineBuilder({
                       </button>
                     </div>
                     <div className="text-right">
-                      <span className="block text-[11px] text-slate-400">{usd(l.product.cost)} each</span>
-                      <span className="block text-base font-bold text-ink-900">{usd(l.product.cost * l.qty)}</span>
+                      <span className="block text-[11px] text-slate-400">{usd(purchaseUnitCost(l.product))} each</span>
+                      <span className="block text-base font-bold text-ink-900">{usd(purchaseUnitCost(l.product) * l.qty)}</span>
                     </div>
                   </div>
                   <div className="mt-2">
@@ -665,9 +694,9 @@ export function LineBuilder({
                       <p className="text-xs text-slate-400">
                         {l.product.sku} · {l.product.supplier}
                       </p>
-                      <SalesMini v={velocity?.[l.product.id]} product={l.product} days={days} />
+                      <SalesMini v={velocity?.[l.product.id]} product={l.product} days={days} pipe={pipeText(l.product.id)} />
                     </td>
-                    <td className="px-3 py-2 text-right text-slate-500">{usd(l.product.cost)}</td>
+                    <td className="px-3 py-2 text-right text-slate-500">{usd(purchaseUnitCost(l.product))}</td>
                     <td className="px-3 py-2 align-top">
                       <input
                         type="number"
@@ -714,7 +743,7 @@ export function LineBuilder({
                         );
                       })()}
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(l.product.cost * l.qty)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-ink-800">{usd(purchaseUnitCost(l.product) * l.qty)}</td>
                     <td className="px-3 py-2 text-right">
                       <button
                         type="button"

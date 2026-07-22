@@ -4,6 +4,7 @@ import { readDB, mutateDB } from "@/lib/db";
 import { nextPoNumber, findMergeablePO, appendItemsToPO, reflectProductChanges } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
 import type { PurchaseOrder, POItem } from "@/lib/types";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 
 export const dynamic = "force-dynamic";
 
@@ -38,17 +39,25 @@ export async function POST(req: Request) {
   const created = await mutateDB((db) => {
     const now = new Date();
     const supplier = body.supplier?.trim() || "—";
-    const lines: POItem[] = items.map((it) => ({
-      productId: it.productId,
-      sku: it.sku,
-      name: it.name,
-      unit: it.unit || "pcs",
-      qtyOrdered: Math.max(0, Number(it.qtyOrdered) || 0),
-      qtyReceived: 0,
-      cost: Math.max(0, Number(it.cost) || 0),
-      barcode: it.barcode || undefined,
-      uomSize: it.uomSize || undefined,
-    }));
+    const lines: POItem[] = items.map((it) => {
+      // Case pricing: when the product has a case price set, the PO books at that
+      // case rate per unit — not the single-unit cost — so the order value, the
+      // receipt and the stock value all agree. Falls back to the product's own
+      // cost (then whatever the client sent) when no case price is set.
+      const product = db.products.find((p) => p.id === it.productId);
+      const cost = product ? purchaseUnitCost(product) : Math.max(0, Number(it.cost) || 0);
+      return {
+        productId: it.productId,
+        sku: it.sku,
+        name: it.name,
+        unit: it.unit || "pcs",
+        qtyOrdered: Math.max(0, Number(it.qtyOrdered) || 0),
+        qtyReceived: 0,
+        cost,
+        barcode: it.barcode || undefined,
+        uomSize: it.uomSize || undefined,
+      };
+    });
 
     // Same supplier, same day, still Open → add to that PO instead of a new one.
     const mergeInto = findMergeablePO(db, supplier, now);

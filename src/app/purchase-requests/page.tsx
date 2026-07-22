@@ -23,6 +23,7 @@ import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, Modal, EmptyState
 import { SearchSelect } from "@/components/SearchSelect";
 import { confirmDialog } from "@/components/confirm";
 import { LineBuilder, Line } from "@/components/LineBuilder";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 import { usd, num, dateTime } from "@/lib/format";
 
 type Suggestion = {
@@ -469,7 +470,7 @@ function CreatePRModal({
           supplier: l.product.supplier,
           unit: l.product.unit,
           qty: l.qty,
-          cost: l.product.cost,
+          cost: purchaseUnitCost(l.product),
           barcode: l.product.barcode,
         })),
       };
