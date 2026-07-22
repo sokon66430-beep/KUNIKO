@@ -90,6 +90,24 @@ function backfill(db: DB): DB {
     for (const s of db.suppliers) s.taxPct = 10;
     db.meta.supplierTaxInitialized = true;
   }
+  // Older goods-receipt lines carried no cost of their own, so their documents
+  // fell back to the product's CURRENT cost — a received PO's price then quietly
+  // changed whenever the product's price did. Freeze those legacy receipts once,
+  // at the product's current cost (what they already display), so from here on a
+  // received PO's price is a true snapshot. New receipts already store their cost
+  // at the moment of receipt, so this only touches the old ones.
+  if (!db.meta.grnCostsFrozen) {
+    const costById = new Map((db.products || []).map((p) => [p.id, p.cost]));
+    for (const g of db.goodsReceipts || []) {
+      for (const it of g.items || []) {
+        if (it.cost == null) {
+          const c = costById.get(it.productId);
+          if (c != null) it.cost = c;
+        }
+      }
+    }
+    db.meta.grnCostsFrozen = true;
+  }
   // "Sent by" was added after some POs were already marked sent. Backfill who
   // sent each of those from the most recent "Marked sent" audit entry, so the
   // list shows accountability for old orders too. Idempotent (only fills blanks;

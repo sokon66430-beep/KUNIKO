@@ -948,6 +948,11 @@ export type DB = {
     // One-time flag: multi-code products imported as "A,B" in one field have
     // been split into barcode + altBarcodes. See backfill() and lib/barcodes.
     barcodesSplit?: boolean;
+    // One-time flag: older goods-receipt lines carried no cost of their own, so
+    // their documents read the product's CURRENT cost and quietly changed when a
+    // price did. Frozen once at the product's cost so a received PO's price is a
+    // true snapshot. See backfill(). (New receipts store their cost at receipt.)
+    grnCostsFrozen?: boolean;
     business: {
       name: string;
       currency: string;
