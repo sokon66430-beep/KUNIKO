@@ -58,6 +58,12 @@ export type Product = {
   // which exists so a "Pack" can't mean 6 at the till and 10 in a recipe.
   packSize?: number;
   boxSize?: number;
+  // What ONE stock unit of this product CONTAINS, in weight or volume — a
+  // 1000 g beef pack is pieceSize 1000, pieceSizeUnit "g". This is the bridge
+  // that lets a recipe written in g/kg/ml/L come off a stock counted in
+  // pieces: 45 g of that pack deducts 0.045 units. Unset = no bridge.
+  pieceSize?: number;
+  pieceSizeUnit?: string;
 
   // --- Selling units -------------------------------------------------------
   // The packagings ABOVE the base unit that this product can be sold in — a

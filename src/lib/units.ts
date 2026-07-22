@@ -97,8 +97,16 @@ export function unitDimension(raw: string | undefined): UnitDimension | null {
   return unitDef(raw)?.dim ?? null;
 }
 
-/** How a product's pack/box units are sized. Comes off the product record. */
-export type PackSizes = { packSize?: number; boxSize?: number };
+/**
+ * How a product's pack/box units are sized, and what one piece CONTAINS
+ * (pieceSize + pieceSizeUnit, e.g. 1000 g) — all off the product record.
+ */
+export type PackSizes = {
+  packSize?: number;
+  boxSize?: number;
+  pieceSize?: number;
+  pieceSizeUnit?: string;
+};
 
 /**
  * How many base units one `unit` is worth for this product, or null when the
@@ -123,11 +131,42 @@ const clean = (n: number) => Math.round(n * 1e6) / 1e6;
 export function convert(qty: number, from: string | undefined, to: string | undefined, sizes: PackSizes = {}): number | null {
   const a = unitDef(from);
   const b = unitDef(to);
-  if (!a || !b || a.dim !== b.dim) return null;
+  if (!a || !b) return null;
+  if (a.dim !== b.dim) return convertAcross(qty, a, b, sizes);
   const fromBase = unitBase(from, sizes);
   const toBase = unitBase(to, sizes);
   if (fromBase == null || toBase == null || toBase === 0) return null;
   return clean((qty * fromBase) / toBase);
+}
+
+/**
+ * Count ↔ weight/volume, via what one piece CONTAINS.
+ *
+ * "45 g of a 1000 g pack" has an honest answer ONLY when the product says how
+ * much one piece holds (pieceSize + pieceSizeUnit). With that, 45 g = 0.045
+ * pieces — without it, we still refuse to guess.
+ */
+function convertAcross(qty: number, a: UnitDef, b: UnitDef, sizes: PackSizes): number | null {
+  const piece = unitDef(sizes.pieceSizeUnit);
+  const size = sizes.pieceSize;
+  if (!piece || piece.base == null || !size || size <= 0) return null;
+  const perPiece = size * piece.base; // grams (or ml) inside ONE piece
+
+  // Counting → measuring: pieces × contents.
+  if (a.dim === "count" && b.dim === piece.dim) {
+    const pieces = unitBase(a.code, sizes); // pieces in one `from` unit
+    const toBase = unitBase(b.code, sizes);
+    if (pieces == null || toBase == null || toBase === 0) return null;
+    return clean((qty * pieces * perPiece) / toBase);
+  }
+  // Measuring → counting: amount ÷ contents.
+  if (b.dim === "count" && a.dim === piece.dim) {
+    const fromBase = unitBase(a.code, sizes);
+    const toPieces = unitBase(b.code, sizes); // pieces in one `to` unit
+    if (fromBase == null || toPieces == null || toPieces === 0) return null;
+    return clean((qty * fromBase) / perPiece / toPieces);
+  }
+  return null;
 }
 
 /**
@@ -143,8 +182,18 @@ export function conversionProblem(
   const b = unitDef(to);
   if (!a) return `"${from || "—"}" isn't a unit the system knows`;
   if (!b) return `stock unit "${to || "—"}" isn't a unit the system knows`;
-  if (a.dim !== b.dim)
-    return `can't convert ${a.code} (${a.dim}) into ${b.code} (${b.dim}) — to cook this in ${a.code}, set the product's stock unit to a ${a.dim} unit in Master Data first`;
+  if (a.dim !== b.dim) {
+    // The piece bridge ("one unit contains 1000 g") may make this convertible —
+    // only complain when it genuinely can't be done.
+    if (convert(1, from, to, sizes) != null) return null;
+    const count = a.dim === "count" ? a : b.dim === "count" ? b : null;
+    const measure = a.dim !== "count" ? a : b.dim !== "count" ? b : null;
+    if (count && measure) {
+      const eg = measure.dim === "weight" ? "1000 g" : "1000 ml";
+      return `stock is counted in ${count.code} — set “one ${count.code} contains” on the product (e.g. ${eg}) so ${measure.code} can convert`;
+    }
+    return `can't convert ${a.code} (${a.dim}) into ${b.code} (${b.dim})`;
+  }
   if (unitBase(from, sizes) == null) return `set how many pieces are in one ${a.code} first`;
   if (unitBase(to, sizes) == null) return `set how many pieces are in one ${b.code} first`;
   return null;

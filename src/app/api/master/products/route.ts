@@ -60,6 +60,8 @@ export async function POST(req: Request) {
       supplier: sup.status === "ok" ? sup.name : "—",
       supplierCode: sup.status === "ok" ? sup.code : undefined,
       unit: String(body.unit || "U").trim() || "U",
+      pieceSize: Math.max(0, Number(body.pieceSize) || 0) || undefined,
+      pieceSizeUnit: body.pieceSizeUnit?.trim() || undefined,
       cost: Math.max(0, Number(body.cost) || 0),
       price: Math.max(0, Number(body.price) || 0),
       stock: 0,

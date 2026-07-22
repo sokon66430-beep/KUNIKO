@@ -222,12 +222,20 @@ export function toBaseQty(unit: Pick<ResolvedUnit, "conversion">, unitQty: numbe
  * 6 at the till and 10 in a recipe; the older packSize/boxSize fields stay as
  * the fallback for products that never got selling units.
  */
-export function packSizesOf(product: Product): { packSize?: number; boxSize?: number } {
+export function packSizesOf(product: Product): {
+  packSize?: number;
+  boxSize?: number;
+  pieceSize?: number;
+  pieceSizeUnit?: string;
+} {
   const named = (want: string) =>
     (product.sellingUnits || []).find((u) => u.name.trim().toLowerCase() === want && u.active !== false)?.conversion;
   return {
     packSize: named("pack") ?? product.packSize,
     boxSize: named("box") ?? named("case") ?? named("carton") ?? product.boxSize,
+    // What one piece CONTAINS (a 1000 g pack) — the count↔weight/volume bridge.
+    pieceSize: product.pieceSize,
+    pieceSizeUnit: product.pieceSizeUnit,
   };
 }
 

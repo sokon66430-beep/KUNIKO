@@ -25,6 +25,9 @@ export const MASTER_FIELDS: (keyof Product)[] = [
   "altBarcodes", // travels with `barcode` — a product's codes are one fact, not two
   "category",
   "unit",
+  // What one piece contains (the 1000 g pack) — defined once, true chain-wide.
+  "pieceSize",
+  "pieceSizeUnit",
   "cost",
   "price",
   "ranking",

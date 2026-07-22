@@ -10,10 +10,11 @@ import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays"]);
+const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays", "pieceSize"]);
 const STRING_FIELDS = new Set([
   "sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode",
   "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf", "image",
+  "pieceSizeUnit",
 ]);
 // Booleans need their own bucket — they'd be dropped by the string/number rules.
 const BOOLEAN_FIELDS = new Set(["showOnPos"]);

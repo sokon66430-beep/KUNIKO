@@ -9,12 +9,12 @@ import type { ProductLocation } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays", "packSize", "boxSize"]);
+const NUMERIC = new Set(["cost", "price", "stock", "reorderLevel", "shelfLifeDays", "packSize", "boxSize", "pieceSize"]);
 // Explicit allow-list rather than `key in product` — optional fields like
 // supplierCode are dropped by JSON.stringify when undefined, so a product
 // that has never had a supplier linked genuinely lacks that key at runtime,
 // and `in` would wrongly refuse to ever set it for that record.
-const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf", "recipeId", "consumptionUnit"]);
+const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh", "ranking", "groupCode", "category", "supplier", "supplierCode", "unit", "barcode", "gondola", "shelf", "recipeId", "consumptionUnit", "pieceSizeUnit"]);
 // Booleans need their own bucket — `value || undefined` in the string branch
 // would turn `false` into undefined, and Number(false) is 0 in the numeric one,
 // so a flag sent through either would never store what was asked for.

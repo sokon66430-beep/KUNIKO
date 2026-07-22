@@ -687,6 +687,37 @@ export function ProductModal({
                 placeholder="e.g. 24"
               />
             </div>
+            {/* The count↔weight bridge: what ONE piece holds (a 1000 g beef
+                pack). With it set, a recipe written in g/kg/ml/L comes off this
+                count-stocked product correctly. */}
+            <div className="lg:col-span-2">
+              <label className="label">One unit contains (for recipes)</label>
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1"
+                  inputMode="decimal"
+                  value={form.pieceSize ?? ""}
+                  onChange={(e) => set("pieceSize", Number(e.target.value.replace(/[^\d.]/g, "")) || undefined)}
+                  placeholder="e.g. 1000"
+                />
+                <div className="w-24">
+                  <Select
+                    value={form.pieceSizeUnit || ""}
+                    onChange={(v) => set("pieceSizeUnit", v || undefined)}
+                    options={[
+                      { value: "", label: "—" },
+                      { value: "g", label: "g" },
+                      { value: "kg", label: "kg" },
+                      { value: "ml", label: "ml" },
+                      { value: "L", label: "L" },
+                    ]}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">
+                e.g. a 1000 g pack → 1000 g. Lets recipes use 45 g of it: 0.045 units come off stock.
+              </p>
+            </div>
           </>
         )}
         <div>
