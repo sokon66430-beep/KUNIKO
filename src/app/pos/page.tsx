@@ -50,7 +50,7 @@ import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
 import { PosShiftModal, type ShiftAction } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
-import { baseUnitName, defaultUnitOf, findByBarcode, type ResolvedUnit } from "@/lib/sellingUnits";
+import { baseUnitName, defaultUnitOf, findByBarcode, packagingMatches, type ResolvedUnit } from "@/lib/sellingUnits";
 
 // A discounted line and a full-price line for the SAME product can sit in one
 // sale (the customer grabbed one reduced loaf and one fresh), so the markdown
@@ -279,7 +279,11 @@ export default function PosPage() {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return catalog.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || barcodeIncludes(p, q),
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        barcodeIncludes(p, q) ||
+        packagingMatches(p, q),
     );
   }, [catalog, query]);
 
@@ -797,7 +801,12 @@ export default function PosPage() {
                     key={p.id}
                     p={p}
                     onAdd={(x) => {
-                      addToCart(x);
+                      // If the cashier typed a pack's exact barcode or code, tap
+                      // rings up THAT pack (right price + right units off the
+                      // shelf); otherwise the tile adds the product's base unit.
+                      const hit = findByBarcode([x], query.trim());
+                      if (hit && !hit.unit.isBase) addToCart(x, undefined, hit.unit);
+                      else addToCart(x);
                       setQuery("");
                     }}
                     onToggleFavourite={toggleFavourite}

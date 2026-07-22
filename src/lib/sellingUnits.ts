@@ -131,6 +131,22 @@ export function findByBarcode(products: Product[], code: string): BarcodeHit | u
   return undefined;
 }
 
+/**
+ * Type-ahead search over a product's PACKAGING levels.
+ *
+ * The base unit is found by product name / Item ID / barcode elsewhere; this
+ * adds the packs, so typing part of a case's barcode or its product code finds
+ * the product too. Without it a pack a shop set up was invisible in the till's
+ * search box — it could only be rung up by scanning the exact code.
+ */
+export function packagingMatches(product: Product, text: string): boolean {
+  const q = text.trim().toLowerCase();
+  if (!q) return false;
+  return (product.sellingUnits || []).some(
+    (u) => (u.barcode || "").toLowerCase().includes(q) || (u.sku || "").toLowerCase().includes(q),
+  );
+}
+
 // --- Stock display ---------------------------------------------------------
 
 export type StockPart = { name: string; count: number };
