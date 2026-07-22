@@ -449,7 +449,8 @@ export default function MasterDataPage() {
             {filtered.map((p) => (
               <div
                 key={p.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
+                onClick={() => setEditing(p)}
+                className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-slate-50 px-5 py-4 transition last:border-0 hover:bg-slate-50/60"
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-ink-900">
@@ -467,14 +468,14 @@ export default function MasterDataPage() {
                 <div className="flex items-center gap-1">
                   <button
                     title="Edit"
-                    onClick={() => setEditing(p)}
+                    onClick={(e) => { e.stopPropagation(); setEditing(p); }}
                     className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"
                   >
                     <Pencil size={16} />
                   </button>
                   <button
                     title="Delete from master"
-                    onClick={() => remove(p)}
+                    onClick={(e) => { e.stopPropagation(); remove(p); }}
                     className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50"
                   >
                     <Trash2 size={16} />

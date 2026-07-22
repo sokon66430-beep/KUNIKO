@@ -296,33 +296,41 @@ export default function StoresPage() {
                 const deletable = canManage && u.id !== myId && (isOwner || u.role !== "owner");
                 const editable = canManage && (isOwner || u.role !== "owner");
                 return (
-                  <li key={u.id} className="flex items-center justify-between gap-2 px-5 py-4">
+                  <li
+                    key={u.id}
+                    onClick={() => editable && setEditingUser(u)}
+                    className={`flex items-center justify-between gap-3 px-5 py-4 ${editable ? "cursor-pointer transition hover:bg-slate-50/60" : ""}`}
+                  >
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-ink-800">
                         {u.name} <span className="font-normal text-slate-400">@{u.username}</span>
                       </p>
                       <p className="text-xs text-slate-400">{u.storeName}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={ROLE_TONE[u.role] || "slate"}>{ROLE_LABEL[u.role] || u.role}</Badge>
-                      {editable && (
-                        <button
-                          onClick={() => setEditingUser(u)}
-                          title="Edit employee"
-                          className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                      )}
-                      {deletable && (
-                        <button
-                          onClick={() => removeUser(u)}
-                          title="Remove employee"
-                          className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
+                    <div className="flex shrink-0 items-center gap-3">
+                      <div className="w-28 text-right">
+                        <Badge tone={ROLE_TONE[u.role] || "slate"}>{ROLE_LABEL[u.role] || u.role}</Badge>
+                      </div>
+                      <div className="flex w-[4.5rem] items-center justify-end gap-1">
+                        {editable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingUser(u); }}
+                            title="Edit employee"
+                            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                        )}
+                        {deletable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeUser(u); }}
+                            title="Remove employee"
+                            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );

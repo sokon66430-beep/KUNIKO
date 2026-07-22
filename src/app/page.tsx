@@ -343,7 +343,41 @@ export default function DashboardPage() {
                 {shown.length === 0 ? (
                   <p className="py-6 text-center text-sm text-slate-400">No sales in this period.</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <>
+                    <div className="mb-5 h-56 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={shown} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+                          <XAxis
+                            dataKey="label"
+                            tickFormatter={(v) => String(v).slice(0, 5)}
+                            tick={{ fontSize: 11, fill: "#94a3b8" }}
+                            tickLine={false}
+                            axisLine={false}
+                            interval={0}
+                          />
+                          <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={36} allowDecimals={false} />
+                          <Tooltip
+                            cursor={{ fill: "rgba(148,163,184,0.12)" }}
+                            content={({ active, payload }: any) =>
+                              active && payload?.length ? (
+                                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-soft">
+                                  <p className="mb-0.5 font-semibold text-ink-800">{payload[0].payload.label}</p>
+                                  <p className="text-slate-600">
+                                    {num(payload[0].payload.tickets)} customer{payload[0].payload.tickets === 1 ? "" : "s"} · {usd(payload[0].payload.revenue)}
+                                  </p>
+                                </div>
+                              ) : null
+                            }
+                          />
+                          <Bar dataKey="tickets" name="Customers" radius={[4, 4, 0, 0]}>
+                            {shown.map((b) => (
+                              <Cell key={b.start} fill={peak && b.start === peak.start ? "#2549e8" : "#93a4f4"} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
@@ -383,7 +417,8 @@ export default function DashboardPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                    </div>
+                  </>
                 )}
               </Card>
             );
