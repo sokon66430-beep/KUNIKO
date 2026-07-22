@@ -110,10 +110,24 @@ export async function POST(req: Request) {
       const barcode = (row.barcode || "").replace(/\s+/g, "");
       const sku = (row.sku || "").trim();
       const nameKey = (row.name || "").toLowerCase().replace(/\s+/g, " ").trim();
-      let target =
-        (barcode && byBarcode.get(barcode)) ||
-        (sku && bySku.get(sku.toLowerCase())) ||
-        (nameKey && byName.get(nameKey));
+      // The system product code (SKU) is the product's IDENTITY. When a row
+      // carries a code it only ever updates the product with that exact code —
+      // never a different product that merely shares a name. The same product
+      // name legitimately exists in two forms (e.g. one ready to sell, one that
+      // still needs processing) under different codes; importing must keep them
+      // separate instead of overwriting one onto the other.
+      //
+      // Only a row with NO code of its own falls back to barcode, then name, so
+      // a simple price list (name + price, no codes) still updates rather than
+      // making duplicates.
+      let target: Product | undefined;
+      if (sku) {
+        target = bySku.get(sku.toLowerCase());
+      } else if (barcode && byBarcode.get(barcode)) {
+        target = byBarcode.get(barcode);
+      } else if (nameKey) {
+        target = byName.get(nameKey);
+      }
 
       const supplierName = (row.supplierName || "").trim();
       const supplierCode = (row.supplierCode || "").trim();
