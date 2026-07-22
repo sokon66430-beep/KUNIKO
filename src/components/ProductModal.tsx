@@ -473,6 +473,7 @@ export function ProductModal({
   return (
     <Modal
       open
+      fullScreen
       onClose={onClose}
       title={initial.id ? "Edit Product" : "Add Product"}
       footer={
@@ -490,7 +491,7 @@ export function ProductModal({
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="mx-auto grid w-full max-w-3xl grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className="label">Product name</label>
           <input className="input" value={form.name || ""} onChange={(e) => set("name", e.target.value)} />
