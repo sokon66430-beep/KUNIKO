@@ -230,22 +230,22 @@ function SellingUnitsEditor({
                   />
                 </div>
                 <div className="w-24">
-                  <label className="label !mb-1 !text-[10px]">Price</label>
-                  <input
-                    value={u.price || ""}
-                    onChange={(e) => update(i, { price: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
-                    inputMode="decimal"
-                    placeholder="10.50"
-                    className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
-                  />
-                </div>
-                <div className="w-24">
                   <label className="label !mb-1 !text-[10px]">Cost</label>
                   <input
                     value={u.cost || ""}
                     onChange={(e) => update(i, { cost: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
                     inputMode="decimal"
                     placeholder="0.00"
+                    className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="label !mb-1 !text-[10px]">Price</label>
+                  <input
+                    value={u.price || ""}
+                    onChange={(e) => update(i, { price: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
+                    inputMode="decimal"
+                    placeholder="10.50"
                     className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
                   />
                 </div>
@@ -725,6 +725,27 @@ export function ProductModal({
           <label className="label">Price ($)</label>
           <input className="input" type="number" step="0.01" value={form.price ?? 0} onChange={(e) => set("price", e.target.value)} />
         </div>
+        {/* Unit GP, right beside Cost/Price so the margin is visible while you
+            set them. VAT-inclusive: the sell price already contains 10% VAT, so
+            profit is figured on the ex-VAT price. */}
+        <div>
+          <label className="label">Unit GP · VAT 10%</label>
+          <div
+            className={`flex min-h-[44px] items-center justify-between rounded-xl px-3.5 py-2.5 ring-1 ring-inset ${
+              gp == null
+                ? "bg-slate-50 text-slate-400 ring-slate-200"
+                : gp < 0
+                  ? "bg-rose-50 text-rose-700 ring-rose-200"
+                  : "bg-emerald-50 text-emerald-700 ring-emerald-200"
+            }`}
+            title="Gross profit on the ex-VAT price (VAT 10%)"
+          >
+            <span className="text-lg font-bold tabular-nums">{gp == null ? "—" : `${gp.toFixed(1)}%`}</span>
+            <span className="text-[11px] font-medium opacity-80">
+              {gp == null ? "enter cost" : `$${profit.toFixed(2)}/unit`}
+            </span>
+          </div>
+        </div>
         {/* Product photo — shown on the POS tile so the cashier spots fresh
             items fast. Nothing to do with the supplier-invoice photos. */}
         <div className="col-span-2 lg:col-span-4">
@@ -800,17 +821,6 @@ export function ProductModal({
           onChange={(units) => set("sellingUnits", units.length ? units : undefined)}
         />
 
-        <div className="col-span-2 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 lg:col-span-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gross Profit · VAT 10% incl.</p>
-            <p className="text-[11px] text-slate-400">
-              Price ex‑VAT ${exVat.toFixed(2)} · profit ${profit.toFixed(2)}/unit
-            </p>
-          </div>
-          <p className={`text-2xl font-bold tabular-nums ${gp != null && gp < 0 ? "text-rose-600" : "text-emerald-600"}`}>
-            {gp == null ? "—" : `${gp.toFixed(1)}%`}
-          </p>
-        </div>
         <div>
           <label className="label">Stock</label>
           <input className="input" type="number" value={form.stock ?? 0} onChange={(e) => set("stock", e.target.value)} />
