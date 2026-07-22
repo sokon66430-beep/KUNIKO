@@ -275,16 +275,32 @@ export default function PosPage() {
     [products, favPending],
   );
 
+  // Each result carries the SALE UNIT it should show as. An exact barcode/code
+  // hit pins the tile to that unit — scan or type a pack's code and the result
+  // is the pack (its name + price), not the single — because the shop sells the
+  // same product in unit, pack and carton, each with its own code.
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return catalog.filter(
-      (p) =>
+    const raw = query.trim();
+    const q = raw.toLowerCase();
+    if (!q) return [] as { product: Product; unit: ResolvedUnit }[];
+    const results: { product: Product; unit: ResolvedUnit }[] = [];
+    for (const p of catalog) {
+      const hit = findByBarcode([p], raw);
+      if (hit) {
+        results.push({ product: p, unit: hit.unit });
+        continue;
+      }
+      // A looser match (part of a name, code or barcode) shows the default unit.
+      if (
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         barcodeIncludes(p, q) ||
-        packagingMatches(p, q),
-    );
+        packagingMatches(p, q)
+      ) {
+        results.push({ product: p, unit: defaultUnitOf(p) });
+      }
+    }
+    return results;
   }, [catalog, query]);
 
   // Sell-directly items: the ones flagged "Show on POS" in Master Data (falling
@@ -796,17 +812,15 @@ export default function PosPage() {
               <Spinner label="Loading products…" />
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
-                {filtered.slice(0, 24).map((p) => (
+                {filtered.slice(0, 24).map((r) => (
                   <ProductCard
-                    key={p.id}
-                    p={p}
-                    onAdd={(x) => {
-                      // If the cashier typed a pack's exact barcode or code, tap
-                      // rings up THAT pack (right price + right units off the
-                      // shelf); otherwise the tile adds the product's base unit.
-                      const hit = findByBarcode([x], query.trim());
-                      if (hit && !hit.unit.isBase) addToCart(x, undefined, hit.unit);
-                      else addToCart(x);
+                    key={`${r.product.id}:${r.unit.id}`}
+                    p={r.product}
+                    unit={r.unit}
+                    onAdd={(x, u) => {
+                      // Rings up the exact unit shown on the tile — the pack when
+                      // a pack code matched, the single otherwise.
+                      addToCart(x, undefined, u);
                       setQuery("");
                     }}
                     onToggleFavourite={toggleFavourite}
@@ -842,7 +856,7 @@ export default function PosPage() {
               {favourites.length > 0 ? (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                   {favourites.map((p) => (
-                    <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
+                    <ProductCard key={p.id} p={p} onAdd={(x) => addToCart(x)} onToggleFavourite={toggleFavourite} />
                   ))}
                 </div>
               ) : (
@@ -879,7 +893,7 @@ export default function PosPage() {
               </div>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                 {openGroup.items.map((p) => (
-                  <ProductCard key={p.id} p={p} onAdd={addToCart} onToggleFavourite={toggleFavourite} />
+                  <ProductCard key={p.id} p={p} onAdd={(x) => addToCart(x)} onToggleFavourite={toggleFavourite} />
                 ))}
               </div>
             </div>
@@ -1328,13 +1342,19 @@ export default function PosPage() {
 // sell-directly (no barcode) groups.
 function ProductCard({
   p,
+  unit,
   onAdd,
   onToggleFavourite,
 }: {
   p: Product;
-  onAdd: (p: Product) => void;
+  // The sale unit this tile represents. Omitted (or the base unit) = the single;
+  // a pack/carton unit shows that packaging's name and price and rings it up.
+  unit?: ResolvedUnit;
+  onAdd: (p: Product, unit?: ResolvedUnit) => void;
   onToggleFavourite?: (p: Product) => void;
 }) {
+  const showPack = !!unit && !unit.isBase;
+  const price = unit ? unit.price : p.price;
   return (
     // `relative` so the star can sit on top: the whole tile is one big button
     // (a cashier taps anywhere to sell), and a button can't legally nest inside
@@ -1343,7 +1363,7 @@ function ProductCard({
       {/* Square tile (height = width): image on top, then name, price pinned to
           the bottom — a compact grid the cashier taps to sell. */}
       <button
-        onClick={() => onAdd(p)}
+        onClick={() => onAdd(p, unit)}
         className="card flex aspect-square w-full flex-col p-2 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
       >
         {p.image && (
@@ -1356,7 +1376,17 @@ function ProductCard({
             stock and status stay on the Inventory screen. `pr-4` keeps the name
             clear of the favourite star in the top-right corner. */}
         <p className="line-clamp-2 pr-4 text-[11.5px] font-semibold leading-tight text-ink-800">{p.name}</p>
-        <span className="mt-auto pt-0.5 text-[13px] font-bold text-brand-600">{usd(p.price)}</span>
+        {/* When a pack/carton code was matched, say so plainly — the price below
+            is that whole pack, not one unit. */}
+        {showPack && (
+          <span className="mt-0.5 w-fit rounded bg-brand-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-600">
+            {unit!.name} · {unit!.conversion} {baseUnitName(p).toLowerCase()}
+          </span>
+        )}
+        <span className="mt-auto pt-0.5 text-[13px] font-bold text-brand-600">
+          {usd(price)}
+          {showPack && <span className="ml-1 text-[9px] font-semibold text-slate-400">/ {unit!.name.toLowerCase()}</span>}
+        </span>
       </button>
 
       {onToggleFavourite && (
