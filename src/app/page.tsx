@@ -188,12 +188,12 @@ export default function DashboardPage() {
               label={
                 customDate
                   ? customTo && customTo !== customDate
-                    ? `Sales · ${niceDay(customDate)} – ${niceDay(customTo)}`
-                    : `Sales · ${niceDay(customDate)}`
+                    ? `Gross Sales · ${niceDay(customDate)} – ${niceDay(customTo)}`
+                    : `Gross Sales · ${niceDay(customDate)}`
                   : SALES_LABEL[range]
               }
-              value={usd(data.revenue)}
-              sub={`${riel(data.revenue)} · ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
+              value={usd(data.grossRevenue)}
+              sub={`${riel(data.grossRevenue)} · ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
               icon={<DollarSign size={18} />}
               accent="brand"
             />
@@ -211,7 +211,7 @@ export default function DashboardPage() {
               accent="rose"
             />
             <StatCard
-              label="After Discount"
+              label="Net Sale"
               value={usd(data.revenue)}
               sub={`${num(data.txCount)} transaction${data.txCount === 1 ? "" : "s"}`}
               icon={<Receipt size={18} />}
@@ -541,11 +541,11 @@ export default function DashboardPage() {
 // so any range it didn't name was labelled 90d — a card confidently reporting
 // the wrong period. Now a new range won't compile until it's given a name.
 const SALES_LABEL: Record<RangeKey, string> = {
-  today: "Today's Sales",
-  yesterday: "Yesterday's Sales",
-  "7d": "Sales · Last 7 Days",
-  "30d": "Sales · Last 30 Days",
-  "90d": "Sales · Last 90 Days",
+  today: "Gross Sales · Today",
+  yesterday: "Gross Sales · Yesterday",
+  "7d": "Gross Sales · Last 7 Days",
+  "30d": "Gross Sales · Last 30 Days",
+  "90d": "Gross Sales · Last 90 Days",
 };
 
 type RecipeAlerts = {
