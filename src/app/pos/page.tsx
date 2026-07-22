@@ -783,8 +783,9 @@ export default function PosPage() {
                   }
                   const target = filtered.length === 1 ? filtered[0] : null;
                   if (!target) return;
-                  // Overselling is allowed — ring it up even at zero stock.
-                  addToCart(target);
+                  // Overselling is allowed — ring it up even at zero stock. Ring
+                  // up the unit the single result is showing (pack/carton/single).
+                  addToCart(target.product, undefined, target.unit);
                   setQuery("");
                 }}
                 inputMode="search"
