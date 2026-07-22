@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Users, Plus, Store as StoreIcon, Trash2, Pencil } from "lucide-react";
+import { Building2, Users, Plus, Store as StoreIcon, Trash2, Pencil, Search } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
 import { canManageStaff } from "@/lib/access";
 import type { Role } from "@/lib/auth";
@@ -121,6 +121,7 @@ export default function StoresPage() {
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [migResult, setMigResult] = useState<{ id: string; name: string; from: string; to: string }[] | null>(null);
+  const [empQuery, setEmpQuery] = useState("");
 
   const storeList = stores || [];
   const userList = users || [];
@@ -129,6 +130,18 @@ export default function StoresPage() {
   const isOwner = role === "owner";
   const canManage = canManageStaff(role); // owner / manager / area manager may remove staff
   const myId = session?.user.id;
+
+  // Employee search — matches name, login, role or store.
+  const empQ = empQuery.trim().toLowerCase();
+  const shownUsers = empQ
+    ? userList.filter(
+        (u) =>
+          u.name.toLowerCase().includes(empQ) ||
+          u.username.toLowerCase().includes(empQ) ||
+          (ROLE_LABEL[u.role] || u.role).toLowerCase().includes(empQ) ||
+          (u.storeName || "").toLowerCase().includes(empQ),
+      )
+    : userList;
 
   async function removeUser(u: UserRow) {
     if (
@@ -252,14 +265,34 @@ export default function StoresPage() {
 
         {/* Employees */}
         <Card className="p-0">
-          <div className="border-b border-slate-100 px-5 py-3.5">
-            <h3 className="text-sm font-bold text-ink-900">Employees</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+            <h3 className="text-sm font-bold text-ink-900">
+              Employees
+              {empQ && (
+                <span className="ml-2 font-normal text-slate-400">
+                  {shownUsers.length} of {userList.length}
+                </span>
+              )}
+            </h3>
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+              <input
+                value={empQuery}
+                onChange={(e) => setEmpQuery(e.target.value)}
+                placeholder="Search name, login, role…"
+                className="input !py-2 pl-9 text-sm"
+              />
+            </div>
           </div>
           {userList.length === 0 ? (
             <EmptyState title="No employees" />
+          ) : shownUsers.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-slate-400">
+              No employees match “{empQuery.trim()}”.
+            </p>
           ) : (
             <ul className="divide-y divide-slate-50">
-              {userList.map((u) => {
+              {shownUsers.map((u) => {
                 const deletable = canManage && u.id !== myId && (isOwner || u.role !== "owner");
                 const editable = canManage && (isOwner || u.role !== "owner");
                 return (
