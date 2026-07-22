@@ -1,10 +1,10 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
+  Area,
+  AreaChart,
   Cell,
   Pie,
   PieChart,
@@ -41,10 +41,18 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: "90d", label: "90 days" },
 ];
 
-const PIE_COLORS = ["#1f5ff5", "#34d399", "#fbbf24", "#a78bfa"];
+// Validated categorical set (CVD-safe, fixed order — a payment method keeps its
+// colour whatever else is in the mix).
+const PIE_COLORS = ["#1f5ff5", "#10b981", "#f59e0b", "#8b5cf6"];
 
 export default function ReportsPage() {
-  const [range, setRange] = useState<RangeKey>("30d");
+  // The dashboard's stat cards deep-link here with the range they were showing
+  // (?range=7d), so the report opens on the same period the number came from.
+  const params = useSearchParams();
+  const initialRange = params.get("range") as RangeKey | null;
+  const [range, setRange] = useState<RangeKey>(
+    initialRange && RANGES.some((r) => r.key === initialRange) ? initialRange : "30d",
+  );
   const { data, loading, error, reload } = useFetch<Stats>(`/api/stats?range=${range}`);
   const { data: sales, reload: reloadSales } = useFetch<Sale[]>("/api/sales?limit=25");
   const [resetting, setResetting] = useState(false);
@@ -155,18 +163,46 @@ export default function ReportsPage() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
-              <h3 className="mb-1 text-base font-bold text-ink-900">{showProfit ? "Daily Revenue vs Profit" : "Daily Revenue"}</h3>
-              <p className="mb-4 text-xs text-slate-500">{data.txCount} transactions · {num(data.itemsSold)} items</p>
+              {/* Same visual language as the dashboard's trend chart — smooth
+                  gradient areas, no grid clutter — so the app has ONE chart
+                  style, not a modern one here and a dated one there. */}
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="mb-1 text-base font-bold text-ink-900">{showProfit ? "Daily Revenue vs Profit" : "Daily Revenue"}</h3>
+                  <p className="text-xs text-slate-500">{data.txCount} transactions · {num(data.itemsSold)} items</p>
+                </div>
+                <div className="flex gap-4 text-xs">
+                  <span className="flex items-center gap-1.5 text-slate-500">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#2549e8" }} /> Revenue
+                  </span>
+                  {showProfit && (
+                    <span className="flex items-center gap-1.5 text-slate-500">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: "#10b981" }} /> Profit
+                    </span>
+                  )}
+                </div>
+              </div>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.series} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f7" />
+                  <AreaChart data={data.series} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="repRev" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2549e8" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#2549e8" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="repProf" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} minTickGap={24} />
                     <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={48} />
                     <Tooltip content={<MoneyTooltip />} />
-                    <Bar dataKey="revenue" name="Revenue" radius={[3, 3, 0, 0]} fill="#1f5ff5" />
-                    {showProfit && <Bar dataKey="profit" name="Profit" radius={[3, 3, 0, 0]} fill="#34d399" />}
-                  </BarChart>
+                    <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2549e8" strokeWidth={2.5} fill="url(#repRev)" />
+                    {showProfit && (
+                      <Area type="monotone" dataKey="profit" name="Profit" stroke="#10b981" strokeWidth={2.5} fill="url(#repProf)" />
+                    )}
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </Card>
@@ -177,7 +213,16 @@ export default function ReportsPage() {
               <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={data.byPayment} dataKey="value" nameKey="name" innerRadius={42} outerRadius={70} paddingAngle={2}>
+                    <Pie
+                      data={data.byPayment}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={70}
+                      paddingAngle={3}
+                      cornerRadius={6}
+                      stroke="none"
+                    >
                       {data.byPayment.map((_, i) => (
                         <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}

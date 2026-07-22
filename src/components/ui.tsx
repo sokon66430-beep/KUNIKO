@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import Link from "next/link";
 import { Loader2, X } from "lucide-react";
 
 export function PageHeader({
@@ -60,12 +61,16 @@ export function StatCard({
   sub,
   icon,
   accent = "brand",
+  href,
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   icon?: ReactNode;
   accent?: "brand" | "emerald" | "amber" | "violet" | "rose";
+  // Where this number's full report lives. Given, the whole card becomes a
+  // link — tap the stat, land on the detail behind it.
+  href?: string;
 }) {
   const accents: Record<string, string> = {
     brand: "bg-brand-50 text-brand-600",
@@ -74,8 +79,11 @@ export function StatCard({
     violet: "bg-violet-50 text-violet-600",
     rose: "bg-rose-50 text-rose-600",
   };
-  return (
-    <div className="stat card p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6">
+  const className = `stat card block p-4 transition-colors duration-200 hover:ring-slate-300 sm:p-6 ${
+    href ? "cursor-pointer hover:shadow-soft" : ""
+  }`;
+  const body = (
+    <>
       {/* Fixed header height so the VALUES line up across a row.
           It used to be max(label, icon): a one-line label gave 32px, two lines
           34, three 51 — so one long label dropped its number below its
@@ -101,8 +109,18 @@ export function StatCard({
         {value}
       </p>
       {sub && <p className="mt-2 text-[12px] text-slate-400 sm:mt-2.5 sm:text-[13px]">{sub}</p>}
-    </div>
+    </>
   );
+  // A stat that has a report behind it IS a link to that report; the rest stay
+  // plain surfaces.
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
 
 export function Badge({

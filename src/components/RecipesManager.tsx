@@ -23,7 +23,7 @@ import { SearchSelect } from "@/components/SearchSelect";
 import { confirmDialog } from "@/components/confirm";
 import { canManageRecipes } from "@/lib/access";
 import { usd, pct, num } from "@/lib/format";
-import { compatibleUnits, normalizeUnit, unitDimension } from "@/lib/units";
+import { normalizeUnit, unitChoices, unitDimension } from "@/lib/units";
 import { recipeCosting, recipeEconomics, stockUnitOf, ingredientAlerts, formatQty } from "@/lib/recipes";
 import { isShownOnPos } from "@/lib/pos";
 
@@ -789,7 +789,7 @@ function RecipeEditor({
                       <Select
                         value={item.unit}
                         onChange={(v) => updateItem(index, { unit: v })}
-                        options={compatibleUnits(p?.unit).map((u) => ({ value: u.code, label: u.code }))}
+                        options={unitChoices(p?.unit).map((u) => ({ value: u.code, label: u.code }))}
                       />
                     </div>
                     <div className="w-20 text-right">

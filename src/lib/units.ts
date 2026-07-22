@@ -31,6 +31,9 @@ export const UNITS: UnitDef[] = [
   { code: "L", label: "Litre (L)", dim: "volume", base: 1000 },
   { code: "pcs", label: "Pieces (pcs)", dim: "count", base: 1 },
   { code: "unit", label: "Unit", dim: "count", base: 1 },
+  // A slice IS one piece as far as stock goes — cheese and ham are stocked by
+  // the slice. It exists so a recipe can read "2 slices" instead of "2 pcs".
+  { code: "slice", label: "Slice", dim: "count", base: 1 },
   { code: "pack", label: "Pack", dim: "count", base: null },
   { code: "box", label: "Box", dim: "count", base: null },
 ];
@@ -72,6 +75,8 @@ const ALIASES: Record<string, string> = {
   ctn: "box",
   carton: "box",
   case: "box",
+  slices: "slice",
+  sl: "slice",
 };
 
 /** Resolve any spelling of a unit to a known code, or null if we don't know it. */
@@ -138,7 +143,8 @@ export function conversionProblem(
   const b = unitDef(to);
   if (!a) return `"${from || "—"}" isn't a unit the system knows`;
   if (!b) return `stock unit "${to || "—"}" isn't a unit the system knows`;
-  if (a.dim !== b.dim) return `can't convert ${a.code} (${a.dim}) into ${b.code} (${b.dim})`;
+  if (a.dim !== b.dim)
+    return `can't convert ${a.code} (${a.dim}) into ${b.code} (${b.dim}) — to cook this in ${a.code}, set the product's stock unit to a ${a.dim} unit in Master Data first`;
   if (unitBase(from, sizes) == null) return `set how many pieces are in one ${a.code} first`;
   if (unitBase(to, sizes) == null) return `set how many pieces are in one ${b.code} first`;
   return null;
@@ -149,6 +155,18 @@ export function compatibleUnits(stockUnit: string | undefined): UnitDef[] {
   const dim = unitDimension(stockUnit);
   if (!dim) return UNITS;
   return UNITS.filter((u) => u.dim === dim);
+}
+
+/**
+ * EVERY unit, the ones compatible with `stockUnit` first. The recipe editor
+ * lists them all — hiding kg/g/ml just looked like the system didn't have them.
+ * Picking an incompatible one gets the inline explanation (with the fix) from
+ * conversionProblem instead of a silent dead end.
+ */
+export function unitChoices(stockUnit: string | undefined): UnitDef[] {
+  const dim = unitDimension(stockUnit);
+  if (!dim) return UNITS;
+  return [...UNITS.filter((u) => u.dim === dim), ...UNITS.filter((u) => u.dim !== dim)];
 }
 
 /** Tidy display of a quantity + unit, e.g. "0.08 kg", "150 g", "3 pcs". */

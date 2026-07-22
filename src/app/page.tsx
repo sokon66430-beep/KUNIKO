@@ -128,6 +128,11 @@ export default function DashboardPage() {
   const { role, caps } = useAccess();
   const showProfit = role == null || canSeeProfit(role, caps);
 
+  // Every headline number links to the report behind it, carrying the range
+  // that's on screen so the report opens on the same period. A picked calendar
+  // day has no /reports equivalent, so those links land on the default view.
+  const reportHref = customDate ? "/reports" : `/reports?range=${range}`;
+
   return (
     <div>
       <PageHeader
@@ -196,6 +201,7 @@ export default function DashboardPage() {
               sub={`${riel(data.grossRevenue)} · ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
               icon={<DollarSign size={18} />}
               accent="brand"
+              href={reportHref}
             />
             <StatCard
               label="Discount"
@@ -209,6 +215,7 @@ export default function DashboardPage() {
               }
               icon={<TrendingDown size={18} />}
               accent="rose"
+              href="/promotion-reports"
             />
             <StatCard
               label="Net Sale"
@@ -216,6 +223,7 @@ export default function DashboardPage() {
               sub={`${num(data.txCount)} transaction${data.txCount === 1 ? "" : "s"}`}
               icon={<Receipt size={18} />}
               accent="brand"
+              href={reportHref}
             />
             {showProfit && (
               <StatCard
@@ -224,6 +232,7 @@ export default function DashboardPage() {
                 sub={`${pct(data.margin)} margin`}
                 icon={<TrendingUp size={18} />}
                 accent="emerald"
+                href={reportHref}
               />
             )}
           </div>
@@ -236,6 +245,7 @@ export default function DashboardPage() {
               sub={`across ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
               icon={<Package size={18} />}
               accent="violet"
+              href={reportHref}
             />
             <StatCard
               label="Sale per Ticket"
@@ -243,6 +253,7 @@ export default function DashboardPage() {
               sub={`${(data.txCount ? data.itemsSold / data.txCount : 0).toFixed(1)} items each`}
               icon={<Receipt size={18} />}
               accent="brand"
+              href={reportHref}
             />
             <StatCard
               label="Tickets"
@@ -250,6 +261,7 @@ export default function DashboardPage() {
               sub="customers served"
               icon={<Users size={18} />}
               accent="emerald"
+              href={reportHref}
             />
           </div>
 
