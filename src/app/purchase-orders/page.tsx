@@ -1317,34 +1317,40 @@ function ViewPOModal({
                 </button>
               )}
             </div>
-            {addQuery.trim() && (
-              <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-                {addable.hits.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => addLine(p)}
-                    className="flex w-full items-center justify-between gap-3 border-b border-slate-50 px-3 py-2 text-left last:border-0 hover:bg-brand-50"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold text-ink-800">{p.name}</span>
-                      <span className="block truncate text-[11.5px] text-slate-400">
-                        {p.sku}
-                        {p.barcode ? ` · ${p.barcode}` : ""}
-                      </span>
+            {/* The supplier's addable items are always listed — the store can just
+                scroll and tap to add, without having to know what to type first.
+                Typing narrows the same list. */}
+            <div className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+              {!addQuery.trim() && addable.total > addable.hits.length && (
+                <p className="border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-400">
+                  Showing {addable.hits.length} of {num(addable.total)} — type to narrow
+                </p>
+              )}
+              {addable.hits.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => addLine(p)}
+                  className="flex w-full items-center justify-between gap-3 border-b border-slate-50 px-3 py-2 text-left last:border-0 hover:bg-brand-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-semibold text-ink-800">{p.name}</span>
+                    <span className="block truncate text-[11.5px] text-slate-400">
+                      {p.sku}
+                      {p.barcode ? ` · ${p.barcode}` : ""}
                     </span>
-                    <span className="shrink-0 text-xs font-semibold text-slate-500">{usd(p.cost)}</span>
-                  </button>
-                ))}
-                {addable.hits.length === 0 && (
-                  <p className="px-3 py-4 text-center text-[12.5px] text-slate-400">
-                    {addable.total === 0
-                      ? `Every item ${po.supplier} supplies is already on this order.`
-                      : `No item from ${po.supplier} matches “${addQuery.trim()}”. Only their own range can go on this order.`}
-                  </p>
-                )}
-              </div>
-            )}
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-slate-500">{usd(p.cost)}</span>
+                </button>
+              ))}
+              {addable.hits.length === 0 && (
+                <p className="px-3 py-4 text-center text-[12.5px] text-slate-400">
+                  {addable.total === 0
+                    ? `Every item ${po.supplier} supplies is already on this order.`
+                    : `No item from ${po.supplier} matches “${addQuery.trim()}”. Only their own range can go on this order.`}
+                </p>
+              )}
+            </div>
           </div>
         </>
       )}
