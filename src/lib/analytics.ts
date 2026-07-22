@@ -1,5 +1,5 @@
 import type { DB, Sale } from "./types";
-import { storeToday, storeInstant, shortDay } from "./storetime";
+import { storeToday, storeInstant, shortDay, storeHour } from "./storetime";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const DAY_MS = 86_400_000;
@@ -200,13 +200,29 @@ export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string, 
   for (const s of sales) payMap.set(s.paymentMethod, round2((payMap.get(s.paymentMethod) || 0) + s.total));
   const byPayment = Array.from(payMap.entries()).map(([name, value]) => ({ name, value }));
 
-  // Hour-of-day distribution
+  // Hour-of-day distribution — in STORE time, so "14:00" means 2pm in the shop,
+  // not 2pm UTC (which is 9pm in Phnom Penh).
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, label: `${h}:00`, revenue: 0 }));
   for (const s of sales) {
-    const h = new Date(s.createdAt).getHours();
+    const h = storeHour(new Date(s.createdAt));
     hours[h].revenue = round2(hours[h].revenue + s.total);
   }
   const peakHours = hours.filter((h) => h.hour >= 7 && h.hour <= 21);
+
+  // Sales in 2-hour blocks across the day (00:00–01:59 … 22:00–23:59), store
+  // time. `tickets` is the number of transactions in the block ≈ how many
+  // customers came through in that window.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const salesByBlock = Array.from({ length: 12 }, (_, i) => {
+    const start = i * 2;
+    return { start, label: `${pad(start)}:00–${pad(start + 1)}:59`, tickets: 0, items: 0, revenue: 0 };
+  });
+  for (const s of sales) {
+    const blk = salesByBlock[Math.floor(storeHour(new Date(s.createdAt)) / 2)];
+    blk.tickets += 1;
+    blk.items += s.items.reduce((a, it) => a + it.qty, 0);
+    blk.revenue = round2(blk.revenue + s.total);
+  }
 
   // Inventory health
   const lowStock = db.products
@@ -244,6 +260,7 @@ export function buildStats(db: DB, range: RangeKey = "30d", customDay?: string, 
     byCategory,
     byPayment,
     peakHours,
+    salesByBlock,
     lowStock,
     lowStockCount: lowStock.length,
     inventoryValue,

@@ -23,6 +23,12 @@ export function storeToday(now: Date = new Date()): string {
   }).format(now);
 }
 
+/** The hour of the day (0–23) in the store's timezone. */
+export function storeHour(now: Date = new Date()): number {
+  const h = new Intl.DateTimeFormat("en-GB", { timeZone: STORE_TZ, hour: "2-digit", hour12: false }).format(now);
+  return Number(h) % 24; // hour12:false shows midnight as "24" in some engines
+}
+
 /** The wall-clock time in the shop right now, as "HH:MM" on a 24-hour clock. */
 export function storeTimeHHMM(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-GB", {

@@ -22,6 +22,8 @@ import {
   PackageCheck,
   ChefHat,
   TrendingDown,
+  Users,
+  Clock,
 } from "lucide-react";
 import { useFetch, useAccess } from "@/lib/client";
 import type { Stats, RangeKey } from "@/lib/analytics";
@@ -226,6 +228,31 @@ export default function DashboardPage() {
             )}
           </div>
 
+          {/* Volume: items sold, tickets (customers) and the average basket. */}
+          <div className="grid grid-cols-3 gap-4">
+            <StatCard
+              label="Items Sold"
+              value={num(data.itemsSold)}
+              sub={`across ${num(data.txCount)} sale${data.txCount === 1 ? "" : "s"}`}
+              icon={<Package size={18} />}
+              accent="violet"
+            />
+            <StatCard
+              label="Sale per Ticket"
+              value={usd(data.avgTicket)}
+              sub={`${(data.txCount ? data.itemsSold / data.txCount : 0).toFixed(1)} items each`}
+              icon={<Receipt size={18} />}
+              accent="brand"
+            />
+            <StatCard
+              label="Tickets"
+              value={num(data.txCount)}
+              sub="customers served"
+              icon={<Users size={18} />}
+              accent="emerald"
+            />
+          </div>
+
           {/* Revenue trend */}
           <Card>
             <div className="mb-4 flex items-center justify-between">
@@ -297,6 +324,70 @@ export default function DashboardPage() {
               );
             })()}
           </Card>
+
+          {/* Customers by hour — 2-hour blocks in store time. */}
+          {(() => {
+            const blocks = data.salesByBlock;
+            const firstIdx = blocks.findIndex((b) => b.tickets > 0);
+            const lastIdx = blocks.length - 1 - [...blocks].reverse().findIndex((b) => b.tickets > 0);
+            const shown = firstIdx >= 0 ? blocks.slice(firstIdx, lastIdx + 1) : [];
+            const maxRev = Math.max(1, ...blocks.map((b) => b.revenue));
+            const peak = shown.length ? shown.reduce((a, b) => (b.tickets > a.tickets ? b : a)) : null;
+            return (
+              <Card>
+                <div className="mb-1 flex items-center gap-2">
+                  <Clock size={16} className="text-brand-600" />
+                  <h3 className="text-base font-bold text-ink-900">Customers by Hour</h3>
+                </div>
+                <p className="mb-4 text-xs text-slate-500">Every 2 hours (store time) — when customers come in over the selected period</p>
+                {shown.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-400">No sales in this period.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                          <th className="py-2 pr-3 font-semibold">Time</th>
+                          <th className="px-3 py-2 text-right font-semibold">Customers</th>
+                          <th className="px-3 py-2 text-right font-semibold">Items</th>
+                          <th className="px-3 py-2 text-right font-semibold">Sales</th>
+                          <th className="hidden w-1/3 py-2 pl-3 sm:table-cell"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {shown.map((b) => (
+                          <tr
+                            key={b.start}
+                            className={`border-b border-slate-50 last:border-0 ${peak && b.start === peak.start ? "bg-brand-50/40" : ""}`}
+                          >
+                            <td className="whitespace-nowrap py-2 pr-3 font-semibold tabular-nums text-ink-800">
+                              {b.label}
+                              {peak && b.start === peak.start && (
+                                <span className="ml-1.5 rounded bg-brand-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-700">
+                                  Peak
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold tabular-nums text-ink-900">{num(b.tickets)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">{num(b.items)}</td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink-900">{usd(b.revenue)}</td>
+                            <td className="hidden py-2 pl-3 sm:table-cell">
+                              <div className="h-2 w-full rounded-full bg-slate-100">
+                                <div
+                                  className="h-2 rounded-full bg-brand-500"
+                                  style={{ width: `${Math.round((b.revenue / maxRev) * 100)}%` }}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            );
+          })()}
 
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Top products */}
