@@ -261,6 +261,10 @@ export function validateSellingUnits(
     const price = Number(rawUnit.price);
     if (!Number.isFinite(price) || price <= 0) return { ok: false, error: `What does one ${name} sell for?` };
 
+    // Buy cost is optional (a case may cost less than 24× a single). Never negative.
+    const costNum = Number(rawUnit.cost);
+    const cost = Number.isFinite(costNum) && costNum > 0 ? Math.round(costNum * 100) / 100 : undefined;
+
     const barcode = String(rawUnit.barcode || "").trim();
     if (barcode) {
       const clash = allProducts.find(
@@ -290,6 +294,7 @@ export function validateSellingUnits(
       sku,
       conversion,
       price: Math.round(price * 100) / 100,
+      cost,
       barcode: barcode || undefined,
       isDefault: !!rawUnit.isDefault,
       active: rawUnit.active !== false,

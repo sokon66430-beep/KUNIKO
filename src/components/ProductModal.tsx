@@ -34,6 +34,7 @@ function SellingUnitsEditor({
   units,
   baseName,
   basePrice,
+  baseCost,
   baseSku,
   readOnly = false,
   onChange,
@@ -41,11 +42,21 @@ function SellingUnitsEditor({
   units: SellingUnit[];
   baseName: string;
   basePrice: number;
+  baseCost: number;
   baseSku?: string;
   // Packaging is owned by Master Data — a store sees it but can't change it here.
   readOnly?: boolean;
   onChange: (units: SellingUnit[]) => void;
 }) {
+  // GP on a packaging level, VAT-inclusive (the sell price already contains 10%
+  // VAT, so profit is figured on the ex-VAT price) — the same rule as the base
+  // product above. Null when there's nothing to compute yet.
+  const gpOf = (u: SellingUnit) => {
+    const exVat = (u.price || 0) / 1.1;
+    const cost = u.cost || 0;
+    if (exVat <= 0 || cost <= 0) return null;
+    return { pct: ((exVat - cost) / exVat) * 100, profit: exVat - cost };
+  };
   const update = (index: number, patch: Partial<SellingUnit>) =>
     onChange(units.map((u, i) => (i === index ? { ...u, ...patch } : u)));
 
@@ -73,6 +84,9 @@ function SellingUnitsEditor({
         // a shop can then discount the multipack, which is the usual reason to
         // have one.
         price: conversion > 0 ? Math.round(basePrice * conversion * 100) / 100 : 0,
+        // Seed the cost from the base too (a plain multiple) — the buyer can then
+        // enter the real case cost, which is usually a bit cheaper.
+        cost: conversion > 0 ? Math.round(baseCost * conversion * 100) / 100 : 0,
         active: true,
       },
     ]);
@@ -132,6 +146,14 @@ function SellingUnitsEditor({
               <span className="text-[13px] font-semibold text-ink-900">{u.name || "—"}</span>
               <span className="text-[12px] text-slate-500">= {u.conversion} {baseName.toLowerCase()}s</span>
               <span className="ml-auto text-[12px] font-semibold tabular-nums text-slate-600">${u.price.toFixed(2)}</span>
+              {(() => {
+                const g = gpOf(u);
+                return g ? (
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g.pct >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                    GP {g.pct.toFixed(0)}%
+                  </span>
+                ) : null;
+              })()}
               {u.isDefault && (
                 <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600">
                   Default at till
@@ -217,6 +239,16 @@ function SellingUnitsEditor({
                     className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
                   />
                 </div>
+                <div className="w-24">
+                  <label className="label !mb-1 !text-[10px]">Cost</label>
+                  <input
+                    value={u.cost || ""}
+                    onChange={(e) => update(i, { cost: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    className="input !py-1.5 text-right text-[13px] font-semibold tabular-nums"
+                  />
+                </div>
                 <div className="min-w-[8rem] flex-1">
                   <label className="label !mb-1 !text-[10px]">Barcode</label>
                   <input
@@ -258,6 +290,19 @@ function SellingUnitsEditor({
                   />
                   Active
                 </label>
+                {(() => {
+                  const g = gpOf(u);
+                  return g ? (
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[11px] font-bold ${g.pct >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+                      title="Gross profit on the ex-VAT price (VAT 10%)"
+                    >
+                      GP {g.pct.toFixed(0)}% <span className="font-semibold opacity-80">· ${g.profit.toFixed(2)} profit</span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-400">Enter cost to see GP</span>
+                  );
+                })()}
                 {u.conversion > 1 && u.price > 0 && (
                   <span className="text-[11.5px] text-slate-400">
                     1 {u.name || "unit"} = {u.conversion} {baseName.toLowerCase()}s · $
@@ -748,6 +793,7 @@ export function ProductModal({
           units={form.sellingUnits || []}
           baseName={baseUnitName({ unit: form.unit || "" })}
           basePrice={priceN}
+          baseCost={costN}
           baseSku={form.sku || prefix || undefined}
           readOnly={packagingReadOnly}
           onChange={(units) => set("sellingUnits", units.length ? units : undefined)}

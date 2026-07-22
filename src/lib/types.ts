@@ -80,6 +80,7 @@ export type SellingUnit = {
   sku?: string;
   conversion: number; // base units in one of these — always 2 or more
   price: number; // USD for one of these (NOT per base unit)
+  cost?: number; // buy cost for one of these (a case may be cheaper than 24× a single)
   barcode?: string; // its own barcode; scanning it sells this level
   isDefault?: boolean; // what tapping the product at the till sells
   active?: boolean; // undefined = active
