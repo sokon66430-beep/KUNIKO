@@ -93,7 +93,7 @@ function SellingUnitsEditor({
   }
 
   return (
-    <div className="col-span-2 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+    <div className="col-span-2 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200 lg:col-span-4">
       <div className="mb-1 flex items-center justify-between">
         <p className="text-sm font-bold text-ink-900">Selling units</p>
         <p className="text-[11px] text-slate-400">
@@ -491,12 +491,12 @@ export function ProductModal({
         </>
       }
     >
-      <div className="mx-auto grid w-full max-w-3xl grid-cols-2 gap-3">
-        <div className="col-span-2">
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-4">
+        <div className="col-span-2 lg:col-span-4">
           <label className="label">Product name</label>
           <input className="input" value={form.name || ""} onChange={(e) => set("name", e.target.value)} />
         </div>
-        <div className="col-span-2">
+        <div className="col-span-2 lg:col-span-2">
           <label className="label">Product name (Khmer) — for price labels</label>
           <input
             className="input"
@@ -534,7 +534,7 @@ export function ProductModal({
             placeholder="e.g. 118"
           />
         </div>
-        <div className="col-span-2">
+        <div className="col-span-2 lg:col-span-3">
           <label className="label">Item ID</label>
           <input
             className="input tracking-[0.15em]"
@@ -547,7 +547,7 @@ export function ProductModal({
             {idPreview === "auto" ? "" : ` (${idPreview})`} from the sub‑group + category codes.
           </p>
         </div>
-        <div className="relative col-span-2">
+        <div className="relative col-span-2 lg:col-span-4">
           <label className="label">Category</label>
           <input
             className={`input ${linkedCategory ? "pr-8" : ""}`}
@@ -599,7 +599,7 @@ export function ProductModal({
             </p>
           )}
         </div>
-        <div className="relative">
+        <div className="relative lg:col-span-2">
           <label className="label">Supplier</label>
           <input
             className={`input ${linkedSupplier ? "pr-8" : ""}`}
@@ -654,7 +654,7 @@ export function ProductModal({
             </p>
           )}
         </div>
-        <div>
+        <div className="lg:col-span-2">
           <label className="label">Unit</label>
           <input className="input" value={form.unit || ""} onChange={(e) => set("unit", e.target.value)} />
           <p className="mt-1 text-[11px] text-slate-400">
@@ -727,7 +727,7 @@ export function ProductModal({
         </div>
         {/* Product photo — shown on the POS tile so the cashier spots fresh
             items fast. Nothing to do with the supplier-invoice photos. */}
-        <div className="col-span-2">
+        <div className="col-span-2 lg:col-span-4">
           <label className="label">Photo — shown on the POS</label>
           <div className="flex items-center gap-3">
             <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
@@ -774,7 +774,7 @@ export function ProductModal({
 
         {/* Which products the cashier can TAP at the till. Everything else is
             sold by scanning its barcode and never shows on the POS screen. */}
-        <label className="col-span-2 flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3">
+        <label className="col-span-2 flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3 lg:col-span-4">
           <span>
             <span className="block text-sm font-semibold text-ink-800">Show on POS</span>
             <span className="block text-[11px] leading-relaxed text-slate-400">
@@ -800,7 +800,7 @@ export function ProductModal({
           onChange={(units) => set("sellingUnits", units.length ? units : undefined)}
         />
 
-        <div className="col-span-2 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+        <div className="col-span-2 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 lg:col-span-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Gross Profit · VAT 10% incl.</p>
             <p className="text-[11px] text-slate-400">
