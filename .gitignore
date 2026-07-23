@@ -2,6 +2,7 @@
 /.next
 /out
 /build
+tsconfig.tsbuildinfo
 npm-debug.log*
 .DS_Store
 *.pem
