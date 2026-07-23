@@ -652,6 +652,7 @@ export type PurchaseOrder = {
   note?: string;
   expectedDate?: string;
   createdAt: string;
+  createdBy?: string; // who raised the order (optional — POs predate this field)
   sentToSupplier?: boolean; // ticked once the team has actually sent it out
   sentBy?: string; // who ticked "sent to supplier"
   sentAt?: string; // when it was marked sent (ISO)

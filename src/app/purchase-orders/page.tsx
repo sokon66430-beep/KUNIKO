@@ -1011,6 +1011,11 @@ function ViewPOModal({
   const [itemQuery, setItemQuery] = useState("");
   const [itemSort, setItemSort] = useState<ItemSort>("original");
 
+  // Stock on hand per line, read LIVE from the catalogue rather than stored on
+  // the order: a PO line is a frozen record of what was ordered, but "how many
+  // have we got right now" is only useful if it's current.
+  const stockById = useMemo(() => new Map(products.map((p) => [p.id, p.stock])), [products]);
+
   // Adding a line: only ever this supplier's own range. A PO is one document to
   // one supplier, so offering the whole 4,000-product catalog here would mostly
   // be offering them things they don't sell.
@@ -1287,6 +1292,9 @@ function ViewPOModal({
     >
       <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-500">
         <span>Created {dateTime(po.createdAt)}</span>
+        {/* Who raised it. Older orders predate the field and are backfilled from
+            the audit log; one with no record stays silent rather than guessing. */}
+        {po.createdBy && <span>By <b className="text-ink-700">{po.createdBy}</b></span>}
         {po.prNo && <span>From <b className="text-ink-700">{po.prNo}</b></span>}
         {po.expectedDate && <span>Expected {shortDate(po.expectedDate)}</span>}
       </div>
@@ -1424,6 +1432,7 @@ function ViewPOModal({
               <th className="w-10 px-3 py-2 text-right font-semibold">No</th>
               <th className="px-3 py-2 font-semibold">Product</th>
               {editing && <th className="px-3 py-2 text-center font-semibold">Unit cost</th>}
+              <th className="px-3 py-2 text-center font-semibold">On hand</th>
               <th className="px-3 py-2 text-center font-semibold">Ordered</th>
               <th className="px-3 py-2 text-center font-semibold">Received</th>
               <th className="px-3 py-2 text-right font-semibold">Line</th>
@@ -1453,6 +1462,25 @@ function ViewPOModal({
                       </span>
                     </td>
                   )}
+                  {/* Live stock. A product the store no longer carries has no
+                      figure at all — "—" rather than a 0 that reads as "none
+                      left" when the truth is "we don't know". */}
+                  <td className="px-3 py-2 text-center">
+                    {(() => {
+                      const s = stockById.get(it.productId);
+                      if (s == null) return <span className="text-slate-300">—</span>;
+                      return (
+                        <span
+                          className={`font-semibold tabular-nums ${
+                            s <= 0 ? "text-rose-600" : "text-slate-600"
+                          }`}
+                          title={s <= 0 ? "Out of stock" : "Stock on hand right now"}
+                        >
+                          {num(s)}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-3 py-2 text-center">
                     {editing ? (
                       <input
@@ -1504,8 +1532,8 @@ function ViewPOModal({
           </tbody>
           <tfoot>
             <tr className="bg-slate-50">
-              {/* +1 for the "No" column. */}
-              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={editing ? 5 : 4}>
+              {/* +1 for the "No" column, +1 for "On hand". */}
+              <td className="px-3 py-2.5 text-xs font-semibold uppercase text-slate-500" colSpan={editing ? 6 : 5}>
                 Total order value
                 {itemQuery && (
                   // The total is the whole order, so say so when the list isn't.

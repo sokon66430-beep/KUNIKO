@@ -108,6 +108,17 @@ function backfill(db: DB): DB {
     }
     db.meta.grnCostsFrozen = true;
   }
+  // "Created by" was added after these orders were raised. Backfill it from the
+  // "Created" audit entry so an existing PO still shows who placed it. Same
+  // idempotent rule as "Sent by" below: only fills blanks, and an order with no
+  // audit record is left unknown rather than credited to the wrong person.
+  for (const po of db.purchaseOrders || []) {
+    if (po.createdBy) continue;
+    const ev = (db.auditLog || []).find(
+      (a) => a.entityType === "PO" && a.entity === po.poNo && a.action === "Created",
+    );
+    if (ev) po.createdBy = ev.actor;
+  }
   // "Sent by" was added after some POs were already marked sent. Backfill who
   // sent each of those from the most recent "Marked sent" audit entry, so the
   // list shows accountability for old orders too. Idempotent (only fills blanks;

@@ -83,6 +83,7 @@ export async function POST(req: Request) {
       expectedDate: body.expectedDate || undefined,
       items: lines,
       createdAt: now.toISOString(),
+      createdBy: actor,
     };
     db.purchaseOrders.push(po);
     logAudit(db, {

@@ -60,6 +60,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         status: "Open",
         items,
         createdAt: now.toISOString(),
+        createdBy: actor,
       };
       db.purchaseOrders.push(po);
       affected.push(po);
