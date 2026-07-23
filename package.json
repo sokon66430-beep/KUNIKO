@@ -1,8 +1,8 @@
 {
-  "name": "monakom-pro",
+  "name": "stookii",
   "version": "1.0.0",
   "private": true,
-  "description": "Monakom Pro - all-in-one retail business management system (POS, Inventory, Customers, Reports)",
+  "description": "Stookii - all-in-one retail business management system (POS, Inventory, Customers, Reports)",
   "scripts": {
     "dev": "next dev -p 3200",
     "dev:https": "next dev --experimental-https -p 3200",

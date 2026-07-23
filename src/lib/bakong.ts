@@ -17,7 +17,7 @@ const { BakongKHQR, khqrData, IndividualInfo } = require("bakong-khqr");
 export type KhqrMode = "live" | "sim";
 
 const ACCOUNT_ID = process.env.BAKONG_ACCOUNT_ID?.trim() || "";
-const MERCHANT_NAME = process.env.BAKONG_MERCHANT_NAME?.trim() || "Monakom Pro Store";
+const MERCHANT_NAME = process.env.BAKONG_MERCHANT_NAME?.trim() || "Stookii Store";
 const MERCHANT_CITY = process.env.BAKONG_MERCHANT_CITY?.trim() || "Phnom Penh";
 const API_TOKEN = process.env.BAKONG_API_TOKEN?.trim() || "";
 const API_BASE = process.env.BAKONG_API_BASE?.trim() || "https://api-bakong.nbc.gov.kh";
@@ -29,7 +29,7 @@ export function khqrMode(): KhqrMode {
 export function bakongConfig() {
   return {
     mode: khqrMode(),
-    accountId: ACCOUNT_ID || "demo@monakom",
+    accountId: ACCOUNT_ID || "demo@stookii",
     merchantName: MERCHANT_NAME,
     merchantCity: MERCHANT_CITY,
     hasAccount: !!ACCOUNT_ID,
