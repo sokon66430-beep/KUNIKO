@@ -1,0 +1,36 @@
+name: CI
+
+# Typechecks and builds the Next.js app on every push and PR, so a change that
+# doesn't compile is caught before it reaches main.
+#
+# There is deliberately no lint step: the repo has no ESLint config or
+# dependency, and `next lint` would try to bootstrap one interactively and hang.
+# Add `eslint` + `eslint-config-next` first, then a lint step here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # npm ci, not npm install: the lockfile is authoritative, and it fails
+      # loudly if package.json and package-lock.json have drifted apart.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
