@@ -23,6 +23,8 @@ export type ReceiptPayload = {
   dateTime: string; // already formatted for the shop
   cashier?: string;
   items: ReceiptLine[];
+  // Promotion lines, mirrored from the on-screen receipt (name + amount off).
+  promotions?: { name: string; detail?: string; discount: number }[];
   discount: number;
   subtotal: number; // ex-VAT value of what's paid
   vat: number;
@@ -33,7 +35,15 @@ export type ReceiptPayload = {
   change?: number;
   customer?: string;
   queueNumber?: number | null;
+  // Invoice Customization — the printed receipt follows the same design the
+  // owner set on the Invoice Customization screen, exactly like the on-screen
+  // receipt does.
+  logo?: string; // data-URL image, printed at the top (when Show logo is on)
+  headerNote?: string;
   footerNote?: string;
+  showVat?: boolean; // false (the screen default) = just the total + "Includes VAT x%"
+  showPickup?: boolean;
+  vatPct?: number; // e.g. 10 — for the "Includes VAT 10%" note
   openDrawer: boolean; // pop the cash drawer (cash sales)
 };
 
@@ -77,7 +87,22 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function buildReceiptPayload(
   sale: Sale,
-  business: { name?: string; address?: string; phone?: string } | undefined,
+  business:
+    | {
+        name?: string;
+        address?: string;
+        phone?: string;
+        logo?: string;
+        vatRate?: number;
+        receipt?: {
+          headerNote?: string;
+          footerNote?: string;
+          showLogo?: boolean;
+          showVat?: boolean;
+          showPickup?: boolean;
+        };
+      }
+    | undefined,
   opts: { dateTime: string; rielTotal: number; footerNote?: string },
 ): ReceiptPayload {
   const items: ReceiptLine[] = sale.items.map((it) => ({
@@ -85,11 +110,20 @@ export function buildReceiptPayload(
     qtyLabel: it.unitName ? `${it.unitQty} × ${it.unitName}` : `${it.qty}`,
     lineTotal: round2(it.price * it.qty),
   }));
+  // Same rules as the on-screen ReceiptCard, so the paper receipt matches the
+  // design on the Invoice Customization screen exactly.
+  const r = business?.receipt || {};
+  const promotions = (sale.promotions || []).map((p) => ({
+    name: p.name,
+    detail: p.detail || undefined,
+    discount: round2(p.discount || 0),
+  }));
   return {
     store: { name: business?.name || "Stookii", address: business?.address, phone: business?.phone },
     invoiceNo: sale.invoiceNo || sale.id,
     dateTime: opts.dateTime,
     items,
+    promotions: promotions.length ? promotions : undefined,
     discount: round2(sale.discount || 0),
     subtotal: round2(sale.subtotal || 0),
     vat: round2(sale.tax || 0),
@@ -100,7 +134,12 @@ export function buildReceiptPayload(
     change: sale.change != null ? round2(sale.change) : undefined,
     customer: sale.customerName || undefined,
     queueNumber: sale.queueNumber ?? null,
-    footerNote: opts.footerNote,
+    logo: r.showLogo && business?.logo ? business.logo : undefined,
+    headerNote: r.headerNote || undefined,
+    footerNote: r.footerNote || opts.footerNote,
+    showVat: !!r.showVat, // screen default: off
+    showPickup: r.showPickup !== false, // screen default: on
+    vatPct: Math.round((business?.vatRate ?? 0.1) * 100),
     openDrawer: sale.paymentMethod === "Cash",
   };
 }

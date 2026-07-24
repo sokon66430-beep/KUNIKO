@@ -4,7 +4,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.IBinder
+import android.util.Base64
 import org.json.JSONObject
 import woyou.aidlservice.jiuiv5.ICallback
 import woyou.aidlservice.jiuiv5.IWoyouService
@@ -31,6 +34,10 @@ class SunmiPrinter(private val context: Context) {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             val s = IWoyouService.Stub.asInterface(binder)
             service = s
+            try {
+                s.printerInit(cb)
+            } catch (_: Exception) {
+            }
             while (pending.isNotEmpty()) pending.removeFirst()(s)
         }
 
@@ -64,18 +71,42 @@ class SunmiPrinter(private val context: Context) {
         }
     }
 
-    fun openDrawer() = run { it.openDrawer(cb) }
+    // The jiuiv5 interface has no cutPaper/openDrawer methods — both are driven
+    // by raw ESC/POS bytes, the same way Sunmi's own helpers do it.
+    private val CUT = byteArrayOf(0x1D, 0x56, 0x42, 0x00) // GS V B 0 — feed + full cut
+    private val KICK = byteArrayOf(0x10, 0x14, 0x00, 0x00, 0x00) // DLE DC4 — drawer pulse
 
-    /** Render + print the receipt described by the JSON payload from Stookii. */
+    private fun cut(s: IWoyouService) = s.sendRAWData(CUT, cb)
+    private fun kick(s: IWoyouService) = s.sendRAWData(KICK, cb)
+
+    fun openDrawer() = run { kick(it) }
+
+    /**
+     * Render + print the receipt described by the JSON payload from Stookii.
+     * Follows the store's Invoice Customization: logo, header note, whether the
+     * VAT breakdown and pickup number print, and the footer note — the same
+     * design rules as the on-screen receipt.
+     */
     fun printReceipt(json: String) = run { s ->
         val r = JSONObject(json)
         val store = r.optJSONObject("store") ?: JSONObject()
 
         s.setAlignment(1, cb) // centre
+        // Store logo (a data-URL image) at the top, when the owner turned it on.
+        r.optString("logo").takeIf { it.isNotBlank() }?.let { dataUrl ->
+            decodeLogo(dataUrl)?.let { bmp ->
+                try {
+                    s.printBitmap(bmp, cb)
+                    s.printText("\n", cb)
+                } catch (_: Exception) {
+                }
+            }
+        }
         s.printTextWithFont((store.optString("name", "Stookii") + "\n"), null, 30f, cb)
         s.setFontSize(22f, cb)
         store.optString("address").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
         store.optString("phone").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
+        r.optString("headerNote").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
 
         s.setAlignment(0, cb) // left
         s.printText(divider(), cb)
@@ -93,15 +124,37 @@ class SunmiPrinter(private val context: Context) {
             val amt = usd(it.optDouble("lineTotal"))
             s.printColumnsString(arrayOf("$qty  $name", amt), intArrayOf(22, 10), intArrayOf(0, 2), cb)
         }
+
+        // Promotion lines — name on the left, amount off on the right.
+        val promos = r.optJSONArray("promotions")
+        if (promos != null && promos.length() > 0) {
+            s.printText(divider(), cb)
+            for (i in 0 until promos.length()) {
+                val p = promos.getJSONObject(i)
+                s.printColumnsString(
+                    arrayOf(p.optString("name"), "-" + usd(p.optDouble("discount"))),
+                    intArrayOf(22, 10), intArrayOf(0, 2), cb,
+                )
+            }
+        }
         s.printText(divider(), cb)
 
         val discount = r.optDouble("discount", 0.0)
         if (discount > 0) row(s, "Discount", "-" + usd(discount))
-        row(s, "Subtotal (ex VAT)", usd(r.optDouble("subtotal")))
-        row(s, "VAT", usd(r.optDouble("vat")))
+        // The VAT breakdown only prints when Invoice Customization says so; the
+        // default design is just the total with an "Includes VAT x%" note.
+        val showVat = r.optBoolean("showVat", true)
+        if (showVat) {
+            row(s, "Subtotal (ex VAT)", usd(r.optDouble("subtotal")))
+            row(s, "VAT", usd(r.optDouble("vat")))
+        }
         s.setFontSize(28f, cb)
         row(s, "TOTAL", usd(r.optDouble("total")))
         s.setFontSize(22f, cb)
+        if (!showVat) {
+            val pct = r.optInt("vatPct", 10)
+            s.printText("Includes VAT $pct%\n", cb)
+        }
         s.setAlignment(2, cb)
         s.printText(khr(r.optLong("totalRiel")) + "\n", cb)
         s.setAlignment(0, cb)
@@ -112,7 +165,7 @@ class SunmiPrinter(private val context: Context) {
         if (!r.isNull("change")) row(s, "Change", usd(r.optDouble("change")))
         r.optString("customer").takeIf { it.isNotBlank() }?.let { row(s, "Customer", it) }
 
-        if (!r.isNull("queueNumber")) {
+        if (!r.isNull("queueNumber") && r.optBoolean("showPickup", true)) {
             s.printText("\n", cb)
             s.setAlignment(1, cb)
             s.printText("PICKUP NUMBER\n", cb)
@@ -123,9 +176,29 @@ class SunmiPrinter(private val context: Context) {
         r.optString("footerNote").takeIf { it.isNotBlank() }?.let { s.printText("\n$it\n", cb) }
         s.printText("\nThank you!\n", cb)
         s.lineWrap(3, cb)
-        s.cutPaper(cb)
+        cut(s)
 
-        if (r.optBoolean("openDrawer", false)) s.openDrawer(cb)
+        if (r.optBoolean("openDrawer", false)) kick(s)
+    }
+
+    /**
+     * Decode the receipt logo (a "data:image/...;base64,..." URL from Invoice
+     * Customization) and scale it to the printer head's width. Returns null on
+     * anything unexpected — the receipt then just prints without a logo.
+     */
+    private fun decodeLogo(dataUrl: String): Bitmap? {
+        return try {
+            val b64 = dataUrl.substringAfter("base64,", "")
+            if (b64.isBlank()) return null
+            val bytes = Base64.decode(b64, Base64.DEFAULT)
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            // 384 dots is the classic 58mm head; scale down only, never up.
+            val maxW = 360
+            if (bmp.width <= maxW) bmp
+            else Bitmap.createScaledBitmap(bmp, maxW, (bmp.height.toLong() * maxW / bmp.width).toInt().coerceAtLeast(1), true)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -177,8 +250,8 @@ class SunmiPrinter(private val context: Context) {
 
         s.printText("\n", cb)
         s.lineWrap(3, cb)
-        s.cutPaper(cb)
-        if (r.optBoolean("openDrawer", false)) s.openDrawer(cb)
+        cut(s)
+        if (r.optBoolean("openDrawer", false)) kick(s)
     }
 
     private fun row(s: IWoyouService, label: String, value: String) {
