@@ -572,9 +572,9 @@ export function SurveyModal({ shift, rate, onClose }: { shift: ShiftView; rate: 
     return (
       <ManagerGate
         title="Shift Survey — manager only"
-        hint="A store manager or assistant store manager must approve this shift survey. Enter your manager code to continue."
+        hint="A manager must approve this shift survey. Enter your POS PIN — the same 6-digit code you use to sign into the till (set in Job Schedule). The owner's password also works."
         actionLabel="Unlock survey"
-        codeLabel="Manager code"
+        codeLabel="Manager PIN"
         verify={async (code) => {
           const r = await api<{ ok: boolean; name: string }>("/api/verify-manager", { method: "POST", body: JSON.stringify({ code }) });
           setMgrCode(code);
