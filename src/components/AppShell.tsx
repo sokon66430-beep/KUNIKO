@@ -39,7 +39,7 @@ function ShellInner({ children }: { children: ReactNode }) {
   // the built-in baseline middleware already enforces) still sends the user
   // back to their dashboard, even for a client-side <Link> transition.
   useEffect(() => {
-    if (pathname === "/login" || pathname === "/register") return;
+    if (pathname === "/login" || pathname === "/register" || pathname === "/customer-display") return;
     let alive = true;
     fetch("/api/auth/session")
       .then((r) => (r.ok ? r.json() : null))
@@ -63,7 +63,7 @@ function ShellInner({ children }: { children: ReactNode }) {
   // try.
   useEffect(() => {
     if (!ready || !tillMode) return;
-    if (pathname === "/login" || pathname === "/register") return;
+    if (pathname === "/login" || pathname === "/register" || pathname === "/customer-display") return;
     if (!TILL_PATHS.includes(pathname)) router.replace("/pos");
   }, [ready, tillMode, pathname, router]);
 
@@ -79,6 +79,10 @@ function ShellInner({ children }: { children: ReactNode }) {
 
   if (pathname === "/login" || pathname === "/register") return <Suspense>{children}</Suspense>;
 
+  // The customer-facing second screen (Sunmi T3) is chrome-free: no sidebar, no
+  // till bar — it only mirrors the sale for the customer to watch.
+  if (pathname === "/customer-display") return <Suspense>{children}</Suspense>;
+
   // Locked till: slim bar, no sidebar, POS only. While a stray URL is being
   // bounced back to /pos, render nothing so the wrong page never flashes.
   if (ready && tillMode) {
@@ -91,7 +95,7 @@ function ShellInner({ children }: { children: ReactNode }) {
           {/* The POS fits the fixed frame (its product list scrolls inside its own
               column); Money Management is a normal page, so the frame scrolls for
               it. Either way the page itself stays pinned. */}
-          <div className={`mx-auto flex h-full max-w-6xl flex-col overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 lg:px-10 ${pathname === "/pos" ? "lg:overflow-hidden" : ""}`}>
+          <div className={`mx-auto flex h-full flex-col overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 lg:px-10 ${pathname === "/pos" ? "max-w-none lg:overflow-hidden" : "max-w-6xl"}`}>
             {TILL_PATHS.includes(pathname) ? <Suspense>{children}</Suspense> : null}
           </div>
         </main>
@@ -110,7 +114,7 @@ function ShellInner({ children }: { children: ReactNode }) {
             View-only access (Management / Board) — you can see everything but can&apos;t make changes.
           </div>
         )}
-        <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
+        <div className={`mx-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-10 ${pathname === "/pos" ? "max-w-none" : "max-w-6xl"}`}>
           <Suspense>{children}</Suspense>
         </div>
       </main>

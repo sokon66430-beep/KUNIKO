@@ -39,8 +39,28 @@ export type ReceiptPayload = {
 
 type Bridge = {
   printReceipt?: (json: string) => void;
+  printSlip?: (json: string) => void; // generic slip (safe drop, shift close…)
   openDrawer?: () => void;
   version?: () => string;
+};
+
+// A generic cash/till slip (Safe Drop, Bank Transfer, Shift Close, Shift Survey).
+// Unlike a sales receipt it has no items/VAT — just a titled list of rows — so it
+// gets its own simple shape the native side renders line by line.
+export type SlipLine =
+  | { t: "hr" }
+  | { t: "sec"; a: string } // a section heading
+  | { t: "row"; a: string; b: string; big?: boolean } // label + value
+  | { t: "center"; a: string } // centred note / verdict
+  | { t: "left"; a: string } // small left-aligned note
+  | { t: "sig"; a: string }; // a signature line ("Dropped by ____")
+
+export type SlipPayload = {
+  store: { name?: string; contact?: string };
+  title: string;
+  subtitle?: string;
+  lines: SlipLine[];
+  openDrawer?: boolean;
 };
 
 function bridge(): Bridge | null {
@@ -95,6 +115,27 @@ export function printThermalReceipt(payload: ReceiptPayload): boolean {
   if (!b?.printReceipt) return false;
   try {
     b.printReceipt(JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when the companion app can print a generic slip (newer app versions). */
+export function hasThermalSlip(): boolean {
+  return typeof bridge()?.printSlip === "function";
+}
+
+/**
+ * Print a generic cash/till slip on the built-in printer. Returns true if the
+ * native printer handled it; false if there's no printer (or an older companion
+ * app without slip support) so the caller can fall back to the on-screen slip.
+ */
+export function printThermalSlip(payload: SlipPayload): boolean {
+  const b = bridge();
+  if (!b?.printSlip) return false;
+  try {
+    b.printSlip(JSON.stringify(payload));
     return true;
   } catch {
     return false;

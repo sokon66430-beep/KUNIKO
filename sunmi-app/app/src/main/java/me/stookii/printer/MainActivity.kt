@@ -29,12 +29,17 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun printSlip(json: String) {
+            runOnUiThread { printer.printSlip(json) }
+        }
+
+        @JavascriptInterface
         fun openDrawer() {
             runOnUiThread { printer.openDrawer() }
         }
 
         @JavascriptInterface
-        fun version(): String = "1"
+        fun version(): String = "2"
     }
 
     @SuppressLint("SetJavaScriptEnabled")

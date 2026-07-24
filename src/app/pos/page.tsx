@@ -39,6 +39,7 @@ import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/typ
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
+import { publishCustomerDisplay } from "@/lib/customerDisplay";
 import { SearchSelect } from "@/components/SearchSelect";
 import { Select } from "@/components/Select";
 import { DatePicker } from "@/components/DatePicker";
@@ -580,6 +581,20 @@ export default function PosPage() {
         posTerminalId: terminal,
       }),
     });
+    // Second screen: show the customer "thank you" + their change, and hold that
+    // view (don't let clearing the cart flip it back to idle) until the next scan.
+    const paid = opts?.tendered;
+    const changeDue =
+      typeof paid === "number" ? Math.max(0, Math.round((paid - total) * 100) / 100) : undefined;
+    publishCustomerDisplay({
+      kind: "thanks",
+      storeName: business?.name || "ON Mart",
+      total,
+      paid,
+      change: changeDue,
+      method: payment,
+    });
+    suppressIdleRef.current = true;
     setReceipt(sale);
     setKhqrOpen(false);
     setCashOpen(false);
@@ -620,6 +635,39 @@ export default function PosPage() {
   }
 
   const cartCount = lines.reduce((s, l) => s + l.qty, 0);
+
+  // Mirror the sale onto the customer-facing second screen (Sunmi T3). When a
+  // payment dialog owns the screen (KHQR shows its own QR; a finished sale shows
+  // "thank you") we hold off so this effect doesn't overwrite it — the ref is
+  // set true right after publishing "thanks", so clearing the cart afterwards
+  // doesn't immediately flip the customer screen back to idle.
+  const storeName = business?.name || "ON Mart";
+  const suppressIdleRef = useRef(false);
+  useEffect(() => {
+    if (khqrOpen) return; // the KHQR dialog publishes its own view
+    if (lines.length > 0) {
+      suppressIdleRef.current = false;
+      publishCustomerDisplay({
+        kind: "sale",
+        storeName,
+        itemCount: cartCount,
+        total,
+        discount: discountNum,
+        lines: lines.map((l) => ({
+          name: l.product.name,
+          qty: l.qty,
+          lineTotal: linePrice(l) * l.qty,
+          unitLabel: l.unit.isBase ? undefined : l.unit.name,
+        })),
+      });
+    } else {
+      if (suppressIdleRef.current) {
+        suppressIdleRef.current = false; // keep "thank you" up until the next scan
+        return;
+      }
+      publishCustomerDisplay({ kind: "idle", storeName });
+    }
+  }, [lines, total, discountNum, cartCount, khqrOpen, storeName]);
 
   return (
     <div className={`${tillMode ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""} ${lines.length > 0 ? "pb-24 lg:pb-0" : ""}`.trim() || undefined}>
@@ -752,7 +800,7 @@ export default function PosPage() {
       {/* Cart on the LEFT, product grid on the RIGHT (like a menu-first till).
           Only the desktop order is swapped — on mobile the products stay on top
           with the sticky checkout bar below. */}
-      <div className={`grid gap-6 lg:grid-cols-[380px_1fr] ${tillMode ? "lg:min-h-0 lg:flex-1 lg:grid-rows-1" : ""}`}>
+      <div className={`grid gap-6 lg:grid-cols-[420px_1fr] xl:grid-cols-[480px_1fr] 2xl:grid-cols-[560px_1fr] ${tillMode ? "lg:min-h-0 lg:flex-1 lg:grid-rows-1" : ""}`}>
         {/* Scan-first till. Anything WITH a barcode is scan-only, so it never
             clutters the screen. Products with NO barcode can't be scanned (fresh
             food, made-to-order drinks…), so they're laid out here by category for
@@ -907,7 +955,7 @@ export default function PosPage() {
                hid half the categories off the right edge (no scrollbar to say
                so) and left the rest of the screen empty. Same tile grid as the
                products themselves, so both steps of the till look alike. */
-            <div>
+            <div className={tillMode ? "lg:flex lg:h-full lg:flex-col" : ""}>
               <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
                 Tap a category{" "}
                 <span className="font-semibold normal-case tracking-normal text-slate-400">
@@ -955,9 +1003,11 @@ export default function PosPage() {
               {/* Shift quick actions — Safe Drop / Shift Survey / Close Shift,
                   one tap from the till instead of opening the Cash Drawer first.
                   Each opens the shift screen straight into that action. */}
-              <div className="mt-5 border-t border-slate-100 pt-4">
+              <div className={`mt-5 border-t border-slate-100 pt-4 ${tillMode ? "lg:mt-auto" : ""}`}>
                 {/* On a till, Cash Drawer & Invoices live here (moved off the top
-                    toolbar) with the shift quick actions. */}
+                    toolbar) with the shift quick actions. On a big till screen the
+                    whole block sinks to the bottom (lg:mt-auto) so it uses the
+                    otherwise-empty lower half instead of crowding the categories. */}
                 {tillMode && (
                   <>
                     <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Till</p>
@@ -1273,6 +1323,7 @@ export default function PosPage() {
         <KhqrModal
           amount={total}
           billNumber={`MK-${Date.now().toString().slice(-6)}`}
+          storeName={business?.name || "ON Mart"}
           onCancel={() => setKhqrOpen(false)}
           onConfirmed={async (md5) => {
             try {
@@ -1552,7 +1603,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-soft">
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-soft lg:max-w-4xl xl:max-w-5xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="flex items-center gap-2 text-base font-bold text-ink-900"><ReceiptText size={18} className="text-brand-600" /> Invoices</h3>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X size={17} /></button>
@@ -1876,11 +1927,13 @@ function fmtCountdown(s: number) {
 function KhqrModal({
   amount,
   billNumber,
+  storeName,
   onCancel,
   onConfirmed,
 }: {
   amount: number;
   billNumber: string;
+  storeName: string;
   onCancel: () => void;
   onConfirmed: (md5: string) => void;
 }) {
@@ -1909,6 +1962,8 @@ function KhqrModal({
         if (!alive) return;
         setData(d);
         setStatus("waiting");
+        // Put the QR on the customer's second screen so they scan it themselves.
+        publishCustomerDisplay({ kind: "khqr", storeName, amount, qrImage: d.qrImage });
       })
       .catch((e) => {
         if (!alive) return;

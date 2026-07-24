@@ -128,6 +128,59 @@ class SunmiPrinter(private val context: Context) {
         if (r.optBoolean("openDrawer", false)) s.openDrawer(cb)
     }
 
+    /**
+     * Print a generic cash/till slip (Safe Drop, Bank Transfer, Shift Close,
+     * Shift Survey). Same printer, different shape from a sales receipt: a titled
+     * header then a flat list of typed lines the web app sends.
+     */
+    fun printSlip(json: String) = run { s ->
+        val r = JSONObject(json)
+        val store = r.optJSONObject("store") ?: JSONObject()
+
+        s.setAlignment(1, cb) // centre
+        s.printTextWithFont(store.optString("name", "Store") + "\n", null, 30f, cb)
+        s.setFontSize(22f, cb)
+        store.optString("contact").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
+        s.setFontSize(30f, cb)
+        s.printText(r.optString("title") + "\n", cb)
+        s.setFontSize(22f, cb)
+        r.optString("subtitle").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
+
+        s.setAlignment(0, cb) // left
+        val lines = r.optJSONArray("lines")
+        if (lines != null) for (i in 0 until lines.length()) {
+            val ln = lines.getJSONObject(i)
+            when (ln.optString("t")) {
+                "hr" -> s.printText(divider(), cb)
+                "sec" -> {
+                    s.printText("\n", cb)
+                    s.printText(ln.optString("a") + "\n", cb)
+                }
+                "row" -> {
+                    val big = ln.optBoolean("big", false)
+                    if (big) s.setFontSize(28f, cb)
+                    row(s, ln.optString("a"), ln.optString("b"))
+                    if (big) s.setFontSize(22f, cb)
+                }
+                "center" -> {
+                    s.setAlignment(1, cb)
+                    s.printText(ln.optString("a") + "\n", cb)
+                    s.setAlignment(0, cb)
+                }
+                "left" -> s.printText(ln.optString("a") + "\n", cb)
+                "sig" -> {
+                    s.printText("\n", cb)
+                    s.printText(ln.optString("a") + ": ______________\n", cb)
+                }
+            }
+        }
+
+        s.printText("\n", cb)
+        s.lineWrap(3, cb)
+        s.cutPaper(cb)
+        if (r.optBoolean("openDrawer", false)) s.openDrawer(cb)
+    }
+
     private fun row(s: IWoyouService, label: String, value: String) {
         s.printColumnsString(arrayOf(label, value), intArrayOf(20, 12), intArrayOf(0, 2), cb)
     }

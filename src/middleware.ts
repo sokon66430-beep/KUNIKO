@@ -12,6 +12,10 @@ export async function middleware(req: NextRequest) {
   const isPublic =
     pathname === "/login" ||
     pathname === "/register" ||
+    // The customer second screen shows only what the till broadcasts locally
+    // (no server data), so it needs no session — it just has to open on the
+    // Sunmi T3's second display without bouncing to /login.
+    pathname === "/customer-display" ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";

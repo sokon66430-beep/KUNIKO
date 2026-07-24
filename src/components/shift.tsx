@@ -29,6 +29,7 @@ import { Badge, StatCard, Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { usd, timeOnly } from "@/lib/format";
 import { CASH_DENOMS, RIEL_DENOMS, countTotal } from "@/lib/money";
+import { printThermalSlip, type SlipLine } from "@/lib/printer";
 import type { CashCount, CashMovementType } from "@/lib/types";
 
 export type Drawer = {
@@ -332,10 +333,54 @@ function denomLines(count: any) {
   return { usdLines, coinLine, rielLines };
 }
 
+// Turn the slip's generated HTML body into the flat line list the thermal
+// printer understands. The HTML is machine-made with a fixed set of classes
+// (.ln / .ln.big / .sec / .verdict / .ctr / .sub / .sig>.row + <hr>), so walking
+// the parsed nodes is reliable — no rewriting each slip builder.
+function slipHtmlToLines(inner: string): SlipLine[] {
+  const doc = new DOMParser().parseFromString(`<div id="r">${inner}</div>`, "text/html");
+  const root = doc.getElementById("r");
+  const out: SlipLine[] = [];
+  for (const el of Array.from(root?.children || [])) {
+    const tag = el.tagName.toLowerCase();
+    const cls = (el.getAttribute("class") || "").split(/\s+/);
+    const txt = (el.textContent || "").replace(/\s+/g, " ").trim();
+    if (tag === "hr") out.push({ t: "hr" });
+    else if (cls.includes("ln")) {
+      const s = el.querySelectorAll("span");
+      out.push({
+        t: "row",
+        a: (s[0]?.textContent || "").replace(/\s+/g, " ").trim(),
+        b: (s[1]?.textContent || "").replace(/\s+/g, " ").trim(),
+        ...(cls.includes("big") ? { big: true } : {}),
+      });
+    } else if (cls.includes("sec")) out.push({ t: "sec", a: txt });
+    else if (cls.includes("verdict")) out.push({ t: "center", a: txt });
+    else if (cls.includes("sig")) {
+      for (const row of Array.from(el.querySelectorAll(".row")))
+        out.push({ t: "sig", a: (row.textContent || "").trim() });
+    } else if (cls.includes("ctr")) out.push({ t: "center", a: txt });
+    else if (cls.includes("sub") && txt) out.push({ t: "left", a: txt });
+  }
+  return out;
+}
+
 // Wrap a slip body in the store header + style and fire the print dialog.
 function openSlip(title: string, subtitle: string, inner: string, business: any) {
   const b = business || {};
   const contact = [b.address, b.phone].filter(Boolean).join(" · ");
+  // On the Sunmi companion app: print straight to the built-in printer, no popup.
+  // Falls through to the on-screen slip below when there's no thermal printer
+  // (older app, or a plain browser).
+  if (
+    printThermalSlip({
+      store: { name: b.name || "Store", contact },
+      title,
+      subtitle,
+      lines: slipHtmlToLines(inner),
+    })
+  )
+    return;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${slipEsc(subtitle || title)}</title>
 <style>${SLIP_STYLE}</style></head><body>
   <div class="ctr">
