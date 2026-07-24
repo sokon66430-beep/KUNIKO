@@ -451,6 +451,7 @@ function printDropSlip(mv: any, shift: ShiftView, business: any) {
   ${mv?.id ? `<div class="ln"><span>Ref</span><span>${slipEsc(mv.id)}</span></div>` : ""}
   <hr>
   <div class="sec">DROPPED TO SAFE</div>
+  ${mv?.bagColor ? `<div class="ln"><span>Bag colour</span><span>${slipEsc(String(mv.bagColor).toUpperCase())}</span></div>` : ""}
   <div class="ln big"><span>Dollars</span><span>${slipMoney(usdPart)}</span></div>
   <div class="ln big"><span>Riel</span><span>${slipRiel(rielPart)}</span></div>
   <hr>
@@ -761,6 +762,17 @@ export function CashMovementsModal({ shift, onClose, onChanged }: { shift: Shift
   );
 }
 
+// The colour of the cash bag a safe drop goes into — picked on the drop form,
+// printed on the slip and shown in the report, so the safe count can match
+// each bag to its record at a glance.
+const BAG_COLORS = ["Red", "Green", "Blue", "White"] as const;
+const BAG_DOT: Record<string, string> = {
+  Red: "bg-red-500",
+  Green: "bg-emerald-500",
+  Blue: "bg-blue-500",
+  White: "bg-white ring-1 ring-slate-300",
+};
+
 const MV_META: Record<CashMovementType, { title: string; hint: string }> = {
   CASH_IN: { title: "Cash In", hint: "Change money, additional float, returned petty cash." },
   CASH_OUT: { title: "Cash Out", hint: "Store expense, emergency purchase, petty cash." },
@@ -845,6 +857,12 @@ export function SafeDropReport({ shiftId }: { shiftId: string }) {
           {drops.map((d) => (
             <div key={d.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
               <span className="w-12 shrink-0 text-xs font-semibold text-slate-400">{timeOnly(d.at)}</span>
+              {d.bagColor && (
+                <span
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${BAG_DOT[d.bagColor] || "bg-slate-300"}`}
+                  title={`${d.bagColor} bag`}
+                />
+              )}
               <span className="min-w-0 flex-1 truncate text-slate-500">{d.reason || "Safe drop"}</span>
               <span className="w-16 shrink-0 text-right font-bold tabular-nums text-brand-700">{d.usd > 0 ? usd(d.usd) : "—"}</span>
               <span className="w-20 shrink-0 text-right font-bold tabular-nums text-violet-700">{d.riel > 0 ? khr(d.riel) : "—"}</span>
@@ -908,7 +926,7 @@ export function BankDepositReport({ shiftId }: { shiftId: string }) {
 
 export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, rate, shift }: {
   type: CashMovementType; onClose: () => void;
-  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string; reference?: string }) => Promise<any>;
+  onSubmit: (p: { amountUsd: number; amountRiel: number; reason: string; notes?: string; reference?: string; bagColor?: string }) => Promise<any>;
   drawer: Drawer; drawerLimit: number; rate: number; shift?: ShiftView;
 }) {
   const { data: business } = useFetch<any>("/api/business");
@@ -923,6 +941,9 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   const reason = reasonSel === "Other" ? reasonOther.trim() : reasonSel;
   const [notes, setNotes] = useState("");
   const [reference, setReference] = useState("");
+  // Safe drop only — which colour cash bag the money goes into. Required, so
+  // every drop record names its bag.
+  const [bagColor, setBagColor] = useState("");
   const [busy, setBusy] = useState(false);
 
   // A Bank Deposit prints a slip and uses the store's one fixed bank (Settings).
@@ -964,13 +985,13 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
   async function go() {
     setBusy(true);
     try {
-      const created = await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined, reference: isDeposit ? reference.trim() || undefined : undefined });
+      const created = await onSubmit({ amountUsd, amountRiel, reason, notes: notes.trim() || undefined, reference: isDeposit ? reference.trim() || undefined : undefined, bagColor: type === "DROP" ? bagColor || undefined : undefined });
       // Safe drops and bank deposits print a slip (dollars & riel separate, date
       // & time). Fall back to what was entered if the server didn't echo it.
       if (prints && shift) {
         const mv = created && typeof created === "object"
           ? created
-          : { amountUsd, amountRiel, amount: totalUsd, reason, notes: notes.trim() || undefined, reference: reference.trim() || undefined, bank: bankName || undefined, at: new Date().toISOString(), createdBy: "" };
+          : { amountUsd, amountRiel, amount: totalUsd, reason, notes: notes.trim() || undefined, reference: reference.trim() || undefined, bagColor: bagColor || undefined, bank: bankName || undefined, at: new Date().toISOString(), createdBy: "" };
         if (isDeposit) printBankDepositSlip(mv, shift, business);
         else printDropSlip(mv, shift, business);
       }
@@ -1082,6 +1103,30 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
         )
       )}
       </>)}
+      {/* Which colour cash bag this drop goes into — one tap, printed on the
+          slip so the safe count can match bag to record. */}
+      {type === "DROP" && (
+        <div className="mb-3">
+          <label className="label">Bag colour</label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {BAG_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setBagColor(c)}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition active:scale-[0.97] ${
+                  bagColor === c
+                    ? "border-brand-300 bg-brand-50 text-brand-700 ring-2 ring-brand-200"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${BAG_DOT[c]}`} />
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="mb-3">
         <ReasonSelect label="Reason" options={MV_REASONS[type]} sel={reasonSel} onSel={setReasonSel} other={reasonOther} onOther={setReasonOther} />
       </div>
@@ -1094,7 +1139,7 @@ export function MovementModal({ type, onClose, onSubmit, drawer, drawerLimit, ra
     <Modal open onClose={onClose} size={showReport ? "2xl" : "lg"} title={meta.title} footer={
       <div className="flex w-full justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason || exceeds} onClick={go}>
+        <button className="btn-primary" disabled={busy || totalUsd <= 0 || !reason || exceeds || (type === "DROP" && !bagColor)} onClick={go}>
           {prints && <Printer size={16} />}
           {busy ? "Saving…" : isDeposit ? `Confirm & print ${usd(totalUsd)}` : prints ? `Record & print ${usd(totalUsd)}` : `Record ${usd(totalUsd)}`}
         </button>

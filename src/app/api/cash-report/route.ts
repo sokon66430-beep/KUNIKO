@@ -105,6 +105,7 @@ export async function GET(req: Request) {
     shift: shiftById.get(m.shiftId)?.shift ?? "—",
     by: m.createdBy,
     reason: m.reason,
+    bagColor: m.bagColor,
     // Pre-split drops carry only `amount` (USD) — show them as dollars.
     usd: round2(m.amountUsd ?? m.amount),
     riel: m.amountRiel ?? 0,

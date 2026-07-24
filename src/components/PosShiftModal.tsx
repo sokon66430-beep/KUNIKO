@@ -69,7 +69,7 @@ export function PosShiftModal({ terminal, initialAction, onClose }: { terminal: 
   }
 
   const [mv, setMv] = useState<CashMovementType | null>(null);
-  async function submitMovement(payload: { amountUsd: number; amountRiel: number; reason: string; notes?: string; reference?: string }) {
+  async function submitMovement(payload: { amountUsd: number; amountRiel: number; reason: string; notes?: string; reference?: string; bagColor?: string }) {
     if (!current) return;
     const wasDrop = mv === "DROP";
     const created = await api("/api/cash-movements", { method: "POST", body: JSON.stringify({ shiftId: current.id, type: mv, ...payload }) });

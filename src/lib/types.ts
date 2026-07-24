@@ -563,6 +563,7 @@ export type CashMovement = {
   amount: number; // USD-equivalent total (usd part + riel/rate) — drives the drawer
   amountUsd?: number; // the dollars part, as entered
   amountRiel?: number; // the riel part, note face value (e.g. 100000) — kept separate
+  bagColor?: string; // DROP only — colour of the cash bag dropped to the safe (Red/Green/Blue/White)
   reason: string;
   notes?: string;
   attachment?: string; // optional photo/receipt data-URL (cash out)

@@ -7,18 +7,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound } from "lucide-react";
+import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon } from "lucide-react";
 import { useFetch } from "@/lib/client";
+import { useTheme } from "@/components/theme";
 import { useTillMode } from "@/lib/tillmode";
 import { ManagerGate } from "@/components/ManagerGate";
 import { Modal } from "@/components/ui";
 
-type SessionInfo = { user: { name: string; storeName: string } };
+type SessionInfo = { user: { name: string; storeName: string; role?: string } };
 type ShiftsData = { shifts: { posTerminalId: string; status: string; shift: string }[] };
 
 export function TillBar() {
   const router = useRouter();
   const { setTillMode, kiosk } = useTillMode();
+  const { theme, toggle } = useTheme();
   const { data: session } = useFetch<SessionInfo>("/api/auth/session");
   const { data: shiftData } = useFetch<ShiftsData>("/api/shifts");
 
@@ -84,6 +86,17 @@ export function TillBar() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Dark / light switch — same control as the desktop sidebar, so the
+              till screen can be flipped for day and night shifts. */}
+          <button
+            type="button"
+            onClick={toggle}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-ink-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
           <div className="hidden items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-right sm:flex dark:bg-slate-800/60">
             <div className="leading-tight">
               <div className="text-xs font-bold tabular-nums text-ink-900 dark:text-slate-100">{timeLabel}</div>
@@ -113,8 +126,9 @@ export function TillBar() {
                 <LogOut size={16} className="text-slate-400" /> Log out
               </button>
               {/* A kiosk device is permanently a till — no exit, even for the
-                  owner. Manage the store from another device instead. */}
-              {!kiosk && (
+                  owner. And on any till, ONLY the owner even sees the exit:
+                  staff signed into the POS can't leave Till Mode at all. */}
+              {!kiosk && session?.user.role === "owner" && (
                 <button
                   onClick={() => { setMenuOpen(false); setGate(true); }}
                   className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"

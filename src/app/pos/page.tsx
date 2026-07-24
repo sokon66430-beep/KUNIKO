@@ -31,6 +31,9 @@ import {
   MonitorCheck,
   ArrowLeftRight,
   Landmark,
+  PauseCircle,
+  PlayCircle,
+  Clock,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
@@ -40,6 +43,7 @@ import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/ma
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
 import { usd, riel, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
 import { publishCustomerDisplay } from "@/lib/customerDisplay";
+import { loadHeld, saveHeld, type HeldOrder } from "@/lib/heldOrders";
 import { SearchSelect } from "@/components/SearchSelect";
 import { Select } from "@/components/Select";
 import { DatePicker } from "@/components/DatePicker";
@@ -131,6 +135,13 @@ export default function PosPage() {
     setTerminal(v);
     if (typeof window !== "undefined") window.localStorage.setItem("stookii_pos_terminal", v);
   };
+  // Held (parked) orders — per till, kept on the device so Hold/Resume works
+  // offline. Loaded once the till id is known; refreshed whenever it changes.
+  const [held, setHeld] = useState<HeldOrder<Record<string, CartLine>>[]>([]);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  useEffect(() => {
+    setHeld(loadHeld<Record<string, CartLine>>(terminal));
+  }, [terminal]);
   const [submitting, setSubmitting] = useState(false);
   const [khqrOpen, setKhqrOpen] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
@@ -457,6 +468,46 @@ export default function PosPage() {
     setDiscount("");
     setCustomerId("");
     setPayment("Cash");
+  }
+
+  // Hold / Resume — park the current sale on this till and serve the next
+  // customer, then recall it. Device-local, so it works with no internet.
+  const snapshotCart = (): HeldOrder<Record<string, CartLine>> => ({
+    id: `H${Date.now()}${Math.random().toString(36).slice(2, 5)}`,
+    at: new Date().toISOString(),
+    total,
+    count: cartCount,
+    customerId,
+    discount,
+    wantQueue,
+    cart,
+  });
+  function holdOrder() {
+    if (lines.length === 0) return;
+    const list = [snapshotCart(), ...held];
+    setHeld(list);
+    saveHeld(terminal, list);
+    clearCart();
+    setWantQueue(false);
+  }
+  function resumeOrder(o: HeldOrder<Record<string, CartLine>>) {
+    // Take the chosen order OUT of the held list, and if a sale is in progress
+    // park it in the same step so nothing is lost (computed atomically to avoid
+    // a stale-state race between the two updates).
+    let list = held.filter((h) => h.id !== o.id);
+    if (lines.length > 0) list = [snapshotCart(), ...list];
+    setHeld(list);
+    saveHeld(terminal, list);
+    setCart(o.cart);
+    setDiscount(o.discount || "");
+    setCustomerId(o.customerId || "");
+    setWantQueue(!!o.wantQueue);
+    setResumeOpen(false);
+  }
+  function deleteHeld(id: string) {
+    const list = held.filter((h) => h.id !== id);
+    setHeld(list);
+    saveHeld(terminal, list);
   }
 
   // Shared scan handler for BOTH scan paths (hardware keyboard-wedge scanner and
@@ -808,7 +859,9 @@ export default function PosPage() {
         {/* min-w-0 so the swipeable category row scrolls INSIDE this column
             instead of stretching the grid and overflowing the page.
             order-2 on desktop puts the products on the RIGHT. */}
-        <div className={`min-w-0 lg:order-2 ${tillMode ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""}`}>
+        {/* On a till the product side is a contained card, matching the Current
+            Sale panel — one clean frame instead of loose elements on the page. */}
+        <div className={`min-w-0 lg:order-2 ${tillMode ? "card p-4 lg:flex lg:h-full lg:min-h-0 lg:flex-col" : ""}`}>
           <div className={`mb-4 flex items-center gap-2 ${tillMode ? "lg:shrink-0" : ""}`}>
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -853,7 +906,10 @@ export default function PosPage() {
 
           {/* On a till this is the ONLY thing that scrolls — the frame, header
               and cart stay pinned so the screen never moves. */}
-          <div className={tillMode ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-1" : ""}>
+          {/* p-1/-m-1: the scroll box clips anything outside its edge, which was
+              shaving the 1px border off the left column of tiles — a sliver of
+              padding keeps every box border fully visible without moving them. */}
+          <div className={tillMode ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1 lg:-m-1 lg:pr-1" : ""}>
           {searching ? (
             /* Search results — for a damaged/missing barcode the cashier can
                still find the item by name or Item ID. */
@@ -1084,11 +1140,32 @@ export default function PosPage() {
                 <ShoppingCart size={18} className="text-brand-600" />
                 <h3 className="font-bold text-ink-900">Current Sale</h3>
               </div>
-              {lines.length > 0 && (
-                <button onClick={clearCart} className="text-xs font-semibold text-slate-400 hover:text-rose-500">
-                  Clear
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {/* Held orders live here so the cashier can recall one even with an
+                    empty cart (start of a fresh sale). */}
+                {held.length > 0 && (
+                  <button
+                    onClick={() => setResumeOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                  >
+                    <PlayCircle size={13} /> Held ({num(held.length)})
+                  </button>
+                )}
+                {lines.length > 0 && (
+                  <button
+                    onClick={holdOrder}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:text-brand-700"
+                    title="Park this sale and serve the next customer"
+                  >
+                    <PauseCircle size={13} /> Hold
+                  </button>
+                )}
+                {lines.length > 0 && (
+                  <button onClick={clearCart} className="text-xs font-semibold text-slate-400 hover:text-rose-500">
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -1358,6 +1435,15 @@ export default function PosPage() {
       {/* Receipt modal */}
       {receipt && <ReceiptModal sale={receipt} business={business ?? undefined} onClose={() => setReceipt(null)} />}
 
+      {resumeOpen && (
+        <HeldOrdersModal
+          held={held}
+          onResume={resumeOrder}
+          onDelete={deleteHeld}
+          onClose={() => setResumeOpen(false)}
+        />
+      )}
+
       {/* Turn this device into a locked till — owner password required. */}
       {tillGate && (
         <ManagerGate
@@ -1469,6 +1555,75 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ros
     <div className="flex items-center justify-between">
       <span className="text-slate-500">{label}</span>
       <span className={tone === "rose" ? "font-semibold text-rose-600" : "font-semibold text-ink-800"}>{value}</span>
+    </div>
+  );
+}
+
+// Held-orders list: recall a parked sale, or drop one that's no longer needed.
+function HeldOrdersModal({
+  held,
+  onResume,
+  onDelete,
+  onClose,
+}: {
+  held: HeldOrder<Record<string, CartLine>>[];
+  onResume: (o: HeldOrder<Record<string, CartLine>>) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-soft">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h3 className="flex items-center gap-2 text-base font-bold text-ink-900">
+            <PauseCircle size={18} className="text-amber-500" /> Held orders
+          </h3>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-ink-900"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {held.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-400">No held orders.</p>
+          ) : (
+            <div className="space-y-2">
+              {held.map((o) => (
+                <div key={o.id} className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1.5 text-sm font-bold text-ink-900">
+                      {usd(o.total)}
+                      <span className="font-normal text-slate-400">
+                        · {num(o.count)} item{o.count === 1 ? "" : "s"}
+                      </span>
+                    </p>
+                    <p className="flex items-center gap-1 text-[11px] text-slate-400">
+                      <Clock size={11} /> {dateTime(o.at)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onResume(o)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-700"
+                  >
+                    <PlayCircle size={14} /> Resume
+                  </button>
+                  <button
+                    onClick={() => onDelete(o.id)}
+                    aria-label="Delete held order"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

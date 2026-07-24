@@ -86,6 +86,9 @@ export async function POST(req: Request) {
     const isDeposit = type === "BANK_DEPOSIT";
     const bank = isDeposit ? (db.meta.business?.bankAccount?.name || "").trim() || undefined : undefined;
     const reference = isDeposit ? String(body.reference || "").trim() || undefined : undefined;
+    // A safe drop records which colour cash bag went into the safe, so the safe
+    // count can match each bag to its slip.
+    const bagColor = type === "DROP" ? String(body.bagColor || "").trim().slice(0, 20) || undefined : undefined;
 
     const isSupervisor = canApproveCash(session.role);
     const now = new Date().toISOString();
@@ -97,6 +100,7 @@ export async function POST(req: Request) {
       amount,
       amountUsd,
       amountRiel,
+      bagColor,
       reason,
       notes: body.notes ? String(body.notes) : undefined,
       attachment: typeof body.attachment === "string" && body.attachment ? body.attachment : undefined,
@@ -111,7 +115,7 @@ export async function POST(req: Request) {
     };
     db.cashMovements.push(m);
     const money = `$${amountUsd.toFixed(2)}${amountRiel ? ` + ${amountRiel.toLocaleString()}៛` : ""} (= $${amount.toFixed(2)})`;
-    const bankNote = isDeposit ? ` · ${bank || "bank"}${reference ? ` · ref ${reference}` : ""}` : "";
+    const bankNote = isDeposit ? ` · ${bank || "bank"}${reference ? ` · ref ${reference}` : ""}` : bagColor ? ` · ${bagColor} bag` : "";
     logAudit(db, {
       actor,
       action: "Recorded",
