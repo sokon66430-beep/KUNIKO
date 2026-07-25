@@ -102,9 +102,11 @@ export default function CustomerDisplayPage() {
     ["--cd-shadow" as any]: light ? "0 12px 34px rgba(24,36,70,0.10)" : "0 14px 40px rgba(0,0,0,0.36)",
   };
 
-  // Between customers, the promo pictures take the WHOLE screen (no chrome) —
-  // it's a billboard until the next scan.
-  const idle = !state || state.kind === "idle";
+  // Between customers — no sale, OR a sale with nothing scanned yet — the promo
+  // pictures take the WHOLE screen (no receipt panel). The receipt only appears
+  // once the first product is scanned.
+  const idle =
+    !state || state.kind === "idle" || (state.kind === "sale" && state.lines.length === 0);
   if (idle && c.ads.length > 0) {
     return (
       <div className="cd-root" style={vars}>
@@ -114,9 +116,9 @@ export default function CustomerDisplayPage() {
     );
   }
 
-  // While scanning: full-screen split like the store's own display — the
-  // advertisement on the LEFT, the order receipt on the RIGHT.
-  if (state?.kind === "sale") {
+  // While scanning (at least one item): full-screen split like the store's own
+  // display — the advertisement on the LEFT, the order receipt on the RIGHT.
+  if (state?.kind === "sale" && state.lines.length > 0) {
     return (
       <div className="cd-root" style={vars}>
         <style>{CSS}</style>
@@ -433,22 +435,24 @@ const CSS = `
 .cd-vat { font-size: 14px; color: var(--cd-muted); margin-top: 10px; }
 
 /* ── Scanning screen: advertisement LEFT | order receipt RIGHT ──────────── */
-.cd-screen { position: fixed; inset: 0; display: grid; grid-template-columns: 1.3fr 1fr; background: var(--cd-bg); }
+.cd-screen { position: fixed; inset: 0; display: grid; grid-template-columns: 1.8fr 1fr; background: var(--cd-bg); }
 .cd-adcol { position: relative; display: flex; overflow: hidden; background: #000; }
 .cd-adcol .cd-adpane { flex: 1; }
 .cd-adcol .cd-adpane-img { border-radius: 0; box-shadow: none; }
 .cd-brandad { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--cd-bg); color: var(--cd-fg); }
 /* The receipt reads like a paper slip — light panel, dark ink — matching the store's display. */
-.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #1a2338; padding: 40px 40px 34px; min-height: 0; }
+.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #1a2338; padding: 30px 26px 28px; min-height: 0; }
 .cd-r-head { font-size: clamp(20px, 2.1vw, 30px); font-weight: 800; letter-spacing: 0; color: #1a2338; padding-bottom: 18px; }
 /* Columns in REM (not em) so the small-font header and larger-font rows share
    the exact same column widths — otherwise Price/Qty/Amount don't line up. */
-.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 6.4rem 2.8rem 7rem; gap: 10px; align-items: baseline; }
+.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5rem 2rem 5.4rem; gap: 8px; align-items: center; }
 .cd-r-hrow { color: #9aa5bd; font-weight: 600; font-size: clamp(11px, 1vw, 13px); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0 12px; border-bottom: 1px solid #edf0f5; }
 .cd-r-hrow span:not(:first-child) { text-align: right; }
 .cd-r-rows { flex: 1; overflow-y: auto; min-height: 0; }
-.cd-r-row { padding: 16px 0; border-bottom: 1px solid #f4f6f9; font-size: clamp(14px, 1.35vw, 19px); }
-.cd-r-name { font-weight: 600; color: #1a2338; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-r-row { padding: 14px 0; border-bottom: 1px solid #f4f6f9; font-size: clamp(13px, 1.15vw, 17px); }
+/* Product name may wrap to two lines so it's never cut mid-word. */
+.cd-r-name { font-weight: 600; color: #1a2338; overflow: hidden; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
 .cd-r-num { text-align: right; font-variant-numeric: tabular-nums; color: #55617b; }
 .cd-r-amt { font-weight: 700; color: #1a2338; }
 /* Riel as the main figure, the dollar small underneath (right-aligned). */
