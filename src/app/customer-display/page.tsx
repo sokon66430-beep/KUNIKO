@@ -252,17 +252,28 @@ function SaleScreen({
           {state.lines.length === 0 ? (
             <p className="cd-r-empty">Scanning…</p>
           ) : (
-            state.lines.map((l, i) => (
-              <div className="cd-r-row" key={i}>
-                <span className="cd-r-name">
-                  {l.name}
-                  {l.unitLabel ? ` · ${l.unitLabel}` : ""}
-                </span>
-                <span className="cd-r-num">{usd(l.qty ? l.lineTotal / l.qty : l.lineTotal)}</span>
-                <span className="cd-r-num">{num(l.qty)}</span>
-                <span className="cd-r-num cd-r-amt">{usd(l.lineTotal)}</span>
-              </div>
-            ))
+            state.lines.map((l, i) => {
+              const unit = l.qty ? l.lineTotal / l.qty : l.lineTotal;
+              return (
+                <div className="cd-r-row" key={i}>
+                  <span className="cd-r-name">
+                    {l.name}
+                    {l.unitLabel ? ` · ${l.unitLabel}` : ""}
+                  </span>
+                  {/* Riel is the main figure (rounded up to 100៛), the dollar
+                      small beneath it. */}
+                  <span className="cd-r-num cd-r-money">
+                    <b>៛{num(rielShelfPrice(unit))}</b>
+                    <em>{usd(unit)}</em>
+                  </span>
+                  <span className="cd-r-num">{num(l.qty)}</span>
+                  <span className="cd-r-num cd-r-money cd-r-amt">
+                    <b>៛{num(rielShelfPrice(l.lineTotal))}</b>
+                    <em>{usd(l.lineTotal)}</em>
+                  </span>
+                </div>
+              );
+            })
           )}
         </div>
 
@@ -432,7 +443,7 @@ const CSS = `
 .cd-r-head { font-size: clamp(20px, 2.1vw, 30px); font-weight: 800; letter-spacing: 0; color: #1a2338; padding-bottom: 18px; }
 /* Columns in REM (not em) so the small-font header and larger-font rows share
    the exact same column widths — otherwise Price/Qty/Amount don't line up. */
-.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5.4rem 3rem 6rem; gap: 10px; align-items: baseline; }
+.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 6.4rem 2.8rem 7rem; gap: 10px; align-items: baseline; }
 .cd-r-hrow { color: #9aa5bd; font-weight: 600; font-size: clamp(11px, 1vw, 13px); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0 12px; border-bottom: 1px solid #edf0f5; }
 .cd-r-hrow span:not(:first-child) { text-align: right; }
 .cd-r-rows { flex: 1; overflow-y: auto; min-height: 0; }
@@ -440,6 +451,11 @@ const CSS = `
 .cd-r-name { font-weight: 600; color: #1a2338; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-r-num { text-align: right; font-variant-numeric: tabular-nums; color: #55617b; }
 .cd-r-amt { font-weight: 700; color: #1a2338; }
+/* Riel as the main figure, the dollar small underneath (right-aligned). */
+.cd-r-money { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; gap: 1px; }
+.cd-r-money b { font-weight: 700; color: #1a2338; }
+.cd-r-money em { font-style: normal; font-size: 0.72em; font-weight: 500; color: #949db2; }
+.cd-r-num.cd-r-money { color: #1a2338; }
 .cd-r-empty { color: #aab3c6; font-size: 20px; padding: 26px 0; }
 .cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #e4e8ef; padding-top: 20px; margin-top: 8px; }
 .cd-r-col { display: flex; flex-direction: column; gap: 10px; padding: 0 26px; min-width: 0; }
