@@ -353,21 +353,23 @@ const CSS = `
 .cd-buy { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
 .cd-buy .cd-list { flex: 1; }
 .cd-buy .cd-totcard { flex: 0 0 auto; }
-.cd-adpane { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
-.cd-adpane-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 26px; box-shadow: var(--cd-shadow); }
+.cd-adpane { position: relative; min-height: 0; }
+/* The ad FILLS the whole advertising pane (edge to edge), cropping to fit — the
+   entire 60% is the advertisement, not a small floating card. */
+.cd-adpane-img { width: 100%; height: 100%; object-fit: cover; border-radius: 24px; box-shadow: var(--cd-shadow); display: block; }
 .cd-adpane .cd-dots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); margin: 0; }
 
 /* Sale — item list + total card */
 .cd-sale { flex: 1; display: grid; grid-template-columns: 1fr 40%; min-height: 0; gap: 8px; padding: 8px 20px 24px; }
-.cd-list { overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
-.cd-empty { color: var(--cd-muted); font-size: 30px; font-weight: 600; margin: auto; }
+.cd-list { overflow-y: auto; padding: 10px 10px; display: flex; flex-direction: column; gap: 7px; }
+.cd-empty { color: var(--cd-muted); font-size: 22px; font-weight: 600; margin: auto; }
 .cd-line {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px;
-  padding: 20px 26px; border-radius: 22px; background: var(--cd-card); box-shadow: var(--cd-shadow);
-  font-size: clamp(21px, 2.3vw, 32px);
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  padding: 11px 16px; border-radius: 14px; background: var(--cd-card); box-shadow: var(--cd-shadow);
+  font-size: clamp(15px, 1.5vw, 21px);
   animation: cd-slide 0.28s ease;
 }
-.cd-qty { font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; background: var(--cd-soft); border-radius: 12px; padding: 4px 12px; }
+.cd-qty { font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; background: var(--cd-soft); border-radius: 8px; padding: 2px 9px; font-size: 0.9em; }
 .cd-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-name em { font-style: normal; color: var(--cd-muted); font-weight: 500; }
 .cd-lt { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
