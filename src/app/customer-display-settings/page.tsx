@@ -42,7 +42,7 @@ export default function CustomerScreenSettingsPage() {
   useEffect(() => {
     if (!data || seeded) return;
     const c = data.customerDisplay || {};
-    setTheme(c.theme === "light" ? "light" : "dark");
+    setTheme(c.theme === "dark" ? "dark" : "light");
     setBrandName(c.brandName ?? "ON MART");
     setAccent(c.accent || "#6ea0ff");
     setWelcomeLine(c.welcomeLine ?? "Welcome · សូមស្វាគមន៍");

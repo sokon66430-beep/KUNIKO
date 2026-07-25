@@ -85,7 +85,7 @@ export async function PATCH(req: Request) {
             .slice(0, 6)
         : [];
       b.customerDisplay = {
-        theme: c.theme === "light" ? "light" : "dark",
+        theme: c.theme === "dark" ? "dark" : "light",
         brandName: String(c.brandName || "").slice(0, 40),
         accent: hex(c.accent, "#3b82f6"),
         welcomeLine: String(c.welcomeLine || "").slice(0, 80),

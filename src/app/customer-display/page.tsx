@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, QrCode, ShoppingBag } from "lucide-react";
-import { usd, riel, num } from "@/lib/format";
+import { usd, riel, num, rielShelfPrice } from "@/lib/format";
 import {
   type CDState,
   readCustomerDisplay,
@@ -20,7 +20,7 @@ import type { CustomerDisplaySettings } from "@/lib/types";
 type Cfg = CustomerDisplaySettings & { storeName?: string; logo?: string };
 
 const DEFAULTS: Required<Omit<CustomerDisplaySettings, "ads">> & { ads: string[] } = {
-  theme: "dark",
+  theme: "light",
   brandName: "ON MART",
   accent: "#6ea0ff",
   welcomeLine: "Welcome · សូមស្វាគមន៍",
@@ -276,7 +276,9 @@ function SaleScreen({
             <div><span>Subtotal</span><span>{usd(subtotal)}</span></div>
             <div><span>Discount</span><span>{usd(state.discount)}</span></div>
             <div className="cd-r-grand"><span>Total</span><span>{usd(state.total)}</span></div>
-            {showRiel && <div className="cd-r-khr"><span>KHR</span><span>{riel(state.total)}</span></div>}
+            {/* Riel rounded UP to the nearest 100 — Cambodia has no coins below
+                100៛, so the customer-facing riel is always a whole hundred. */}
+            {showRiel && <div className="cd-r-khr"><span>KHR</span><span>៛{num(rielShelfPrice(state.total))}</span></div>}
           </div>
         </div>
       </div>
@@ -437,10 +439,14 @@ const CSS = `
 .cd-r-num { text-align: right; font-variant-numeric: tabular-nums; }
 .cd-r-amt { font-weight: 700; }
 .cd-r-empty { color: #9aa6bd; font-size: 20px; padding: 24px 0; }
-.cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; border-top: 2px solid #17233f; padding-top: 14px; margin-top: 6px; }
-.cd-r-col > div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: clamp(13px, 1.25vw, 17px); color: #5c6b86; font-variant-numeric: tabular-nums; }
+.cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #17233f; padding-top: 14px; margin-top: 6px; }
+.cd-r-col { display: flex; flex-direction: column; gap: 7px; padding: 0 22px; min-width: 0; }
+.cd-r-col:first-child { border-right: 1px solid #e6eaf1; padding-left: 0; }
+.cd-r-col:last-child { padding-right: 0; }
+.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(13px, 1.25vw, 17px); color: #5c6b86; font-variant-numeric: tabular-nums; }
+.cd-r-col > div > span:last-child { white-space: nowrap; }
 .cd-r-strong span, .cd-r-grand span { color: #17233f; font-weight: 800; }
-.cd-r-grand { font-size: clamp(18px, 1.9vw, 25px); border-top: 1px solid #e6eaf1; margin-top: 4px; padding-top: 7px !important; }
+.cd-r-grand { font-size: clamp(18px, 1.9vw, 25px); border-top: 1px solid #e6eaf1; margin-top: 3px; padding-top: 7px; }
 .cd-r-khr span { color: #2549e8; font-weight: 800; }
 
 /* KHQR */
