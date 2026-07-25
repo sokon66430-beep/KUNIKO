@@ -114,6 +114,17 @@ export default function CustomerDisplayPage() {
     );
   }
 
+  // While scanning: full-screen split like the store's own display — the
+  // advertisement on the LEFT, the order receipt on the RIGHT.
+  if (state?.kind === "sale") {
+    return (
+      <div className="cd-root" style={vars}>
+        <style>{CSS}</style>
+        <SaleScreen state={state} c={c} storeName={storeName} logo={cfg?.logo} showRiel={showRiel} listRef={listRef} />
+      </div>
+    );
+  }
+
   return (
     <div className="cd-root" style={vars}>
       <style>{CSS}</style>
@@ -130,15 +141,9 @@ export default function CustomerDisplayPage() {
           </span>
           {storeName}
         </span>
-        {state?.kind === "sale" && (
-          <span className="cd-count">
-            {num(state.itemCount)} item{state.itemCount === 1 ? "" : "s"}
-          </span>
-        )}
       </header>
 
       {idle && <Idle storeName={storeName} c={c} logo={cfg?.logo} />}
-      {state?.kind === "sale" && <Sale state={state} c={c} listRef={listRef} showRiel={showRiel} />}
       {state?.kind === "khqr" && <Khqr state={state} />}
       {state?.kind === "thanks" && <Thanks state={state} c={c} showRiel={showRiel} />}
     </div>
@@ -190,75 +195,91 @@ function Idle({ storeName, c, logo }: { storeName: string; c: typeof DEFAULTS; l
   );
 }
 
-function Sale({
+// The scanning screen, matching the store's own display: the ADVERTISEMENT on
+// the left, the ORDER RECEIPT (store name, a Product / Price / Qty / Amount
+// table, then the Payment + totals block) on the right.
+function SaleScreen({
   state,
   c,
-  listRef,
+  storeName,
+  logo,
   showRiel,
+  listRef,
 }: {
   state: Extract<CDState, { kind: "sale" }>;
   c: typeof DEFAULTS;
-  listRef: React.RefObject<HTMLDivElement>;
+  storeName: string;
+  logo?: string;
   showRiel: boolean;
+  listRef: React.RefObject<HTMLDivElement>;
 }) {
   const hasAds = (c.ads || []).length > 0;
+  const subtotal = Math.round((state.total + state.discount) * 100) / 100;
 
-  const items = (
-    <div className="cd-list" ref={listRef}>
-      {state.lines.length === 0 ? (
-        <p className="cd-empty">Scanning your items…</p>
-      ) : (
-        state.lines.map((l, i) => (
-          <div className="cd-line" key={i}>
-            <div className="cd-item">
-              <span className="cd-name">
-                {l.name}
-                {l.unitLabel ? <em> · {l.unitLabel}</em> : null}
-              </span>
-              <span className="cd-each">{usd(l.qty ? l.lineTotal / l.qty : l.lineTotal)} each</span>
-            </div>
-            {/* Just the quantity — read-only, no +/- or delete (that's the till). */}
-            <span className="cd-qtynum">{num(l.qty)}</span>
-            <span className="cd-lt">{usd(l.lineTotal)}</span>
-          </div>
-        ))
-      )}
-    </div>
-  );
-
-  const totalCard = (
-    <div className="cd-totcard">
-      {state.discount > 0 && (
-        <div className="cd-disc">
-          <span>Discount</span>
-          <span>−{usd(state.discount)}</span>
-        </div>
-      )}
-      <div className="cd-totlabel">Total to pay</div>
-      <div className="cd-tot">{usd(state.total)}</div>
-      {showRiel && <div className="cd-riel">{riel(state.total)}</div>}
-      <div className="cd-vat">VAT 10% included</div>
-    </div>
-  );
-
-  // With promo pictures: 40% the customer's basket + total, 60% advertising.
-  if (hasAds) {
-    return (
-      <div className="cd-sale-ads">
-        <div className="cd-buy">
-          {items}
-          {totalCard}
-        </div>
-        <AdSlides ads={c.ads} seconds={c.adSeconds} />
-      </div>
-    );
-  }
-
-  // No pictures: the original wide item list + total pane.
   return (
-    <div className="cd-sale">
-      {items}
-      <aside className="cd-totalpane">{totalCard}</aside>
+    <div className="cd-screen">
+      {/* LEFT — the advertisement (store branding until pictures are added). */}
+      <div className="cd-adcol">
+        {hasAds ? (
+          <AdSlides ads={c.ads} seconds={c.adSeconds} />
+        ) : (
+          <div className="cd-brandad">
+            <div className="cd-logo-badge">
+              {logo && c.showLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logo} alt="" className="cd-idle-logo" />
+              ) : (
+                <ShoppingBag size={72} strokeWidth={2} />
+              )}
+            </div>
+            <div className="cd-brandpane-name">{storeName}</div>
+            {c.welcomeLine && <div className="cd-brandpane-sub">{c.welcomeLine}</div>}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT — the order receipt. */}
+      <div className="cd-receipt">
+        <div className="cd-r-head">{storeName}</div>
+
+        <div className="cd-r-hrow">
+          <span>Product</span>
+          <span>Price</span>
+          <span>Qty</span>
+          <span>Amount</span>
+        </div>
+        <div className="cd-r-rows" ref={listRef}>
+          {state.lines.length === 0 ? (
+            <p className="cd-r-empty">Scanning…</p>
+          ) : (
+            state.lines.map((l, i) => (
+              <div className="cd-r-row" key={i}>
+                <span className="cd-r-name">
+                  {l.name}
+                  {l.unitLabel ? ` · ${l.unitLabel}` : ""}
+                </span>
+                <span className="cd-r-num">{usd(l.qty ? l.lineTotal / l.qty : l.lineTotal)}</span>
+                <span className="cd-r-num">{num(l.qty)}</span>
+                <span className="cd-r-num cd-r-amt">{usd(l.lineTotal)}</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="cd-r-foot">
+          <div className="cd-r-col">
+            <div><span>Payment</span><span>—</span></div>
+            <div><span>Received</span><span>{usd(0)}</span></div>
+            <div className="cd-r-strong"><span>Remain</span><span>{usd(state.total)}</span></div>
+          </div>
+          <div className="cd-r-col">
+            <div><span>Subtotal</span><span>{usd(subtotal)}</span></div>
+            <div><span>Discount</span><span>{usd(state.discount)}</span></div>
+            <div className="cd-r-grand"><span>Total</span><span>{usd(state.total)}</span></div>
+            {showRiel && <div className="cd-r-khr"><span>KHR</span><span>{riel(state.total)}</span></div>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -352,48 +373,75 @@ const CSS = `
 .cd-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--cd-border); transition: all 0.3s; }
 .cd-dot.on { background: var(--cd-accent); width: 26px; }
 
-/* Sale WITH promo pictures: 40% the customer's basket + total, 60% advertising */
-.cd-sale-ads { flex: 1; display: grid; grid-template-columns: 2fr 3fr; min-height: 0; gap: 10px; padding: 10px 18px 20px; }
-.cd-buy { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+/* Sale: 40% basket + total (LEFT) | 60% advertising or branding (RIGHT) */
+.cd-sale { flex: 1; display: grid; grid-template-columns: 2fr 3fr; min-height: 0; gap: 14px; padding: 12px 18px 20px; }
+.cd-buy { display: flex; flex-direction: column; min-height: 0; gap: 12px; }
 .cd-buy .cd-list { flex: 1; }
 .cd-buy .cd-totcard { flex: 0 0 auto; }
+
+/* Advertising pane fills its whole 60% (cropping to fit) */
 .cd-adpane { position: relative; min-height: 0; }
-/* The ad FILLS the whole advertising pane (edge to edge), cropping to fit — the
-   entire 60% is the advertisement, not a small floating card. */
 .cd-adpane-img { width: 100%; height: 100%; object-fit: cover; border-radius: 24px; box-shadow: var(--cd-shadow); display: block; }
 .cd-adpane .cd-dots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); margin: 0; }
 
-/* Sale — item list + total card */
-.cd-sale { flex: 1; display: grid; grid-template-columns: 1fr 40%; min-height: 0; gap: 8px; padding: 8px 20px 24px; }
-.cd-list { overflow-y: auto; padding: 10px 10px; display: flex; flex-direction: column; gap: 7px; }
+/* Branding shown in the 60% when there are no promo pictures yet */
+.cd-brandpane {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: var(--cd-soft2); border: 1.5px solid var(--cd-soft); border-radius: 28px; box-shadow: var(--cd-shadow);
+}
+.cd-brandpane-name { font-size: clamp(30px, 4vw, 56px); font-weight: 800; letter-spacing: -0.02em; }
+.cd-brandpane-sub { font-size: clamp(18px, 2vw, 30px); font-weight: 700; color: var(--cd-accent); }
+
+/* Item list — PLAIN rows (no card box), a thin divider between them */
+.cd-list { overflow-y: auto; padding: 2px 2px; display: flex; flex-direction: column; }
 .cd-empty { color: var(--cd-muted); font-size: 22px; font-weight: 600; margin: auto; }
 .cd-line {
-  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px;
-  padding: 10px 16px; border-radius: 14px; background: var(--cd-card); box-shadow: var(--cd-shadow);
-  font-size: clamp(15px, 1.5vw, 21px);
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 16px;
+  padding: 13px 8px; border-bottom: 1px solid var(--cd-border);
+  font-size: clamp(15px, 1.5vw, 22px);
   animation: cd-slide 0.28s ease;
 }
 .cd-item { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .cd-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-name em { font-style: normal; color: var(--cd-muted); font-weight: 500; }
-.cd-each { font-size: 0.68em; color: var(--cd-muted); font-weight: 500; }
-.cd-qtynum {
-  font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums;
-  background: var(--cd-soft); border-radius: 9px; padding: 3px 0; min-width: 2.2em; text-align: center;
-}
+.cd-each { font-size: 0.66em; color: var(--cd-muted); font-weight: 500; }
+.cd-qtynum { font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; min-width: 1.6em; text-align: center; }
 .cd-lt { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.cd-totalpane { display: flex; padding: 14px 12px; min-height: 0; }
 .cd-totcard {
-  flex: 1; background: var(--cd-soft2); border: 1.5px solid var(--cd-soft);
-  border-radius: 32px; display: flex; flex-direction: column; justify-content: center; align-items: center;
-  text-align: center; padding: 30px; box-shadow: var(--cd-shadow);
+  background: var(--cd-soft2); border: 1.5px solid var(--cd-soft);
+  border-radius: 24px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  text-align: center; padding: 22px; box-shadow: var(--cd-shadow);
 }
-.cd-disc { display: flex; gap: 16px; align-items: center; font-size: 24px; color: #e05a97; font-weight: 800; margin-bottom: 16px; background: var(--cd-card); padding: 8px 20px; border-radius: 999px; }
-.cd-totlabel { font-size: clamp(17px, 1.8vw, 23px); color: var(--cd-muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; }
-.cd-tot { font-size: clamp(58px, 9vw, 138px); font-weight: 800; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--cd-fg); margin: 6px 0; }
-.cd-riel { font-size: clamp(24px, 3vw, 40px); font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; background: var(--cd-soft); padding: 6px 20px; border-radius: 999px; }
-.cd-vat { font-size: 15px; color: var(--cd-muted); margin-top: 14px; }
+.cd-disc { display: flex; gap: 12px; align-items: center; font-size: 20px; color: #e05a97; font-weight: 800; margin-bottom: 12px; background: var(--cd-card); padding: 6px 16px; border-radius: 999px; }
+.cd-totlabel { font-size: clamp(15px, 1.6vw, 21px); color: var(--cd-muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; }
+.cd-tot { font-size: clamp(48px, 7vw, 104px); font-weight: 800; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--cd-fg); margin: 4px 0; }
+.cd-riel { font-size: clamp(22px, 2.6vw, 36px); font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; background: var(--cd-soft); padding: 5px 16px; border-radius: 999px; }
+.cd-vat { font-size: 14px; color: var(--cd-muted); margin-top: 10px; }
+
+/* ── Scanning screen: advertisement LEFT | order receipt RIGHT ──────────── */
+.cd-screen { position: fixed; inset: 0; display: grid; grid-template-columns: 1.3fr 1fr; background: var(--cd-bg); }
+.cd-adcol { position: relative; display: flex; overflow: hidden; background: #000; }
+.cd-adcol .cd-adpane { flex: 1; }
+.cd-adcol .cd-adpane-img { border-radius: 0; box-shadow: none; }
+.cd-brandad { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--cd-bg); color: var(--cd-fg); }
+/* The receipt reads like a paper slip — light panel, dark ink — matching the store's display. */
+.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #17233f; padding: 26px 30px 24px; min-height: 0; }
+.cd-r-head { font-size: clamp(19px, 2.2vw, 30px); font-weight: 800; letter-spacing: -0.01em; padding-bottom: 12px; border-bottom: 2px solid #17233f; }
+.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 4.6em 2.4em 5em; gap: 8px; align-items: baseline; }
+.cd-r-hrow { color: #8a97b0; font-weight: 700; font-size: clamp(12px, 1.15vw, 15px); padding: 12px 0 8px; border-bottom: 1px solid #e6eaf1; }
+.cd-r-hrow span:not(:first-child) { text-align: right; }
+.cd-r-rows { flex: 1; overflow-y: auto; min-height: 0; }
+.cd-r-row { padding: 11px 0; border-bottom: 1px solid #eef1f6; font-size: clamp(14px, 1.35vw, 19px); }
+.cd-r-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-r-num { text-align: right; font-variant-numeric: tabular-nums; }
+.cd-r-amt { font-weight: 700; }
+.cd-r-empty { color: #9aa6bd; font-size: 20px; padding: 24px 0; }
+.cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; border-top: 2px solid #17233f; padding-top: 14px; margin-top: 6px; }
+.cd-r-col > div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: clamp(13px, 1.25vw, 17px); color: #5c6b86; font-variant-numeric: tabular-nums; }
+.cd-r-strong span, .cd-r-grand span { color: #17233f; font-weight: 800; }
+.cd-r-grand { font-size: clamp(18px, 1.9vw, 25px); border-top: 1px solid #e6eaf1; margin-top: 4px; padding-top: 7px !important; }
+.cd-r-khr span { color: #2549e8; font-weight: 800; }
 
 /* KHQR */
 .cd-khqr-head { display: inline-flex; align-items: center; gap: 12px; font-size: clamp(24px,3vw,34px); font-weight: 800; color: var(--cd-fg); }
