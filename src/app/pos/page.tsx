@@ -853,7 +853,10 @@ export default function PosPage() {
       {/* Cart on the LEFT, product grid on the RIGHT (like a menu-first till).
           Only the desktop order is swapped — on mobile the products stay on top
           with the sticky checkout bar below. */}
-      <div className={`grid gap-6 lg:grid-cols-[500px_1fr] xl:grid-cols-[600px_1fr] 2xl:grid-cols-[720px_1fr] ${tillMode ? "lg:min-h-0 lg:flex-1 lg:grid-rows-1" : ""}`}>
+      {/* On a till the split is a fixed 40 / 60 (cart / products) — a clean
+          proportion that fills any screen the same way. The back-office POS keeps
+          its comfortable fixed-width cart. */}
+      <div className={`grid gap-6 ${tillMode ? "lg:grid-cols-[2fr_3fr] lg:min-h-0 lg:flex-1 lg:grid-rows-1" : "lg:grid-cols-[500px_1fr] xl:grid-cols-[600px_1fr] 2xl:grid-cols-[720px_1fr]"}`}>
         {/* Scan-first till. Anything WITH a barcode is scan-only, so it never
             clutters the screen. Products with NO barcode can't be scanned (fresh
             food, made-to-order drinks…), so they're laid out here by category for
