@@ -26,6 +26,11 @@ const nextConfig = {
   reactStrictMode: true,
   // Produce a self-contained server bundle for a small, fast Docker image.
   output: "standalone",
+  // `pg` stays EXTERNAL (required by Node at runtime, never bundled) — bundling
+  // it can drag Node built-ins like `fs` into a build that has no filesystem.
+  experimental: {
+    serverComponentsExternalPackages: ["pg"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

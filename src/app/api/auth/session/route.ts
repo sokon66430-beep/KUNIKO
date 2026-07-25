@@ -4,8 +4,16 @@ import { getSession } from "@/lib/session";
 import { readSystem } from "@/lib/system";
 import { signSession, SESSION_COOKIE, cookieOptions } from "@/lib/auth";
 import { DEFAULT_ROLE_DENIED, canSwitchStores, reachesAllStores } from "@/lib/access";
+import { startBackupScheduler } from "@/lib/backupScheduler";
 
 export const dynamic = "force-dynamic";
+
+// Start the automatic daily backup on the first request after a boot. This lives
+// on a normal (Node runtime) API route the app calls constantly, rather than the
+// instrumentation hook — that hook is also evaluated for the Edge runtime, where
+// pulling in the backup/storage code fails the build ("Can't resolve 'fs'").
+// startBackupScheduler() is idempotent, so calling it on every request is safe.
+startBackupScheduler();
 
 // The stores a user may reach: everyone with all-store access sees them all; an
 // Area Manager sees their home store plus the owner-assigned extras; everyone
