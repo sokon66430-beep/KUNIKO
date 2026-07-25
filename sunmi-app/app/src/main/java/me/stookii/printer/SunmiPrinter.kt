@@ -174,9 +174,9 @@ class SunmiPrinter(private val context: Context) {
         }
 
         s.setAlignment(1, cb)
-        r.optString("footerNote").takeIf { it.isNotBlank() }?.let { s.printText("\n$it\n", cb) }
-        s.printText("\nThank you!\n", cb)
-        s.lineWrap(3, cb)
+        r.optString("footerNote").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
+        s.printText("Thank you!\n", cb)
+        s.lineWrap(2, cb)
         cut(s)
 
         if (r.optBoolean("openDrawer", false)) kick(s)
@@ -226,31 +226,27 @@ class SunmiPrinter(private val context: Context) {
             val ln = lines.getJSONObject(i)
             when (ln.optString("t")) {
                 "hr" -> s.printText(divider(), cb)
-                "sec" -> {
-                    s.printText("\n", cb)
-                    s.printText(ln.optString("a") + "\n", cb)
-                }
-                "row" -> {
-                    val big = ln.optBoolean("big", false)
-                    if (big) s.setFontSize(28f, cb)
-                    row(s, ln.optString("a"), ln.optString("b"))
-                    if (big) s.setFontSize(22f, cb)
-                }
+                // Section heading — no blank line before it (the divider above
+                // already separates sections) to save paper.
+                "sec" -> s.printText(ln.optString("a") + "\n", cb)
+                // Every data row prints at the one BODY font so the value column
+                // lines up on every row. (The old `big` rows jumped to a larger
+                // font, which pushed their values out of the column.)
+                "row" -> row(s, ln.optString("a"), ln.optString("b"))
                 "center" -> {
                     s.setAlignment(1, cb)
                     s.printText(ln.optString("a") + "\n", cb)
                     s.setAlignment(0, cb)
                 }
                 "left" -> s.printText(ln.optString("a") + "\n", cb)
-                "sig" -> {
-                    s.printText("\n", cb)
-                    s.printText(ln.optString("a") + ": ______________\n", cb)
-                }
+                // Signature line — no blank line before it; the label + underscores
+                // are one line you sign on, so consecutive lines are fine.
+                "sig" -> s.printText(ln.optString("a") + ": ______________\n", cb)
             }
         }
 
-        s.printText("\n", cb)
-        s.lineWrap(3, cb)
+        // Just enough feed to clear the cutter, no big trailing gap.
+        s.lineWrap(2, cb)
         cut(s)
         if (r.optBoolean("openDrawer", false)) kick(s)
     }

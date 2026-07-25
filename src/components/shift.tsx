@@ -448,7 +448,6 @@ function printDropSlip(mv: any, shift: ShiftView, business: any) {
   <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(mv?.at))}</span></div>
   <div class="ln"><span>Shift</span><span>${slipEsc(shift.shift)} · ${slipEsc(shift.posTerminalId)}</span></div>
   <div class="ln"><span>Dropped by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
-  ${mv?.id ? `<div class="ln"><span>Ref</span><span>${slipEsc(mv.id)}</span></div>` : ""}
   <hr>
   <div class="sec">DROPPED TO SAFE</div>
   ${mv?.bagColor ? `<div class="ln"><span>Bag colour</span><span>${slipEsc(String(mv.bagColor).toUpperCase())}</span></div>` : ""}
