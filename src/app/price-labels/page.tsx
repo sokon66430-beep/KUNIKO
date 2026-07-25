@@ -38,7 +38,7 @@ function today(): string {
 }
 
 const LABEL_FONT = `'Plus Jakarta Sans Variable','Segoe UI',sans-serif`;
-const KHMER_FONT = `'Battambang','Khmer UI','Noto Sans Khmer','Leelawadee UI',sans-serif`;
+const KHMER_FONT = `'Kantumruy Pro','Battambang','Khmer UI','Noto Sans Khmer','Leelawadee UI',sans-serif`;
 const LABEL_BLUE = "#4a72c4"; // bottom strip
 const LABEL_GREEN = "#b5cc18"; // top band
 
