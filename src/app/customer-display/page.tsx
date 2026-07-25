@@ -210,11 +210,15 @@ function Sale({
       ) : (
         state.lines.map((l, i) => (
           <div className="cd-line" key={i}>
-            <span className="cd-qty">{num(l.qty)}×</span>
-            <span className="cd-name">
-              {l.name}
-              {l.unitLabel ? <em> · {l.unitLabel}</em> : null}
-            </span>
+            <div className="cd-item">
+              <span className="cd-name">
+                {l.name}
+                {l.unitLabel ? <em> · {l.unitLabel}</em> : null}
+              </span>
+              <span className="cd-each">{usd(l.qty ? l.lineTotal / l.qty : l.lineTotal)} each</span>
+            </div>
+            {/* Just the quantity — read-only, no +/- or delete (that's the till). */}
+            <span className="cd-qtynum">{num(l.qty)}</span>
             <span className="cd-lt">{usd(l.lineTotal)}</span>
           </div>
         ))
@@ -364,14 +368,19 @@ const CSS = `
 .cd-list { overflow-y: auto; padding: 10px 10px; display: flex; flex-direction: column; gap: 7px; }
 .cd-empty { color: var(--cd-muted); font-size: 22px; font-weight: 600; margin: auto; }
 .cd-line {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
-  padding: 11px 16px; border-radius: 14px; background: var(--cd-card); box-shadow: var(--cd-shadow);
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px;
+  padding: 10px 16px; border-radius: 14px; background: var(--cd-card); box-shadow: var(--cd-shadow);
   font-size: clamp(15px, 1.5vw, 21px);
   animation: cd-slide 0.28s ease;
 }
-.cd-qty { font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; background: var(--cd-soft); border-radius: 8px; padding: 2px 9px; font-size: 0.9em; }
+.cd-item { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .cd-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-name em { font-style: normal; color: var(--cd-muted); font-weight: 500; }
+.cd-each { font-size: 0.68em; color: var(--cd-muted); font-weight: 500; }
+.cd-qtynum {
+  font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums;
+  background: var(--cd-soft); border-radius: 9px; padding: 3px 0; min-width: 2.2em; text-align: center;
+}
 .cd-lt { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .cd-totalpane { display: flex; padding: 14px 12px; min-height: 0; }
