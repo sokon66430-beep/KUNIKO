@@ -38,6 +38,7 @@ import { LineBuilder, Line } from "@/components/LineBuilder";
 import { OpeningOrderModal } from "@/components/OpeningOrderModal";
 import { usd, num, dateTime, shortDate } from "@/lib/format";
 import { productsForPO } from "@/lib/procurement";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 import { barcodeIncludes } from "@/lib/barcodes";
 
 export const dynamic = "force-dynamic";
@@ -660,7 +661,9 @@ function CreatePOModal({
 
   const orderable = groups.filter((g) => g.supplierCode);
   const unlinked = groups.filter((g) => !g.supplierCode);
-  const groupTotal = (g: SupplierGroup) => g.lines.reduce((s, l) => s + l.product.cost * l.qty, 0);
+  // Value at the CASE rate (purchaseUnitCost), matching what the server stores —
+  // so a full case of 24 lands on the case price, not unit cost × 24.
+  const groupTotal = (g: SupplierGroup) => g.lines.reduce((s, l) => s + purchaseUnitCost(l.product) * l.qty, 0);
 
   async function save() {
     if (orderable.length === 0) return;
@@ -679,7 +682,7 @@ function CreatePOModal({
               name: l.product.name,
               unit: l.product.unit,
               qtyOrdered: l.qty,
-              cost: l.product.cost,
+              cost: purchaseUnitCost(l.product),
               barcode: l.product.barcode,
             })),
           }),
@@ -897,7 +900,7 @@ function SupplierBrowser({
                 {on && <Check size={12} strokeWidth={3} />}
               </span>
               <span className="min-w-0 flex-1 truncate font-medium text-ink-800">{p.name}</span>
-              <span className="shrink-0 text-xs text-slate-500">{usd(p.cost)}</span>
+              <span className="shrink-0 text-xs text-slate-500">{usd(purchaseUnitCost(p))}</span>
             </button>
           );
         })}
@@ -1048,7 +1051,7 @@ function ViewPOModal({
         unit: p.unit,
         qtyOrdered: 1,
         qtyReceived: 0,
-        cost: p.cost,
+        cost: purchaseUnitCost(p),
         barcode: p.barcode,
       },
     ]);
@@ -1348,7 +1351,7 @@ function ViewPOModal({
                       {p.barcode ? ` · ${p.barcode}` : ""}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs font-semibold text-slate-500">{usd(p.cost)}</span>
+                  <span className="shrink-0 text-xs font-semibold text-slate-500">{usd(purchaseUnitCost(p))}</span>
                 </button>
               ))}
               {addable.hits.length === 0 && (
