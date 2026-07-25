@@ -8,6 +8,9 @@ import "@fontsource-variable/plus-jakarta-sans";
 import "@fontsource/battambang/400.css";
 import "@fontsource/battambang/700.css";
 import "@fontsource/battambang/900.css";
+// Kantumruy Pro — the Khmer typeface for the customer screen (400 + 700 Bold).
+import "@fontsource/kantumruy-pro/400.css";
+import "@fontsource/kantumruy-pro/700.css";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
 

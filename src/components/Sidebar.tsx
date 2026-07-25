@@ -41,6 +41,7 @@ import {
   Search,
   Sun,
   Moon,
+  SlidersHorizontal as SlidersIcon,
 } from "lucide-react";
 
 type SessionInfo = {
@@ -104,8 +105,7 @@ const ADMIN = {
     { href: "/inventory-ledger", label: "Inventory Ledger", icon: BookOpen },
     { href: "/permissions", label: "Permissions", icon: ShieldCheck },
     { href: "/stores", label: "Stores & Employees", icon: Building2 },
-    { href: "/menu-layout", label: "Menu Layout", icon: LayoutGrid },
-    { href: "/invoice-settings", label: "Invoice Customization", icon: ReceiptText },
+    { href: "/customization", label: "Customization", icon: SlidersIcon },
     { href: "/settings", label: "Store Settings", icon: Settings },
   ],
 };

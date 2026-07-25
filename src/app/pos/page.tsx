@@ -93,7 +93,9 @@ type GeneratedKhqr = {
   merchantName: string;
 };
 
-const PAYMENTS: PaymentMethod[] = ["Cash", "KHQR", "ABA", "Wing", "Card"];
+// Payment buttons shown on the till. KHQR and Wing are intentionally omitted —
+// the store takes Cash, ABA (which shows its own KHQR to scan) and Card.
+const PAYMENTS: PaymentMethod[] = ["Cash", "ABA", "Card"];
 const VAT_RATE = 0.1;
 
 export default function PosPage() {
@@ -851,7 +853,7 @@ export default function PosPage() {
       {/* Cart on the LEFT, product grid on the RIGHT (like a menu-first till).
           Only the desktop order is swapped — on mobile the products stay on top
           with the sticky checkout bar below. */}
-      <div className={`grid gap-6 lg:grid-cols-[420px_1fr] xl:grid-cols-[480px_1fr] 2xl:grid-cols-[560px_1fr] ${tillMode ? "lg:min-h-0 lg:flex-1 lg:grid-rows-1" : ""}`}>
+      <div className={`grid gap-6 lg:grid-cols-[500px_1fr] xl:grid-cols-[600px_1fr] 2xl:grid-cols-[720px_1fr] ${tillMode ? "lg:min-h-0 lg:flex-1 lg:grid-rows-1" : ""}`}>
         {/* Scan-first till. Anything WITH a barcode is scan-only, so it never
             clutters the screen. Products with NO barcode can't be scanned (fresh
             food, made-to-order drinks…), so they're laid out here by category for

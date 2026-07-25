@@ -73,6 +73,31 @@ export async function PATCH(req: Request) {
         accent: ACCENTS.includes(r.accent) ? r.accent : "ink",
       };
     }
+    // Customer Screen — how the T3's second (customer-facing) display is styled.
+    if (body.customerDisplay && typeof body.customerDisplay === "object") {
+      const c = body.customerDisplay;
+      const hex = (v: any, fb: string) => (/^#[0-9a-fA-F]{6}$/.test(String(v)) ? String(v) : fb);
+      // Promo images: data-URL images shown as an idle slideshow. Cap the count
+      // and each image's size so the store's data file stays a sane size.
+      const ads = Array.isArray(c.ads)
+        ? c.ads
+            .filter((a: any) => typeof a === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(a) && a.length < 3_000_000)
+            .slice(0, 6)
+        : [];
+      b.customerDisplay = {
+        theme: c.theme === "light" ? "light" : "dark",
+        brandName: String(c.brandName || "").slice(0, 40),
+        accent: hex(c.accent, "#3b82f6"),
+        welcomeLine: String(c.welcomeLine || "").slice(0, 80),
+        idleSub: String(c.idleSub || "").slice(0, 120),
+        thanksTitle: String(c.thanksTitle || "").slice(0, 60),
+        thanksSub: String(c.thanksSub || "").slice(0, 60),
+        showLogo: c.showLogo !== false,
+        showRiel: c.showRiel !== false,
+        ads,
+        adSeconds: Math.min(30, Math.max(3, Math.round(Number(c.adSeconds) || 6))),
+      };
+    }
     // Owner-set sidebar order (Menu Layout) — a list of page hrefs.
     if (Array.isArray(body.menuOrder)) {
       b.menuOrder = body.menuOrder.map((x: any) => String(x)).filter(Boolean).slice(0, 100);

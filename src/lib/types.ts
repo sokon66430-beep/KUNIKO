@@ -422,6 +422,24 @@ export type ReceiptSettings = {
   accent?: ReceiptAccent; // colour for the store name + total ("their style")
 };
 
+// Customer Screen customization — how the owner styles the T3's second (customer-
+// facing) display. All optional; sensible defaults apply when unset. Kept apart
+// from ReceiptSettings because it styles a live screen, not a printed slip.
+export type CustomerDisplayTheme = "dark" | "light";
+export type CustomerDisplaySettings = {
+  theme?: CustomerDisplayTheme; // dark (default) or light
+  brandName?: string; // the brand name shown to customers (e.g. "ON MART"), not the app name
+  accent?: string; // highlight colour (hex), e.g. "#3b82f6"
+  welcomeLine?: string; // idle greeting, e.g. "Welcome · សូមស្វាគមន៍"
+  idleSub?: string; // idle sub-line, e.g. "Please hand your items to our cashier"
+  thanksTitle?: string; // paid-screen heading, e.g. "Thank you"
+  thanksSub?: string; // paid-screen sub, e.g. "អរគុណ"
+  showLogo?: boolean; // show the store logo on the idle screen (default on)
+  showRiel?: boolean; // show riel amounts beside dollars (default on)
+  ads?: string[]; // promo image data-URLs, shown as a slideshow when idle
+  adSeconds?: number; // seconds each promo image is shown (default 6)
+};
+
 export type PaymentMethod = "Cash" | "KHQR" | "Card" | "ABA" | "Wing";
 
 export type Sale = {
@@ -979,6 +997,7 @@ export type DB = {
       approvers?: Approver[]; // who may approve edits to submitted receipts
       promotionSettings?: PromotionSettings; // how deals may interact (see lib/promotions)
       receipt?: ReceiptSettings; // how the customer receipt is styled (Invoice Customization)
+      customerDisplay?: CustomerDisplaySettings; // how the T3 second screen is styled (Customer Screen)
       menuOrder?: string[]; // legacy owner-set order (within-group) — superseded by menuLayout
       // Full owner-set sidebar layout (Menu Layout): each section and the ordered
       // hrefs in it. Lets the owner move a function to a DIFFERENT section, not
