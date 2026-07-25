@@ -259,11 +259,12 @@ class SunmiPrinter(private val context: Context) {
         s.printText(col2(label, value), cb)
     }
 
-    // The 58mm head prints ~32 monospace chars per line at the body font size.
-    // Build a two-column line by padding the gap between label and value so the
-    // value sits flush right — reliable printText, no printColumnsString.
+    // This 80mm head prints ~48 monospace chars per line at the body font size
+    // (the store's full address fills one line). Build a two-column line by
+    // padding the gap between label and value so the value sits flush right —
+    // reliable printText, no printColumnsString.
     private val BODY = 22f
-    private val WIDTH = 32
+    private val WIDTH = 48
     private fun col2(left: String, right: String): String {
         val maxLeft = (WIDTH - right.length - 1).coerceAtLeast(0)
         val l = if (left.length > maxLeft) left.substring(0, maxLeft) else left
@@ -271,7 +272,7 @@ class SunmiPrinter(private val context: Context) {
         return l + " ".repeat(gap) + right + "\n"
     }
 
-    private fun divider() = "--------------------------------\n"
+    private fun divider() = "-".repeat(WIDTH) + "\n"
     private fun usd(v: Double) = "$" + String.format("%.2f", v)
     private fun khr(v: Long) = String.format("%,d", v) + " R"
     private fun pad3(n: Int) = n.toString().padStart(3, '0')
