@@ -428,25 +428,27 @@ const CSS = `
 .cd-adcol .cd-adpane-img { border-radius: 0; box-shadow: none; }
 .cd-brandad { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--cd-bg); color: var(--cd-fg); }
 /* The receipt reads like a paper slip — light panel, dark ink — matching the store's display. */
-.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #17233f; padding: 26px 30px 24px; min-height: 0; }
-.cd-r-head { font-size: clamp(19px, 2.2vw, 30px); font-weight: 800; letter-spacing: -0.01em; padding-bottom: 12px; border-bottom: 2px solid #17233f; }
-.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 4.6em 2.4em 5em; gap: 8px; align-items: baseline; }
-.cd-r-hrow { color: #8a97b0; font-weight: 700; font-size: clamp(12px, 1.15vw, 15px); padding: 12px 0 8px; border-bottom: 1px solid #e6eaf1; }
+.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #1a2338; padding: 40px 40px 34px; min-height: 0; }
+.cd-r-head { font-size: clamp(20px, 2.1vw, 30px); font-weight: 800; letter-spacing: 0; color: #1a2338; padding-bottom: 18px; }
+/* Columns in REM (not em) so the small-font header and larger-font rows share
+   the exact same column widths — otherwise Price/Qty/Amount don't line up. */
+.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5.4rem 3rem 6rem; gap: 10px; align-items: baseline; }
+.cd-r-hrow { color: #9aa5bd; font-weight: 600; font-size: clamp(11px, 1vw, 13px); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0 12px; border-bottom: 1px solid #edf0f5; }
 .cd-r-hrow span:not(:first-child) { text-align: right; }
 .cd-r-rows { flex: 1; overflow-y: auto; min-height: 0; }
-.cd-r-row { padding: 11px 0; border-bottom: 1px solid #eef1f6; font-size: clamp(14px, 1.35vw, 19px); }
-.cd-r-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-r-num { text-align: right; font-variant-numeric: tabular-nums; }
-.cd-r-amt { font-weight: 700; }
-.cd-r-empty { color: #9aa6bd; font-size: 20px; padding: 24px 0; }
-.cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #17233f; padding-top: 14px; margin-top: 6px; }
-.cd-r-col { display: flex; flex-direction: column; gap: 7px; padding: 0 22px; min-width: 0; }
-.cd-r-col:first-child { border-right: 1px solid #e6eaf1; padding-left: 0; }
-.cd-r-col:last-child { padding-right: 0; }
-.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(13px, 1.25vw, 17px); color: #5c6b86; font-variant-numeric: tabular-nums; }
+.cd-r-row { padding: 16px 0; border-bottom: 1px solid #f4f6f9; font-size: clamp(14px, 1.35vw, 19px); }
+.cd-r-name { font-weight: 600; color: #1a2338; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-r-num { text-align: right; font-variant-numeric: tabular-nums; color: #55617b; }
+.cd-r-amt { font-weight: 700; color: #1a2338; }
+.cd-r-empty { color: #aab3c6; font-size: 20px; padding: 26px 0; }
+.cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #e4e8ef; padding-top: 20px; margin-top: 8px; }
+.cd-r-col { display: flex; flex-direction: column; gap: 10px; padding: 0 26px; min-width: 0; }
+.cd-r-col:first-child { padding-left: 0; }
+.cd-r-col:last-child { padding-right: 0; border-left: 1px solid #edf0f5; }
+.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(13px, 1.2vw, 16px); color: #7a869e; font-variant-numeric: tabular-nums; }
 .cd-r-col > div > span:last-child { white-space: nowrap; }
-.cd-r-strong span, .cd-r-grand span { color: #17233f; font-weight: 800; }
-.cd-r-grand { font-size: clamp(18px, 1.9vw, 25px); border-top: 1px solid #e6eaf1; margin-top: 3px; padding-top: 7px; }
+.cd-r-strong span, .cd-r-grand span { color: #1a2338; font-weight: 800; }
+.cd-r-grand { font-size: clamp(19px, 1.9vw, 25px); border-top: 1px solid #edf0f5; margin-top: 5px; padding-top: 11px; }
 .cd-r-khr span { color: #2549e8; font-weight: 800; }
 
 /* KHQR */
