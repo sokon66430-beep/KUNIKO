@@ -193,13 +193,38 @@ async function seedStore(storeId: string): Promise<DB> {
 // persisting — so the cache never drifts from the store. A failed write drops
 // the entry so the next read re-loads the last good copy.
 const dbCache = new Map<string, DB>();
+// Stores with a write queued/in-flight are PINNED so LRU can't evict them — if a
+// store were dropped mid-write, a concurrent read could reload the pre-write copy
+// and a later write would clobber the unpersisted change (lost update).
+const activeWrites = new Map<string, number>();
+// Cap how many store documents sit in RAM at once, so a 100-store instance
+// running 24/7 can't OOM by holding every store forever (the old cache never
+// evicted). The LEAST-recently-used UNPINNED store is dropped and simply reloads
+// from storage on its next use. Override with DB_CACHE_MAX.
+const DB_CACHE_MAX = Math.max(4, Number(process.env.DB_CACHE_MAX) || 24);
+
+function touchCache(sid: string, db: DB): void {
+  // Re-insert to move this store to the newest position (Map keeps insertion
+  // order), then evict the oldest UNPINNED stores until back under the cap.
+  dbCache.delete(sid);
+  dbCache.set(sid, db);
+  if (dbCache.size <= DB_CACHE_MAX) return;
+  for (const key of dbCache.keys()) {
+    if (dbCache.size <= DB_CACHE_MAX) break;
+    if (key === sid || activeWrites.get(key)) continue;
+    dbCache.delete(key);
+  }
+}
 
 async function loadDB(sid: string): Promise<DB> {
   const cached = dbCache.get(sid);
-  if (cached) return cached;
+  if (cached) {
+    touchCache(sid, cached);
+    return cached;
+  }
   const raw = await readBlob("store", sid);
   const db = raw == null ? await seedStore(sid) : backfill(JSON.parse(raw) as DB);
-  dbCache.set(sid, db);
+  touchCache(sid, db);
   return db;
 }
 
@@ -231,12 +256,18 @@ export async function mutateDB<T>(
       throw e;
     }
   };
-  // Queue this write behind only THIS store's previous write (not a global
-  // chain), so other stores proceed in parallel.
+  // Pin this store while its write is queued/in-flight so LRU can't evict it
+  // (see activeWrites), then queue behind only THIS store's previous write (not a
+  // global chain) so other stores proceed in parallel.
+  activeWrites.set(sid, (activeWrites.get(sid) ?? 0) + 1);
   const prev = writeChains.get(sid) ?? Promise.resolve();
   const next = prev.then(run, run);
   writeChains.set(sid, next.catch(() => undefined));
-  return next;
+  return next.finally(() => {
+    const n = (activeWrites.get(sid) ?? 1) - 1;
+    if (n <= 0) activeWrites.delete(sid);
+    else activeWrites.set(sid, n);
+  });
 }
 
 /** Reset the CURRENT store back to its seed. */
