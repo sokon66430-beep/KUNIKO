@@ -63,12 +63,17 @@ export function useFetch<T>(url: string): {
     const refresh = () => {
       if (document.visibilityState === "visible") load(true);
     };
+    // A global "refetch now" signal — used when the till swaps staff in place
+    // (no page reload) so the session/name and any data refresh immediately.
+    const onRefetch = () => load(true);
+    window.addEventListener("stookii-refetch", onRefetch);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     const interval = window.setInterval(refresh, 20000);
 
     return () => {
       alive = false;
+      window.removeEventListener("stookii-refetch", onRefetch);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
       window.clearInterval(interval);

@@ -187,8 +187,15 @@ function StaffSignIn({ onClose }: { onClose: () => void }) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || "Sign-in failed");
       }
-      // New session cookie is set — reload so the whole till runs as this staff.
-      window.location.reload();
+      // New session cookie is set. Refresh the till IN PLACE — do NOT reload the
+      // whole page. A full reload re-downloads the entire catalogue and re-inits
+      // everything, which is slow and unstable on the Sunmi kiosk WebView (it can
+      // hang on "Loading products…"). Instead: refetch the session everywhere
+      // (the bar shows the new staff name) and clear the POS cart for the new
+      // person. Same store, same products — nothing else needs to reload.
+      window.dispatchEvent(new Event("stookii-refetch"));
+      window.dispatchEvent(new Event("stookii-staff-changed"));
+      onClose();
     } catch (e: any) {
       setErr(e.message);
       setPin("");

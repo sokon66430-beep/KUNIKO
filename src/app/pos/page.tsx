@@ -472,6 +472,15 @@ export default function PosPage() {
     setPayment("Cash");
   }
 
+  // Staff swap at the till refreshes the session in place (no page reload) — so
+  // start a fresh, empty sale for the person taking over the till.
+  useEffect(() => {
+    const onStaffChanged = () => clearCart();
+    window.addEventListener("stookii-staff-changed", onStaffChanged);
+    return () => window.removeEventListener("stookii-staff-changed", onStaffChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Hold / Resume — park the current sale on this till and serve the next
   // customer, then recall it. Device-local, so it works with no internet.
   const snapshotCart = (): HeldOrder<Record<string, CartLine>> => ({
