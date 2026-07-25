@@ -102,6 +102,18 @@ export default function CustomerDisplayPage() {
     ["--cd-shadow" as any]: light ? "0 12px 34px rgba(24,36,70,0.10)" : "0 14px 40px rgba(0,0,0,0.36)",
   };
 
+  // Between customers, the promo pictures take the WHOLE screen (no chrome) —
+  // it's a billboard until the next scan.
+  const idle = !state || state.kind === "idle";
+  if (idle && c.ads.length > 0) {
+    return (
+      <div className="cd-root" style={vars}>
+        <style>{CSS}</style>
+        <AdSlides ads={c.ads} seconds={c.adSeconds} full />
+      </div>
+    );
+  }
+
   return (
     <div className="cd-root" style={vars}>
       <style>{CSS}</style>
@@ -125,43 +137,42 @@ export default function CustomerDisplayPage() {
         )}
       </header>
 
-      {(!state || state.kind === "idle") && <Idle storeName={storeName} c={c} logo={cfg?.logo} />}
-      {state?.kind === "sale" && <Sale state={state} listRef={listRef} showRiel={showRiel} />}
+      {idle && <Idle storeName={storeName} c={c} logo={cfg?.logo} />}
+      {state?.kind === "sale" && <Sale state={state} c={c} listRef={listRef} showRiel={showRiel} />}
       {state?.kind === "khqr" && <Khqr state={state} />}
       {state?.kind === "thanks" && <Thanks state={state} c={c} showRiel={showRiel} />}
     </div>
   );
 }
 
-function Idle({ storeName, c, logo }: { storeName: string; c: typeof DEFAULTS; logo?: string }) {
+// A rotating promo-picture slideshow. `full` = fill the whole screen (idle
+// billboard); otherwise it fills whatever pane it's placed in (the 60% beside
+// the basket during a sale).
+function AdSlides({ ads, seconds, full }: { ads: string[]; seconds: number; full?: boolean }) {
   const [i, setI] = useState(0);
-  const ads = c.ads || [];
   useEffect(() => {
     if (ads.length < 2) return;
-    const t = setInterval(() => setI((n) => (n + 1) % ads.length), Math.max(3, c.adSeconds) * 1000);
+    const t = setInterval(() => setI((n) => (n + 1) % ads.length), Math.max(3, seconds) * 1000);
     return () => clearInterval(t);
-  }, [ads.length, c.adSeconds]);
-
-  if (ads.length > 0) {
-    return (
-      <div className="cd-center cd-idle">
-        <div className="cd-ad">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ads[Math.min(i, ads.length - 1)]} alt="" className="cd-ad-img" />
+  }, [ads.length, seconds]);
+  const idx = Math.min(i, ads.length - 1);
+  return (
+    <div className={full ? "cd-fullads" : "cd-adpane"}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={ads[idx]} alt="" className={full ? "cd-fullads-img" : "cd-adpane-img"} />
+      {ads.length > 1 && (
+        <div className="cd-dots">
+          {ads.map((_, k) => (
+            <span key={k} className={`cd-dot${k === idx ? " on" : ""}`} />
+          ))}
         </div>
-        <h1 className="cd-ad-title">{storeName}</h1>
-        {c.welcomeLine && <p className="cd-welcome">{c.welcomeLine}</p>}
-        {ads.length > 1 && (
-          <div className="cd-dots">
-            {ads.map((_, k) => (
-              <span key={k} className={`cd-dot${k === Math.min(i, ads.length - 1) ? " on" : ""}`} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
+}
 
+function Idle({ storeName, c, logo }: { storeName: string; c: typeof DEFAULTS; logo?: string }) {
+  // Ads-idle is drawn full-screen by the parent, so here it's the branding rest.
   return (
     <div className="cd-center cd-idle">
       <div className="cd-logo-badge">
@@ -181,46 +192,69 @@ function Idle({ storeName, c, logo }: { storeName: string; c: typeof DEFAULTS; l
 
 function Sale({
   state,
+  c,
   listRef,
   showRiel,
 }: {
   state: Extract<CDState, { kind: "sale" }>;
+  c: typeof DEFAULTS;
   listRef: React.RefObject<HTMLDivElement>;
   showRiel: boolean;
 }) {
+  const hasAds = (c.ads || []).length > 0;
+
+  const items = (
+    <div className="cd-list" ref={listRef}>
+      {state.lines.length === 0 ? (
+        <p className="cd-empty">Scanning your items…</p>
+      ) : (
+        state.lines.map((l, i) => (
+          <div className="cd-line" key={i}>
+            <span className="cd-qty">{num(l.qty)}×</span>
+            <span className="cd-name">
+              {l.name}
+              {l.unitLabel ? <em> · {l.unitLabel}</em> : null}
+            </span>
+            <span className="cd-lt">{usd(l.lineTotal)}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  const totalCard = (
+    <div className="cd-totcard">
+      {state.discount > 0 && (
+        <div className="cd-disc">
+          <span>Discount</span>
+          <span>−{usd(state.discount)}</span>
+        </div>
+      )}
+      <div className="cd-totlabel">Total to pay</div>
+      <div className="cd-tot">{usd(state.total)}</div>
+      {showRiel && <div className="cd-riel">{riel(state.total)}</div>}
+      <div className="cd-vat">VAT 10% included</div>
+    </div>
+  );
+
+  // With promo pictures: 40% the customer's basket + total, 60% advertising.
+  if (hasAds) {
+    return (
+      <div className="cd-sale-ads">
+        <div className="cd-buy">
+          {items}
+          {totalCard}
+        </div>
+        <AdSlides ads={c.ads} seconds={c.adSeconds} />
+      </div>
+    );
+  }
+
+  // No pictures: the original wide item list + total pane.
   return (
     <div className="cd-sale">
-      <div className="cd-list" ref={listRef}>
-        {state.lines.length === 0 ? (
-          <p className="cd-empty">Scanning your items…</p>
-        ) : (
-          state.lines.map((l, i) => (
-            <div className="cd-line" key={i}>
-              <span className="cd-qty">{num(l.qty)}×</span>
-              <span className="cd-name">
-                {l.name}
-                {l.unitLabel ? <em> · {l.unitLabel}</em> : null}
-              </span>
-              <span className="cd-lt">{usd(l.lineTotal)}</span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <aside className="cd-totalpane">
-        <div className="cd-totcard">
-          {state.discount > 0 && (
-            <div className="cd-disc">
-              <span>Discount</span>
-              <span>−{usd(state.discount)}</span>
-            </div>
-          )}
-          <div className="cd-totlabel">Total to pay</div>
-          <div className="cd-tot">{usd(state.total)}</div>
-          {showRiel && <div className="cd-riel">{riel(state.total)}</div>}
-          <div className="cd-vat">VAT 10% included</div>
-        </div>
-      </aside>
+      {items}
+      <aside className="cd-totalpane">{totalCard}</aside>
     </div>
   );
 }
@@ -306,13 +340,22 @@ const CSS = `
 .cd-idle h1 { margin: 6px 0 0; font-size: clamp(44px, 6vw, 78px); font-weight: 800; letter-spacing: -0.025em; }
 .cd-welcome { margin: 0; font-size: clamp(24px, 3vw, 40px); font-weight: 800; color: var(--cd-accent); letter-spacing: -0.01em; }
 
-/* Idle promo slideshow */
-.cd-ad { width: 100%; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-.cd-ad-img { max-width: 94%; max-height: 64vh; object-fit: contain; border-radius: 32px; box-shadow: var(--cd-shadow); }
-.cd-ad-title { margin: 10px 0 0; font-size: clamp(30px, 4vw, 54px); font-weight: 800; letter-spacing: -0.02em; }
+/* Full-screen promo billboard (idle, between customers) */
+.cd-fullads { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--cd-bg); }
+.cd-fullads-img { width: 100%; height: 100%; object-fit: contain; }
+.cd-fullads .cd-dots { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); }
 .cd-dots { display: flex; gap: 9px; margin-top: 4px; }
 .cd-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--cd-border); transition: all 0.3s; }
 .cd-dot.on { background: var(--cd-accent); width: 26px; }
+
+/* Sale WITH promo pictures: 40% the customer's basket + total, 60% advertising */
+.cd-sale-ads { flex: 1; display: grid; grid-template-columns: 2fr 3fr; min-height: 0; gap: 10px; padding: 10px 18px 20px; }
+.cd-buy { display: flex; flex-direction: column; min-height: 0; gap: 10px; }
+.cd-buy .cd-list { flex: 1; }
+.cd-buy .cd-totcard { flex: 0 0 auto; }
+.cd-adpane { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.cd-adpane-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 26px; box-shadow: var(--cd-shadow); }
+.cd-adpane .cd-dots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); margin: 0; }
 
 /* Sale — item list + total card */
 .cd-sale { flex: 1; display: grid; grid-template-columns: 1fr 40%; min-height: 0; gap: 8px; padding: 8px 20px 24px; }
