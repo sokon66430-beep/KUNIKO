@@ -279,15 +279,19 @@ class SunmiPrinter(private val context: Context) {
     private val USDW = 7
     private val RIELW = 9
     private fun col3(left: String, mid: String, right: String): String {
-        val leftMax = (WIDTH - USDW - RIELW).coerceAtLeast(0)
+        // The USD and riel columns keep a minimum width for alignment, but grow
+        // to fit an unusually large amount — the NAME gives up space (truncates)
+        // so the line can never exceed WIDTH and wrap onto a second row.
+        val midW = maxOf(USDW, mid.length)
+        val rightW = maxOf(RIELW, right.length)
+        val leftMax = (WIDTH - midW - rightW).coerceAtLeast(6)
         val l = if (left.length > leftMax) left.substring(0, leftMax) else left
-        return l.padEnd(leftMax) + mid.padStart(USDW) + right.padStart(RIELW) + "\n"
+        return l.padEnd(leftMax) + mid.padStart(midW) + right.padStart(rightW) + "\n"
     }
 
     private fun divider() = "-".repeat(WIDTH) + "\n"
     private fun usd(v: Double) = "$" + String.format("%.2f", v)
-    private fun khr(v: Long) = String.format("%,d", v) + " R"
-    // Compact riel for the item column (no space, so it fits the fixed field).
+    // Compact riel for the printed columns (e.g. "27,900R").
     private fun khrCol(v: Long) = String.format("%,d", v) + "R"
     private fun pad3(n: Int) = n.toString().padStart(3, '0')
 }
