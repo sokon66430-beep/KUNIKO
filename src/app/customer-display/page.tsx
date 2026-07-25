@@ -111,7 +111,10 @@ export default function CustomerDisplayPage() {
     return (
       <div className="cd-root" style={vars}>
         <style>{CSS}</style>
-        <AdSlides ads={c.ads} seconds={c.adSeconds} full />
+        <div className="cd-adbill">
+          <StoreTag storeName={storeName} logo={cfg?.logo} showLogo={c.showLogo} />
+          <AdSlides ads={c.ads} seconds={c.adSeconds} full />
+        </div>
       </div>
     );
   }
@@ -178,6 +181,24 @@ function AdSlides({ ads, seconds, full }: { ads: string[]; seconds: number; full
   );
 }
 
+// A small store-name badge pinned over the advertisement, so the store name is
+// always on screen even while a full-bleed promo picture is showing.
+function StoreTag({ storeName, logo, showLogo }: { storeName: string; logo?: string; showLogo?: boolean }) {
+  return (
+    <div className="cd-adtag">
+      <span className="cd-adtag-badge">
+        {logo && showLogo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" className="cd-adtag-logo" />
+        ) : (
+          <ShoppingBag size={20} strokeWidth={2.4} />
+        )}
+      </span>
+      {storeName}
+    </div>
+  );
+}
+
 function Idle({ storeName, c, logo }: { storeName: string; c: typeof DEFAULTS; logo?: string }) {
   // Ads-idle is drawn full-screen by the parent, so here it's the branding rest.
   return (
@@ -222,6 +243,7 @@ function SaleScreen({
     <div className="cd-screen">
       {/* LEFT — the advertisement (store branding until pictures are added). */}
       <div className="cd-adcol">
+        {hasAds && <StoreTag storeName={storeName} logo={logo} showLogo={c.showLogo} />}
         {hasAds ? (
           <AdSlides ads={c.ads} seconds={c.adSeconds} />
         ) : (
@@ -379,6 +401,18 @@ const CSS = `
 .cd-idle-logo { max-width: 72%; max-height: 72%; object-fit: contain; }
 .cd-idle h1 { margin: 6px 0 0; font-size: clamp(44px, 6vw, 78px); font-weight: 800; letter-spacing: -0.025em; }
 .cd-welcome { margin: 0; font-size: clamp(24px, 3vw, 40px); font-weight: 800; color: var(--cd-accent); letter-spacing: -0.01em; }
+
+/* Store-name badge pinned over the advertisement (always shows the store name) */
+.cd-adbill { position: fixed; inset: 0; }
+.cd-adtag {
+  position: absolute; top: 20px; left: 22px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 12px;
+  background: rgba(255,255,255,0.94); color: #141b2e;
+  font-size: clamp(18px, 1.9vw, 27px); font-weight: 800; letter-spacing: -0.01em;
+  padding: 8px 20px 8px 9px; border-radius: 999px; box-shadow: 0 6px 22px rgba(0,0,0,0.22);
+}
+.cd-adtag-badge { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--cd-soft); color: var(--cd-accent); overflow: hidden; }
+.cd-adtag-logo { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
 
 /* Full-screen promo billboard (idle, between customers) */
 .cd-fullads { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--cd-bg); }
