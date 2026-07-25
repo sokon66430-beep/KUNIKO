@@ -79,13 +79,14 @@ export default function CustomerDisplayPage() {
   }, [state]);
 
   const c = { ...DEFAULTS, ...(cfg || {}) };
-  // What customers see as the brand: the owner's chosen brand name (e.g. "ON
-  // MART") wins over the app/store name, so the second screen shows the store's
-  // own brand, not "Stookii".
+  // The customer-facing name is the STORE's own name from Store Settings — the
+  // same source the printed receipt uses — so it's set in ONE place and the two
+  // always match. Falls back to the Customer Screen brand name, then the sale's
+  // store name, then a generic default.
   const storeName =
+    (cfg?.storeName && String(cfg.storeName).trim()) ||
     c.brandName ||
     (state && "storeName" in state && state.storeName) ||
-    cfg?.storeName ||
     "ON Mart";
   const showRiel = c.showRiel !== false;
 
