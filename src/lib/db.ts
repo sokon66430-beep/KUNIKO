@@ -6,7 +6,11 @@ import { DEFAULT_STORE_ID, readSystem } from "./system";
 import { readBlob, writeBlob } from "./blobStore";
 
 // In-process write lock so concurrent API calls don't clobber a store's document.
-let writeChain: Promise<unknown> = Promise.resolve();
+// A PER-STORE write lock. Each store serializes its own writes (they mutate that
+// store's one cached object, so they must run one at a time), but different
+// stores run fully in parallel — one busy store never blocks the other 99. This
+// is what lets many stores sell at the same time.
+const writeChains = new Map<string, Promise<unknown>>();
 
 // Resolve the store in the REQUEST scope (cookies() needs the request's async
 // context — never inside the shared write-lock, which may run under another
@@ -227,8 +231,11 @@ export async function mutateDB<T>(
       throw e;
     }
   };
-  const next = writeChain.then(run, run);
-  writeChain = next.catch(() => undefined);
+  // Queue this write behind only THIS store's previous write (not a global
+  // chain), so other stores proceed in parallel.
+  const prev = writeChains.get(sid) ?? Promise.resolve();
+  const next = prev.then(run, run);
+  writeChains.set(sid, next.catch(() => undefined));
   return next;
 }
 
