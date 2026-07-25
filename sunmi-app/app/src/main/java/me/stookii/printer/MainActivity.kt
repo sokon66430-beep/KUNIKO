@@ -2,6 +2,8 @@ package me.stookii.printer
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.view.View
 import android.webkit.JavascriptInterface
@@ -16,10 +18,17 @@ class MainActivity : Activity() {
         // The hosted Stookii app this device runs. Change to your own URL if needed.
         // `?kiosk=1` locks it permanently to the till — no Exit Till Mode, ever.
         const val WEB_URL = "https://stookii-me.onrender.com/?kiosk=1"
+        // The customer-facing page shown on the T3's SECOND screen (same origin,
+        // so it shares the login + localStorage the till writes the sale to).
+        const val CD_URL = "https://stookii-me.onrender.com/customer-display"
     }
 
     private lateinit var web: WebView
     private lateinit var printer: SunmiPrinter
+
+    // The customer view on the second screen (null when there's no second screen).
+    private var displayManager: DisplayManager? = null
+    private var customerPresentation: CustomerDisplayPresentation? = null
 
     // Bridge exposed to the web app as window.StookiiPrinter.*
     inner class Bridge {
@@ -39,7 +48,7 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun version(): String = "4"
+        fun version(): String = "5"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -74,6 +83,38 @@ class MainActivity : Activity() {
             }
         }
         web.loadUrl(WEB_URL)
+
+        // Watch for the customer (second) screen connecting/disconnecting so the
+        // customer view follows it — no manual setup on the T3.
+        displayManager = (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager).also {
+            it.registerDisplayListener(displayListener, null)
+        }
+    }
+
+    // Show (or refresh) the customer view on the T3's second screen, if one is
+    // attached. A "presentation" display is exactly the customer-facing panel.
+    private fun showCustomerScreen() {
+        val dm = displayManager ?: return
+        val second = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION).firstOrNull()
+        if (second == null) {
+            customerPresentation?.dismiss()
+            customerPresentation = null
+            return
+        }
+        // Already up on this exact screen — leave it (don't reload every resume).
+        if (customerPresentation?.display?.displayId == second.displayId && customerPresentation?.isShowing == true) return
+        customerPresentation?.dismiss()
+        try {
+            customerPresentation = CustomerDisplayPresentation(this, second).apply { show() }
+        } catch (_: Exception) {
+            customerPresentation = null
+        }
+    }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = runOnUiThread { showCustomerScreen() }
+        override fun onDisplayRemoved(displayId: Int) = runOnUiThread { showCustomerScreen() }
+        override fun onDisplayChanged(displayId: Int) {}
     }
 
     override fun onResume() {
@@ -83,6 +124,19 @@ class MainActivity : Activity() {
         // the Sunmi's device-owner; without that this is Android screen-pinning.
         try {
             startLockTask()
+        } catch (_: Exception) {
+        }
+        // Bring the customer screen up now the window is attached (Presentations
+        // can only show once the host activity is on screen).
+        showCustomerScreen()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        customerPresentation?.dismiss()
+        customerPresentation = null
+        try {
+            displayManager?.unregisterDisplayListener(displayListener)
         } catch (_: Exception) {
         }
     }

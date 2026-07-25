@@ -84,9 +84,15 @@ export function readCustomerDisplay(): CDState | null {
 /** Listen for customer-display updates. Returns an unsubscribe function. */
 export function subscribeCustomerDisplay(cb: (state: CDState) => void): () => void {
   if (typeof window === "undefined") return () => {};
+  let lastAt = 0; // the timestamp of the last message we delivered, to de-dupe
   const handle = (raw: string) => {
     try {
-      const state = JSON.parse(raw).state as CDState;
+      const msg = JSON.parse(raw);
+      if (typeof msg.at === "number") {
+        if (msg.at <= lastAt) return; // already delivered (poll vs event race)
+        lastAt = msg.at;
+      }
+      const state = msg.state as CDState;
       if (state) cb(state);
     } catch {
       /* malformed — ignore */
@@ -99,8 +105,21 @@ export function subscribeCustomerDisplay(cb: (state: CDState) => void): () => vo
   };
   ch?.addEventListener("message", onMsg);
   window.addEventListener("storage", onStorage);
+  // Poll fallback: on the Sunmi T3 the customer screen is a SEPARATE WebView, and
+  // `storage`/BroadcastChannel events don't reliably cross WebView instances — but
+  // both WebViews share the same localStorage. Re-reading it a few times a second
+  // guarantees the customer screen tracks the till even when no event fires.
+  const poll = window.setInterval(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) handle(raw);
+    } catch {
+      /* ignore */
+    }
+  }, 350);
   return () => {
     ch?.removeEventListener("message", onMsg);
     window.removeEventListener("storage", onStorage);
+    window.clearInterval(poll);
   };
 }
