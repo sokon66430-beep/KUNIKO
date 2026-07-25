@@ -50,6 +50,15 @@ export async function POST(req: Request) {
   const actor = await currentActor();
 
   const result = await mutateDB((db) => {
+    // Idempotency for KHQR/ABA (and any card-network) payments: the request
+    // carries a paymentRef — the bank's transaction id (md5). If a sale already
+    // exists for this ref, a retry must return that ONE sale and never create a
+    // second, so a post-payment commit retry can't double-record the sale. The
+    // check runs inside the write-lock, so two racing commits can't both pass.
+    if (body.paymentRef) {
+      const existing = db.sales.find((s) => s.paymentRef === body.paymentRef);
+      if (existing) return { sale: existing };
+    }
     const items: SaleItem[] = [];
     // Which recipe (if any) each item is made from, kept alongside `items` so
     // the stock pass below doesn't have to resolve the link a second time.
