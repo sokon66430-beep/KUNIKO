@@ -1,8 +1,10 @@
 name: Build Sunmi Printer APK
 
 # Builds the Sunmi companion app (sunmi-app/) into an installable APK in the
-# cloud, so no local Android toolchain is needed. Download the APK from the run's
-# "Artifacts" section and install it on the Sunmi.
+# cloud, so no local Android toolchain is needed. The APK is published to a
+# GitHub Release with a stable download link the store can open on the T3 and
+# install directly (no login, no unzip):
+#   https://github.com/sokon66430-beep/KUNIKO/releases/download/app-latest/stookii.apk
 
 on:
   push:
@@ -10,6 +12,9 @@ on:
       - "sunmi-app/**"
       - ".github/workflows/sunmi-apk.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -35,3 +40,15 @@ jobs:
           name: stookii-printer-apk
           path: sunmi-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Prepare APK for release
+        run: cp sunmi-app/app/build/outputs/apk/debug/app-debug.apk stookii.apk
+
+      - name: Publish APK to a stable Release link
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-latest
+          name: Stookii app (latest)
+          body: "Latest Stookii companion app for the Sunmi T3. Open this page on the T3, download stookii.apk, and install it."
+          files: stookii.apk
+          make_latest: true
