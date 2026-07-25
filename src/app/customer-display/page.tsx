@@ -102,55 +102,41 @@ export default function CustomerDisplayPage() {
     ["--cd-shadow" as any]: light ? "0 12px 34px rgba(24,36,70,0.10)" : "0 14px 40px rgba(0,0,0,0.36)",
   };
 
-  // Between customers — no sale, OR a sale with nothing scanned yet — the promo
-  // pictures take the WHOLE screen (no receipt panel). The receipt only appears
-  // once the first product is scanned.
-  const idle =
-    !state || state.kind === "idle" || (state.kind === "sale" && state.lines.length === 0);
-  if (idle && c.ads.length > 0) {
+  // Payment QR and the thank-you screen take over the whole screen.
+  if (state?.kind === "khqr" || state?.kind === "thanks") {
     return (
       <div className="cd-root" style={vars}>
         <style>{CSS}</style>
-        <div className="cd-adbill">
-          <StoreTag storeName={storeName} logo={cfg?.logo} showLogo={c.showLogo} />
-          <AdSlides ads={c.ads} seconds={c.adSeconds} full />
-        </div>
+        <header className="cd-top">
+          <span className="cd-brand">
+            <span className="cd-brand-badge">
+              {cfg?.logo && c.showLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={cfg.logo} alt="" className="cd-brand-logo" />
+              ) : (
+                <ShoppingBag size={22} strokeWidth={2.4} />
+              )}
+            </span>
+            {storeName}
+          </span>
+        </header>
+        {state.kind === "khqr" && <Khqr state={state} />}
+        {state.kind === "thanks" && <Thanks state={state} c={c} showRiel={showRiel} />}
       </div>
     );
   }
 
-  // While scanning (at least one item): full-screen split like the store's own
-  // display — the advertisement on the LEFT, the order receipt on the RIGHT.
-  if (state?.kind === "sale" && state.lines.length > 0) {
-    return (
-      <div className="cd-root" style={vars}>
-        <style>{CSS}</style>
-        <SaleScreen state={state} c={c} storeName={storeName} logo={cfg?.logo} showRiel={showRiel} listRef={listRef} />
-      </div>
-    );
-  }
-
+  // Everything else — idle, empty cart, or an active sale — ALWAYS shows the
+  // split: advertisement on the LEFT, the receipt frame on the RIGHT. The frame
+  // (store name, column headings, totals) is always on screen; the product rows
+  // only appear once something is scanned.
+  const saleView = (
+    state?.kind === "sale" ? state : { kind: "sale", lines: [], total: 0, discount: 0 }
+  ) as Extract<CDState, { kind: "sale" }>;
   return (
     <div className="cd-root" style={vars}>
       <style>{CSS}</style>
-
-      <header className="cd-top">
-        <span className="cd-brand">
-          <span className="cd-brand-badge">
-            {cfg?.logo && c.showLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={cfg.logo} alt="" className="cd-brand-logo" />
-            ) : (
-              <ShoppingBag size={22} strokeWidth={2.4} />
-            )}
-          </span>
-          {storeName}
-        </span>
-      </header>
-
-      {idle && <Idle storeName={storeName} c={c} logo={cfg?.logo} />}
-      {state?.kind === "khqr" && <Khqr state={state} />}
-      {state?.kind === "thanks" && <Thanks state={state} c={c} showRiel={showRiel} />}
+      <SaleScreen state={saleView} c={c} storeName={storeName} logo={cfg?.logo} showRiel={showRiel} listRef={listRef} />
     </div>
   );
 }
@@ -195,25 +181,6 @@ function StoreTag({ storeName, logo, showLogo }: { storeName: string; logo?: str
         )}
       </span>
       {storeName}
-    </div>
-  );
-}
-
-function Idle({ storeName, c, logo }: { storeName: string; c: typeof DEFAULTS; logo?: string }) {
-  // Ads-idle is drawn full-screen by the parent, so here it's the branding rest.
-  return (
-    <div className="cd-center cd-idle">
-      <div className="cd-logo-badge">
-        {logo && c.showLogo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="" className="cd-idle-logo" />
-        ) : (
-          <ShoppingBag size={64} strokeWidth={2} />
-        )}
-      </div>
-      <h1>{storeName}</h1>
-      {c.welcomeLine && <p className="cd-welcome">{c.welcomeLine}</p>}
-      {c.idleSub && <p className="cd-sub cd-pill">{c.idleSub}</p>}
     </div>
   );
 }
@@ -273,32 +240,30 @@ function SaleScreen({
           <span>Amount</span>
         </div>
         <div className="cd-r-rows" ref={listRef}>
-          {state.lines.length === 0 ? (
-            <p className="cd-r-empty">Scanning…</p>
-          ) : (
-            state.lines.map((l, i) => {
-              const unit = l.qty ? l.lineTotal / l.qty : l.lineTotal;
-              return (
-                <div className="cd-r-row" key={i}>
-                  <span className="cd-r-name">
-                    {l.name}
-                    {l.unitLabel ? ` · ${l.unitLabel}` : ""}
-                  </span>
-                  {/* Riel is the main figure (rounded up to 100៛), the dollar
-                      small beneath it. */}
-                  <span className="cd-r-num cd-r-money">
-                    <b>៛{num(rielShelfPrice(unit))}</b>
-                    <em>{usd(unit)}</em>
-                  </span>
-                  <span className="cd-r-num">{num(l.qty)}</span>
-                  <span className="cd-r-num cd-r-money cd-r-amt">
-                    <b>៛{num(rielShelfPrice(l.lineTotal))}</b>
-                    <em>{usd(l.lineTotal)}</em>
-                  </span>
-                </div>
-              );
-            })
-          )}
+          {/* Product rows only when there's something scanned; otherwise the
+              list is simply empty (the frame stays on screen). */}
+          {state.lines.map((l, i) => {
+            const unit = l.qty ? l.lineTotal / l.qty : l.lineTotal;
+            return (
+              <div className="cd-r-row" key={i}>
+                <span className="cd-r-name">
+                  {l.name}
+                  {l.unitLabel ? ` · ${l.unitLabel}` : ""}
+                </span>
+                {/* Riel is the main figure (rounded up to 100៛), the dollar
+                    small beneath it. */}
+                <span className="cd-r-num cd-r-money">
+                  <b>៛{num(rielShelfPrice(unit))}</b>
+                  <em>{usd(unit)}</em>
+                </span>
+                <span className="cd-r-num">{num(l.qty)}</span>
+                <span className="cd-r-num cd-r-money cd-r-amt">
+                  <b>៛{num(rielShelfPrice(l.lineTotal))}</b>
+                  <em>{usd(l.lineTotal)}</em>
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         <div className="cd-r-foot">

@@ -151,16 +151,18 @@ class SunmiPrinter(private val context: Context) {
             row(s, "Subtotal (ex VAT)", usd(r.optDouble("subtotal")))
             row(s, "VAT", usd(r.optDouble("vat")))
         }
-        // TOTAL — centred and enlarged on its own line, so there are no columns
-        // to misalign or drop.
+        // TOTAL — centred and enlarged: the dollar AND the riel together on one
+        // line, then the "Includes VAT" note beneath it.
         s.setAlignment(1, cb)
-        s.printTextWithFont("TOTAL   " + usd(r.optDouble("total")) + "\n", null, 34f, cb)
+        s.printTextWithFont(
+            "TOTAL   " + usd(r.optDouble("total")) + "   " + khrCol(r.optLong("totalRiel")) + "\n",
+            null, 32f, cb,
+        )
         s.setFontSize(BODY, cb)
         if (!showVat) {
             val pct = r.optInt("vatPct", 10)
             s.printText("Includes VAT $pct%\n", cb)
         }
-        s.printText(khr(r.optLong("totalRiel")) + "\n", cb)
         s.setAlignment(0, cb)
 
         s.printText(divider(), cb)

@@ -429,8 +429,8 @@ function printSurveySlip(survey: any, business: any) {
   <div class="ln big"><span>Variance</span><span>${v > 0 ? "+" : ""}${slipMoney(v)}</span></div>
   <div class="verdict">${slipEsc(verdict)}</div>
   ${survey.note ? `<hr><div class="sub">Note: ${slipEsc(survey.note)}</div>` : ""}
+  <div class="ln"><span>Counted by</span><span>${slipEsc(survey.by || "")}</span></div>
   <div class="sig">
-    <div class="row">Counted by</div>
     <div class="row">Verified by (supervisor)</div>
   </div>
   <hr>
@@ -447,7 +447,6 @@ function printDropSlip(mv: any, shift: ShiftView, business: any) {
   <hr>
   <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(mv?.at))}</span></div>
   <div class="ln"><span>Shift</span><span>${slipEsc(shift.shift)} · ${slipEsc(shift.posTerminalId)}</span></div>
-  <div class="ln"><span>Dropped by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
   <hr>
   <div class="sec">DROPPED TO SAFE</div>
   ${mv?.bagColor ? `<div class="ln"><span>Bag colour</span><span>${slipEsc(String(mv.bagColor).toUpperCase())}</span></div>` : ""}
@@ -457,8 +456,8 @@ function printDropSlip(mv: any, shift: ShiftView, business: any) {
   <div class="ln"><span>Total (USD equivalent)</span><span>${slipMoney(mv?.amount ?? usdPart)}</span></div>
   ${mv?.reason ? `<div class="ln"><span>Reason</span><span>${slipEsc(mv.reason)}</span></div>` : ""}
   ${mv?.notes ? `<div class="sub">Note: ${slipEsc(mv.notes)}</div>` : ""}
+  <div class="ln"><span>Dropped by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
   <div class="sig">
-    <div class="row">Dropped by</div>
     <div class="row">Received into safe by</div>
   </div>
   <hr>
@@ -478,7 +477,6 @@ function printBankDepositSlip(mv: any, shift: ShiftView, business: any) {
   <hr>
   <div class="ln"><span>Date</span><span>${slipEsc(slipWhen(mv?.at))}</span></div>
   <div class="ln"><span>Shift</span><span>${slipEsc(shift.shift)} · ${slipEsc(shift.posTerminalId)}</span></div>
-  <div class="ln"><span>Deposited by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
   ${mv?.id ? `<div class="ln"><span>Record</span><span>${slipEsc(mv.id)}</span></div>` : ""}
   <hr>
   <div class="sec">DEPOSITED TO BANK</div>
@@ -492,8 +490,8 @@ function printBankDepositSlip(mv: any, shift: ShiftView, business: any) {
   <div class="ln"><span>Total (USD equivalent)</span><span>${slipMoney(mv?.amount ?? usdPart)}</span></div>
   ${mv?.reason ? `<div class="ln"><span>Reason</span><span>${slipEsc(mv.reason)}</span></div>` : ""}
   ${mv?.notes ? `<div class="sub">Note: ${slipEsc(mv.notes)}</div>` : ""}
+  <div class="ln"><span>Deposited by</span><span>${slipEsc(mv?.createdBy || "")}</span></div>
   <div class="sig">
-    <div class="row">Deposited by</div>
     <div class="row">Received by (bank)</div>
   </div>
   <hr>
@@ -523,8 +521,8 @@ function printCloseSlip(shift: any, business: any) {
   <div class="ln big"><span>Variance</span><span>${v > 0 ? "+" : ""}${slipMoney(v)}</span></div>
   <div class="verdict">${slipEsc(verdict)}</div>
   ${shift.varianceReason ? `<hr><div class="ln"><span>Reason</span><span>${slipEsc(shift.varianceReason)}</span></div>` : ""}
+  <div class="ln"><span>Counted by</span><span>${slipEsc(shift.cashier || "")}</span></div>
   <div class="sig">
-    <div class="row">Counted by</div>
     <div class="row">Approved by (supervisor)</div>
   </div>
   <hr>

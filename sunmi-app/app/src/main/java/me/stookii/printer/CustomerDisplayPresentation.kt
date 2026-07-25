@@ -5,6 +5,8 @@ import android.app.Presentation
 import android.content.Context
 import android.os.Bundle
 import android.view.Display
+import android.view.View
+import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -28,6 +30,19 @@ class CustomerDisplayPresentation(context: Context, display: Display) : Presenta
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Cover the whole second screen — hide the status/nav bars and Sunmi's
+        // "Customer display / SN…" system label so only our page shows.
+        window?.apply {
+            addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            )
+        }
         web = WebView(context)
         setContentView(web)
         web.settings.apply {
