@@ -40,6 +40,23 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
   const [mode, setMode] = useState<"dark" | "light">(theme === "auto" ? "light" : theme);
 
   useEffect(() => {
+    // The splash is store branding — show it ONCE when the app first opens, but
+    // NOT on every in-session reload. Switching staff at the till reloads the
+    // page; replaying the 3s splash each time reads as a freeze/glitch. Skip it
+    // whenever this browser session has already seen it.
+    let seen = false;
+    try {
+      seen = sessionStorage.getItem("stookii-splash-seen") === "1";
+    } catch {}
+    if (seen) {
+      setPhase("done");
+      onFinish?.();
+      return;
+    }
+    try {
+      sessionStorage.setItem("stookii-splash-seen", "1");
+    } catch {}
+
     if (theme === "auto") {
       try {
         setMode(document.documentElement.classList.contains("dark") || localStorage.getItem("stookii-theme") === "dark" ? "dark" : "light");
