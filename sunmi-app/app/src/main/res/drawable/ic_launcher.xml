@@ -1,0 +1,21 @@
+<!-- The Stookii app icon: the brand-blue rounded tile with the white "S",
+     matching the logo in the app header (bg brand-600 #2549e8, white S). A
+     single self-contained vector so it renders on every Android version the
+     till runs, with no PNG assets to ship. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Brand-blue rounded-square background -->
+    <path
+        android:fillColor="#2549e8"
+        android:pathData="M26,0 L82,0 C96.36,0 108,11.64 108,26 L108,82 C108,96.36 96.36,108 82,108 L26,108 C11.64,108 0,96.36 0,82 L0,26 C0,11.64 11.64,0 26,0 Z" />
+    <!-- White "S", drawn as a thick round-capped stroke -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M70,42 C70,33 42,32 40,44 C38,55 70,54 68,66 C66,77 40,77 38,65" />
+</vector>
