@@ -102,8 +102,8 @@ class SunmiPrinter(private val context: Context) {
                 }
             }
         }
-        s.printTextWithFont((store.optString("name", "Stookii") + "\n"), null, 30f, cb)
-        s.setFontSize(22f, cb)
+        s.printTextWithFont((store.optString("name", "Stookii") + "\n"), null, 32f, cb)
+        s.setFontSize(BODY, cb)
         store.optString("address").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
         store.optString("phone").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
         r.optString("headerNote").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
@@ -115,14 +115,17 @@ class SunmiPrinter(private val context: Context) {
         r.optString("cashier").takeIf { it.isNotBlank() }?.let { s.printText("Cashier: $it\n", cb) }
         s.printText(divider(), cb)
 
-        // Items — name on the left, line total on the right.
+        // Items — name on the left, line total on the right. Built as manually
+        // space-padded single strings and printed with printText — NOT
+        // printColumnsString, whose AIDL slot silently drops every two-column
+        // line on this T3 (items + totals vanished from the printed slip).
         val items = r.optJSONArray("items")
         if (items != null) for (i in 0 until items.length()) {
             val it = items.getJSONObject(i)
             val name = it.optString("name")
             val qty = it.optString("qtyLabel")
             val amt = usd(it.optDouble("lineTotal"))
-            s.printColumnsString(arrayOf("$qty  $name", amt), intArrayOf(22, 10), intArrayOf(0, 2), cb)
+            s.printText(col2("$qty  $name", amt), cb)
         }
 
         // Promotion lines — name on the left, amount off on the right.
@@ -131,10 +134,7 @@ class SunmiPrinter(private val context: Context) {
             s.printText(divider(), cb)
             for (i in 0 until promos.length()) {
                 val p = promos.getJSONObject(i)
-                s.printColumnsString(
-                    arrayOf(p.optString("name"), "-" + usd(p.optDouble("discount"))),
-                    intArrayOf(22, 10), intArrayOf(0, 2), cb,
-                )
+                s.printText(col2(p.optString("name"), "-" + usd(p.optDouble("discount"))), cb)
             }
         }
         s.printText(divider(), cb)
@@ -143,19 +143,20 @@ class SunmiPrinter(private val context: Context) {
         if (discount > 0) row(s, "Discount", "-" + usd(discount))
         // The VAT breakdown only prints when Invoice Customization says so; the
         // default design is just the total with an "Includes VAT x%" note.
-        val showVat = r.optBoolean("showVat", true)
+        val showVat = r.optBoolean("showVat", false)
         if (showVat) {
             row(s, "Subtotal (ex VAT)", usd(r.optDouble("subtotal")))
             row(s, "VAT", usd(r.optDouble("vat")))
         }
-        s.setFontSize(28f, cb)
-        row(s, "TOTAL", usd(r.optDouble("total")))
-        s.setFontSize(22f, cb)
+        // TOTAL — centred and enlarged on its own line, so there are no columns
+        // to misalign or drop.
+        s.setAlignment(1, cb)
+        s.printTextWithFont("TOTAL   " + usd(r.optDouble("total")) + "\n", null, 34f, cb)
+        s.setFontSize(BODY, cb)
         if (!showVat) {
             val pct = r.optInt("vatPct", 10)
             s.printText("Includes VAT $pct%\n", cb)
         }
-        s.setAlignment(2, cb)
         s.printText(khr(r.optLong("totalRiel")) + "\n", cb)
         s.setAlignment(0, cb)
 
@@ -255,7 +256,19 @@ class SunmiPrinter(private val context: Context) {
     }
 
     private fun row(s: IWoyouService, label: String, value: String) {
-        s.printColumnsString(arrayOf(label, value), intArrayOf(20, 12), intArrayOf(0, 2), cb)
+        s.printText(col2(label, value), cb)
+    }
+
+    // The 58mm head prints ~32 monospace chars per line at the body font size.
+    // Build a two-column line by padding the gap between label and value so the
+    // value sits flush right — reliable printText, no printColumnsString.
+    private val BODY = 22f
+    private val WIDTH = 32
+    private fun col2(left: String, right: String): String {
+        val maxLeft = (WIDTH - right.length - 1).coerceAtLeast(0)
+        val l = if (left.length > maxLeft) left.substring(0, maxLeft) else left
+        val gap = (WIDTH - l.length - right.length).coerceAtLeast(1)
+        return l + " ".repeat(gap) + right + "\n"
     }
 
     private fun divider() = "--------------------------------\n"
