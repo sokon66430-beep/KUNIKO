@@ -10,11 +10,13 @@
 // the native side (and any future bridge) can render it without app changes.
 
 import type { Sale } from "./types";
+import { rielShelfPrice } from "./format";
 
 export type ReceiptLine = {
   name: string;
   qtyLabel: string; // "2 × Case" or "3"
   lineTotal: number; // USD
+  lineRiel: number; // KHR, rounded up to the nearest 100 (shelf-price rounding)
 };
 
 export type ReceiptPayload = {
@@ -105,11 +107,15 @@ export function buildReceiptPayload(
     | undefined,
   opts: { dateTime: string; rielTotal: number; footerNote?: string },
 ): ReceiptPayload {
-  const items: ReceiptLine[] = sale.items.map((it) => ({
-    name: it.name,
-    qtyLabel: it.unitName ? `${it.unitQty} × ${it.unitName}` : `${it.qty}`,
-    lineTotal: round2(it.price * it.qty),
-  }));
+  const items: ReceiptLine[] = sale.items.map((it) => {
+    const lineTotal = round2(it.price * it.qty);
+    return {
+      name: it.name,
+      qtyLabel: it.unitName ? `${it.unitQty} × ${it.unitName}` : `${it.qty}`,
+      lineTotal,
+      lineRiel: rielShelfPrice(lineTotal),
+    };
+  });
   // Same rules as the on-screen ReceiptCard, so the paper receipt matches the
   // design on the Invoice Customization screen exactly.
   const r = business?.receipt || {};
@@ -128,7 +134,8 @@ export function buildReceiptPayload(
     subtotal: round2(sale.subtotal || 0),
     vat: round2(sale.tax || 0),
     total: round2(sale.total || 0),
-    totalRiel: Math.round(opts.rielTotal || 0),
+    // Riel total rounded UP to the nearest 100 — no odd 27,880, it shows 27,900.
+    totalRiel: rielShelfPrice(round2(sale.total || 0)),
     payment: sale.paymentMethod,
     tendered: sale.tendered != null ? round2(sale.tendered) : undefined,
     change: sale.change != null ? round2(sale.change) : undefined,

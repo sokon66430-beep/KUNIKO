@@ -48,7 +48,7 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun version(): String = "8"
+        fun version(): String = "9"
     }
 
     @SuppressLint("SetJavaScriptEnabled")

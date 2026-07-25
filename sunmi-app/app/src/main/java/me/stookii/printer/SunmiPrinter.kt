@@ -125,7 +125,10 @@ class SunmiPrinter(private val context: Context) {
             val name = it.optString("name")
             val qty = it.optString("qtyLabel")
             val amt = usd(it.optDouble("lineTotal"))
-            s.printText(col2("$qty  $name", amt), cb)
+            val amtR = khrCol(it.optLong("lineRiel"))
+            // Three columns: qty+name (left), USD, then riel — both right-aligned
+            // in fixed fields so every row's $ and R line up.
+            s.printText(col3("$qty  $name", amt, amtR), cb)
         }
 
         // Promotion lines — name on the left, amount off on the right.
@@ -268,8 +271,21 @@ class SunmiPrinter(private val context: Context) {
         return l + " ".repeat(gap) + right + "\n"
     }
 
+    // Three columns: left (name) fills the remainder, then a USD field and a riel
+    // field, each right-aligned to a fixed width so the $ and R columns line up
+    // on every row.
+    private val USDW = 7
+    private val RIELW = 9
+    private fun col3(left: String, mid: String, right: String): String {
+        val leftMax = (WIDTH - USDW - RIELW).coerceAtLeast(0)
+        val l = if (left.length > leftMax) left.substring(0, leftMax) else left
+        return l.padEnd(leftMax) + mid.padStart(USDW) + right.padStart(RIELW) + "\n"
+    }
+
     private fun divider() = "-".repeat(WIDTH) + "\n"
     private fun usd(v: Double) = "$" + String.format("%.2f", v)
     private fun khr(v: Long) = String.format("%,d", v) + " R"
+    // Compact riel for the item column (no space, so it fits the fixed field).
+    private fun khrCol(v: Long) = String.format("%,d", v) + "R"
     private fun pad3(n: Int) = n.toString().padStart(3, '0')
 }
