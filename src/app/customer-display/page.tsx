@@ -167,24 +167,6 @@ function AdSlides({ ads, seconds, full }: { ads: string[]; seconds: number; full
   );
 }
 
-// A small store-name badge pinned over the advertisement, so the store name is
-// always on screen even while a full-bleed promo picture is showing.
-function StoreTag({ storeName, logo, showLogo }: { storeName: string; logo?: string; showLogo?: boolean }) {
-  return (
-    <div className="cd-adtag">
-      <span className="cd-adtag-badge">
-        {logo && showLogo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="" className="cd-adtag-logo" />
-        ) : (
-          <ShoppingBag size={20} strokeWidth={2.4} />
-        )}
-      </span>
-      {storeName}
-    </div>
-  );
-}
-
 // The scanning screen, matching the store's own display: the ADVERTISEMENT on
 // the left, the ORDER RECEIPT (store name, a Product / Price / Qty / Amount
 // table, then the Payment + totals block) on the right.
@@ -210,7 +192,6 @@ function SaleScreen({
     <div className="cd-screen">
       {/* LEFT — the advertisement (store branding until pictures are added). */}
       <div className="cd-adcol">
-        {hasAds && <StoreTag storeName={storeName} logo={logo} showLogo={c.showLogo} />}
         {hasAds ? (
           <AdSlides ads={c.ads} seconds={c.adSeconds} />
         ) : (
