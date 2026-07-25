@@ -666,8 +666,10 @@ export default function PosPage() {
       setTillGate(true);
       return;
     }
-    // Digital payment: show the KHQR, wait for the customer to pay, then commit.
-    if (payment === "KHQR") {
+    // Digital payment: show the KHQR for the customer to scan (ABA Mobile and
+    // every Cambodian bank app read KHQR), wait for the payment, then commit and
+    // print the receipt. ABA is paid this way too — one QR, scanned in ABA.
+    if (payment === "KHQR" || payment === "ABA") {
       setKhqrOpen(true);
       return;
     }
@@ -2197,10 +2199,12 @@ function KhqrModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative z-10 w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-soft">
-        {/* KHQR brand band */}
+        {/* KHQR brand band. KHQR is Cambodia's national standard, so the ONE QR
+            is scannable by every bank app (ABA, Wing, Bakong, ACLEDA…) — the
+            store integrates ABA but the customer can pay from any bank. */}
         <div className="flex items-center justify-between bg-[#e21a1a] px-5 py-3 text-white">
           <span className="text-lg font-black tracking-tight">KHQR</span>
-          <span className="text-xs font-medium opacity-90">Scan with any Cambodian banking app</span>
+          <span className="text-xs font-medium opacity-90">Scan with any Cambodian bank app</span>
         </div>
 
         <div className="p-5">
