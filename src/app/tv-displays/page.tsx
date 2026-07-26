@@ -339,93 +339,130 @@ export default function TvDisplaysPage() {
       <Card>
         <h2 className="mb-1 text-sm font-bold text-ink-900">How the board looks</h2>
         <p className="mb-4 text-[12px] text-slate-500">
-          Applies to every queue TV in this store.
+          Applies to every queue TV in this store. The picture on the right is the &ldquo;Now serving&rdquo; column of
+          your TV — everything you change here appears in it.
         </p>
 
-        <div className="grid gap-5 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          {/* ---- the controls ---- */}
+          <div className="space-y-5">
+            <div>
+              <label className="label">Number colour</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {ACCENTS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    disabled={!isOwner}
+                    onClick={() => setAccent(c)}
+                    aria-label={c}
+                    className={`h-8 w-8 rounded-full ring-2 ring-offset-2 transition ${
+                      accent.toLowerCase() === c ? "ring-ink-900" : "ring-transparent"
+                    }`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={accent}
+                  disabled={!isOwner}
+                  onChange={(e) => setAccent(e.target.value)}
+                  className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white"
+                  title="Any colour"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Message under the number</label>
+              <input
+                className="input"
+                value={boardNote}
+                disabled={!isOwner}
+                maxLength={80}
+                placeholder="e.g. Please collect at the counter"
+                onChange={(e) => setBoardNote(e.target.value)}
+              />
+              <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+                Optional. Leave empty to show nothing.
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Logo at the bottom of the board</label>
+              <div className="flex items-center gap-3">
+                <div className="grid h-14 w-24 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-200">
+                  {boardLogo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={boardLogo} alt="" className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <ImageIcon size={17} className="text-slate-300" />
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="btn-ghost cursor-pointer text-[12px]">
+                    <Upload size={13} /> Choose picture
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={!isOwner}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) pickLogo(f).catch(() => setErr("Couldn't read that image."));
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {boardLogo && (
+                    <button
+                      type="button"
+                      onClick={() => setBoardLogo("")}
+                      className="text-left text-[11.5px] text-rose-600"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+                Your shop logo, in the corner where your current board shows its maker&apos;s mark. Shrunk
+                automatically so it can&apos;t slow the tills down. Leave empty to show the store name instead.
+              </p>
+            </div>
+          </div>
+
+          {/* ---- live mock of the real column, so "where does it show?" needs no explaining ---- */}
           <div>
-            <label className="label">Picture under the number</label>
-            <div className="flex items-center gap-3">
-              <div className="grid h-16 w-28 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-200">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              On the TV it looks like this
+            </p>
+            <div className="overflow-hidden rounded-xl bg-[#eceef7] ring-1 ring-slate-200">
+              <div className="flex h-[300px] flex-col items-center px-4 py-4 text-center">
+                <p className="text-[13px] font-bold leading-tight text-[#12183a]">កំពុងហៅ</p>
+                <p className="text-[12px] font-bold leading-tight text-[#12183a]">NOW SERVING</p>
+                <div className="grid flex-1 place-items-center">
+                  <span className="text-[62px] font-black leading-none tabular-nums" style={{ color: accent }}>
+                    A001
+                  </span>
+                </div>
+                {boardNote && (
+                  <p className="mb-1.5 text-[11px] font-semibold leading-snug text-[#12183a]/70">{boardNote}</p>
+                )}
+                <p className="text-[13px] font-bold tabular-nums text-[#12183a]">22:30</p>
+                <p className="text-[10px] tabular-nums text-[#12183a]/60">26-07-2026</p>
                 {boardLogo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={boardLogo} alt="" className="max-h-full max-w-full object-contain" />
+                  <img src={boardLogo} alt="" className="mt-1.5 max-h-7 max-w-[70%] object-contain" />
                 ) : (
-                  <ImageIcon size={18} className="text-slate-300" />
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="btn-ghost cursor-pointer text-[12px]">
-                  <Upload size={13} /> Choose picture
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={!isOwner}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) pickLogo(f).catch(() => setErr("Couldn't read that image."));
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                {boardLogo && (
-                  <button type="button" onClick={() => setBoardLogo("")} className="text-left text-[11.5px] text-rose-600">
-                    Remove
-                  </button>
+                  <p className="mt-1.5 text-[10px] font-bold text-[#12183a]/70">
+                    ● {business?.name || "Your store name"}
+                  </p>
                 )}
               </div>
             </div>
             <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
-              Your logo, shown small beneath the called number. Shrunk automatically so it can&apos;t slow the tills down.
-            </p>
-          </div>
-
-          <div>
-            <label className="label">Number colour</label>
-            <div className="flex flex-wrap items-center gap-2">
-              {ACCENTS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  disabled={!isOwner}
-                  onClick={() => setAccent(c)}
-                  aria-label={c}
-                  className={`h-8 w-8 rounded-full ring-2 ring-offset-2 transition ${
-                    accent.toLowerCase() === c ? "ring-ink-900" : "ring-transparent"
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-              <input
-                type="color"
-                value={accent}
-                disabled={!isOwner}
-                onChange={(e) => setAccent(e.target.value)}
-                className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white"
-                title="Any colour"
-              />
-            </div>
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Preview</span>
-              <span className="text-2xl font-black tabular-nums" style={{ color: accent }}>
-                A001
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Message under the number</label>
-            <input
-              className="input"
-              value={boardNote}
-              disabled={!isOwner}
-              maxLength={80}
-              placeholder="e.g. Please collect at the counter"
-              onChange={(e) => setBoardNote(e.target.value)}
-            />
-            <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
-              Optional. Leave empty to show nothing.
+              This is one of three columns — Preparing and Order ready sit to its right.
             </p>
           </div>
         </div>
