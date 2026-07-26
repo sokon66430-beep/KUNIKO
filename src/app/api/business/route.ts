@@ -77,11 +77,22 @@ export async function PATCH(req: Request) {
     if (body.customerDisplay && typeof body.customerDisplay === "object") {
       const c = body.customerDisplay;
       const hex = (v: any, fb: string) => (/^#[0-9a-fA-F]{6}$/.test(String(v)) ? String(v) : fb);
-      // Promo images: data-URL images shown as an idle slideshow. Cap the count
-      // and each image's size so the store's data file stays a sane size.
+      // Promo images: data-URL images shown as an idle slideshow.
+      //
+      // The cap matters far more than it looks. These live INSIDE the store
+      // document, which is re-serialised and written on every single sale — so
+      // an oversized promo image is not a one-off cost, it is added to every
+      // transaction for as long as it is set. Measured: at the previous 3 MB ×
+      // 6 ceiling a full set took the document to 21 MB and added ~140 ms of
+      // stringify+write to EVERY sale, on a 512 MB instance.
+      //
+      // The uploader already downscales to 1280px JPEG (~300 KB), so 1 MB is
+      // generous for anything that came through it, while still catching the
+      // two paths that skip downscaling: an SVG, and the decode-failure branch
+      // that stores the original file.
       const ads = Array.isArray(c.ads)
         ? c.ads
-            .filter((a: any) => typeof a === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(a) && a.length < 3_000_000)
+            .filter((a: any) => typeof a === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(a) && a.length < 1_000_000)
             .slice(0, 6)
         : [];
       b.customerDisplay = {
@@ -102,8 +113,11 @@ export async function PATCH(req: Request) {
     // change the number a customer is holding, so this is not a till setting.
     if (body.queueSettings && typeof body.queueSettings === "object" && s.role === "owner") {
       const q = body.queueSettings;
+      // Same reasoning as the promo images above: this sits in the document
+      // rewritten on every sale. The picker downscales to 600px, so 1 MB is
+      // ample for a logo and still bounds a direct API call.
       const isImg = (v: any) =>
-        typeof v === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(v) && v.length < 3_000_000;
+        typeof v === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(v) && v.length < 1_000_000;
       // The store's TVs. Ids are re-derived rather than trusted so a crafted id
       // can never end up in a URL we hand back, and the list is capped so the
       // store document can't be grown without bound through this field.

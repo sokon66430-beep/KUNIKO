@@ -20,6 +20,38 @@ import { storeToday } from "./storetime";
 export const DEFAULT_MAX_PER_LETTER = 99;
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+/**
+ * How many days of pickup tickets to keep.
+ *
+ * These exist to drive the live board and let someone look up a number that was
+ * called a moment ago — not to be a record. The permanent record is the SALE,
+ * which keeps queueNumber and queueCode for ever.
+ *
+ * It has to be bounded because the whole store document is re-serialised and
+ * written on EVERY sale: at 400 queued sales a day an unpruned list adds about
+ * 52 MB a year to that document, so each sale would get slower for the life of
+ * the shop. A week is far more history than a pickup number is ever asked for.
+ */
+export const QUEUE_KEEP_DAYS = 7;
+
+/**
+ * Drop tickets older than QUEUE_KEEP_DAYS, in place. Returns how many went.
+ *
+ * `keepDays` counts calendar days INCLUDING today, so 7 keeps today plus the six
+ * before it. Subtracting the full 7 would quietly retain eight days — a small
+ * thing, but the constant should mean what it says.
+ */
+export function pruneQueue(db: DB, today: string, keepDays = QUEUE_KEEP_DAYS): number {
+  const cutoff = new Date(`${today}T00:00:00Z`);
+  cutoff.setUTCDate(cutoff.getUTCDate() - (Math.max(1, keepDays) - 1));
+  const cutoffDay = cutoff.toISOString().slice(0, 10);
+  const before = db.queue.length;
+  // Tickets issued before `day` existed fall back to their creation date, so a
+  // legacy row is aged on its real date rather than kept for ever.
+  db.queue = db.queue.filter((t) => (t.day ?? t.createdAt.slice(0, 10)) >= cutoffDay);
+  return before - db.queue.length;
+}
+
 /** 25 → "025". The numeric half of the pickup number. */
 export const formatQueue = (n: number): string => String(n).padStart(3, "0");
 
@@ -154,6 +186,9 @@ export function issueQueueTicket(
   };
   db.meta.queue = { current: number, letter, day: today, updatedAt: input.at };
   db.queue.push(ticket);
+  // Trim here rather than on a timer: this is the one place a ticket is ever
+  // added, it is already inside the write-lock, and it costs a single filter.
+  pruneQueue(db, today);
   return ticket;
 }
 

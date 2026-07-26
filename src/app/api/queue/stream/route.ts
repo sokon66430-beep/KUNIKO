@@ -28,38 +28,51 @@ export async function GET(req: Request) {
   let unsubscribe: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
 
+  // Idempotent, and called from BOTH the cancel hook and any failed write.
+  // Relying on cancel() alone leaks: a TV that is switched off at the wall never
+  // closes the connection politely, so the first thing to notice is a write
+  // throwing — and if that throw is swallowed, the heartbeat interval and the
+  // subscriber both live on for the life of the process. A shop power-cycling
+  // its screens daily would accumulate dead subscribers until a redeploy.
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    unsubscribe?.();
+    unsubscribe = null;
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+  };
+
   const stream = new ReadableStream({
     start(controller) {
-      const send = (event: string, data: unknown) => {
+      // Returns false once the connection is gone, so callers stop writing.
+      const write = (chunk: string): boolean => {
+        if (cleanedUp) return false;
         try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          controller.enqueue(encoder.encode(chunk));
+          return true;
         } catch {
-          // The client vanished between the publish and this write; cleanup
-          // runs via cancel().
+          cleanup();
+          return false;
         }
       };
+      const send = (event: string, data: unknown) =>
+        write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
       // `retry` tells EventSource how soon to come back after a drop — this is
       // the auto-reconnect behaviour, handed to the browser rather than coded.
-      controller.enqueue(encoder.encode("retry: 3000\n\n"));
+      write("retry: 3000\n\n");
       send("ready", { storeId, at: new Date().toISOString() });
 
       unsubscribe = subscribe(storeId, (event, payload) => send(event, payload));
 
       // A comment every 25s. Proxies (Render's included) close an idle
       // connection, and a kitchen can easily go quiet for minutes at a time.
-      heartbeat = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          /* closed */
-        }
-      }, 25_000);
+      // This is also what DETECTS a screen that vanished without disconnecting.
+      heartbeat = setInterval(() => write(": keep-alive\n\n"), 25_000);
     },
-    cancel() {
-      unsubscribe?.();
-      if (heartbeat) clearInterval(heartbeat);
-    },
+    cancel: cleanup,
   });
 
   return new Response(stream, {
