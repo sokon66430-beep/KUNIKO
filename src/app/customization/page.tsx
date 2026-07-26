@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutGrid, ReceiptText, Monitor } from "lucide-react";
+import { LayoutGrid, ReceiptText, Monitor, Tv } from "lucide-react";
 import { useRole } from "@/lib/client";
 import MenuLayoutPage from "@/app/menu-layout/page";
 import InvoiceSettingsPage from "@/app/invoice-settings/page";
 import CustomerScreenSettingsPage from "@/app/customer-display-settings/page";
+import TvDisplaysPage from "@/app/tv-displays/page";
 
-// One "Customization" hub that gathers the three ways to tailor the app —
-// Menu Layout, the printed Invoice, and the Customer Screen — under a single
-// menu item with tabs, instead of three separate sidebar entries. Each tab is
-// the full existing tool (with its own Save), so nothing about how they work
-// changes; they just live together now.
+// One "Customization" hub that gathers every way to tailor what a customer sees
+// — Menu Layout, the printed Invoice, the Customer Screen and the queue TVs —
+// under a single menu item with tabs, instead of separate sidebar entries. Each
+// tab is the full existing tool (with its own Save), so nothing about how they
+// work changes; they just live together now.
 //
 // Menu Layout reorders EVERY role's sidebar, so it stays owner-only — the tab
 // only appears for the owner.
@@ -20,6 +21,9 @@ const ALL_TABS = [
   { key: "menu", label: "Menu Layout", icon: LayoutGrid, Comp: MenuLayoutPage, ownerOnly: true },
   { key: "invoice", label: "Invoice", icon: ReceiptText, Comp: InvoiceSettingsPage, ownerOnly: false },
   { key: "screen", label: "Customer Screen", icon: Monitor, Comp: CustomerScreenSettingsPage, ownerOnly: false },
+  // The wall TVs sit beside the Sunmi second screen: both are things a customer
+  // looks at, so an owner changing the shop's look finds them in one place.
+  { key: "tv", label: "TV Displays", icon: Tv, Comp: TvDisplaysPage, ownerOnly: false },
 ] as const;
 
 export default function CustomizationPage() {

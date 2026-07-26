@@ -285,11 +285,13 @@ export default function TvDisplaysPage() {
               <p className="mb-1.5 text-[12px] font-bold text-ink-900">Two TVs, set up the usual way</p>
               <ul className="space-y-1 text-[11.5px] leading-snug text-slate-600">
                 <li>
-                  <b>Over the counter</b> — &ldquo;Queue numbers only&rdquo;, voice on. The screen people check.
+                  <b>Over the counter</b> — &ldquo;Queue board&rdquo;, voice on. The screen people check.
                 </li>
                 <li>
-                  <b>Seating area</b> — &ldquo;Advert + queue numbers&rdquo;, voice off. Promotions, with numbers to
-                  hand.
+                  <b>Seating area</b> — &ldquo;Advert + queue board&rdquo;, voice off. Promotions, with numbers to hand.
+                </li>
+                <li>
+                  <b>Menu screen</b> — &ldquo;Adverts only&rdquo;. Your food photos, no numbers.
                 </li>
               </ul>
             </div>
