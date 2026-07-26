@@ -26,6 +26,7 @@ type Board = {
   boardLogo: string | null;
   accent: string;
   boardNote: string;
+  screen: { id: string; name: string; mode: Mode; dark: boolean; rows: number; voice: boolean } | null;
   preparing: Entry[];
   ready: Entry[];
   voice: boolean;
@@ -35,12 +36,20 @@ type Board = {
 const ROWS = 7; // what fits a 16:9 screen at this row height, matching the existing board
 
 // ---------------------------------------------------------------------------
-// Per-screen settings, read from the URL — see /tv-displays, which builds these
-// links so nobody has to type them.
+// Which TV this is.
+//
+// The normal way is a registered screen: the TV opens /queue-display?screen=s2
+// once and never changes, while WHAT it shows is stored on the server against
+// that id. So the owner re-points the seating-area TV from adverts to the board
+// from the office, and the screen follows on its next update — nobody carries a
+// keyboard over to it.
+//
+// The raw parameters below still work for a screen that was never registered,
+// so a spare TV or a quick preview needs no setup at all:
 //
 //   /queue-display                → the three-column board (default)
-//   /queue-display?mode=ads       → promotions only, for a menu/advert screen
-//   /queue-display?mode=split     → advert with the queue down one side
+//   /queue-display?mode=ads       → promotions only, for a menu screen
+//   /queue-display?mode=split     → advert beside the board
 //   /queue-display?theme=dark     → dark board
 //   /queue-display?voice=1        → THIS screen speaks (turn on for ONE only)
 // ---------------------------------------------------------------------------
@@ -67,8 +76,14 @@ export default function QueueDisplayPage() {
   const [live, setLive] = useState(false);
   const [now, setNow] = useState({ time: "", date: "" });
   const [ad, setAd] = useState(0);
-  const [cfg, setCfg] = useState(() => readScreenConfig(""));
-  useEffect(() => setCfg(readScreenConfig(window.location.search)), []);
+  const [urlCfg, setUrlCfg] = useState(() => readScreenConfig(""));
+  useEffect(() => setUrlCfg(readScreenConfig(window.location.search)), []);
+  // A registered screen's stored setup wins over the URL, so re-pointing a TV
+  // from the office takes effect without anyone touching the screen.
+  const s = board?.screen;
+  const cfg = s
+    ? { mode: s.mode, dark: s.dark, voice: s.voice, rows: Math.min(12, Math.max(1, s.rows)) }
+    : urlCfg;
 
   const announced = useRef<Set<string>>(new Set());
   const firstLoad = useRef(true);
@@ -79,7 +94,8 @@ export default function QueueDisplayPage() {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/queue/board", { cache: "no-store" });
+      const id = new URLSearchParams(window.location.search).get("screen") || "";
+      const r = await fetch(`/api/queue/board${id ? `?screen=${encodeURIComponent(id)}` : ""}`, { cache: "no-store" });
       if (!r.ok) return;
       const next: Board = await r.json();
       setBoard(next);
@@ -274,8 +290,34 @@ function Style() {
         background: #0a0f1e;
         color: #e8edf9;
       }
+      /* The board is three columns and has to stay readable, so it takes about
+         two thirds and the advert gets what's left. An even split squeezed the
+         headings until "ORDER READY" wrapped onto two lines. */
       .q.mode-split {
-        grid-template-columns: 1fr 1.35fr; /* advert, then the board */
+        grid-template-columns: 1fr 2.1fr;
+      }
+      /* Tighter gutters and slightly smaller type, since each column here is
+         narrower than on a board-only screen. */
+      .q.mode-split .q-col {
+        padding: 2.2vh 1vw 1.6vh;
+      }
+      .q.mode-split .q-kh {
+        font-size: 2.4vh;
+      }
+      .q.mode-split .q-en {
+        font-size: 1.9vh;
+      }
+      .q.mode-split .q-code {
+        font-size: 3.6vh;
+      }
+      .q.mode-split .q-where {
+        font-size: 1.5vh;
+      }
+      /* Headings must not wrap: two-line column titles make the board look
+         broken from across a room. */
+      .q.mode-split .q-en,
+      .q.mode-split .q-kh {
+        white-space: nowrap;
       }
       .q.mode-ads {
         grid-template-columns: 1fr;

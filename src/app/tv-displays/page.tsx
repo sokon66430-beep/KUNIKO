@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Monitor, Volume2, Check, ExternalLink, Copy, Upload, Image as ImageIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Monitor, Volume2, Check, ExternalLink, Copy, Upload, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { PageHeader, Card, ErrorBox } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { useFetch, api } from "@/lib/client";
@@ -10,18 +10,33 @@ import { useRole } from "@/lib/client";
 // ---------------------------------------------------------------------------
 // TV Displays — set up each screen in the shop.
 //
-// A shop has more than one TV and they do different jobs. Rather than ask the
-// owner to type URL parameters, this page BUILDS the link: choose what a screen
-// should show, then open or copy its address on that TV once. The TV keeps that
-// address forever, so nothing has to be paired, registered or kept in sync, and
-// a replacement TV is live the moment someone types the link.
+// A shop has more than one TV and they do different jobs — one over the counter
+// showing numbers, one in the seating area showing promotions, one as a menu
+// board. Each is registered here and gets a short link (?screen=s2) opened on
+// that TV once.
+//
+// WHAT a screen shows is stored on the server against its id, not baked into the
+// link. So re-pointing the seating-area TV from adverts to the board is done
+// from the office and the screen follows on its own — nobody carries a keyboard
+// over to a wall-mounted television. Replacing a broken TV is just opening the
+// same link on the new one.
 // ---------------------------------------------------------------------------
 
 type Layout = "board" | "split" | "ads";
 
+type Screen = {
+  id: string;
+  name: string;
+  mode: Layout;
+  dark?: boolean;
+  rows?: number;
+  voice?: boolean;
+};
+
 type Business = {
   name?: string;
   queueSettings?: {
+    screens?: Screen[];
     maxPerLetter?: number;
     resetDaily?: boolean;
     voice?: boolean;
@@ -58,12 +73,9 @@ export default function TvDisplaysPage() {
   const isOwner = role === "owner";
   const { data: business, reload } = useFetch<Business>("/api/business");
 
-  // --- the link builder ---
-  const [layout, setLayout] = useState<Layout>("board");
-  const [dark, setDark] = useState(false);
-  const [voice, setVoice] = useState(false);
-  const [rows, setRows] = useState("");
-  const [copied, setCopied] = useState(false);
+  // --- the shop's TVs ---
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // --- store-wide queue rules ---
   const [maxPerLetter, setMaxPerLetter] = useState("99");
@@ -89,7 +101,26 @@ export default function TvDisplaysPage() {
     setBoardLogo(q.boardLogo || "");
     setAccent(q.accent || "#2544c7");
     setBoardNote(q.boardNote || "");
+    setScreens(q.screens?.length ? q.screens : []);
   }, [business]);
+
+  // Ids only have to be unique within one store and never change once a TV has
+  // the link, so the lowest unused sN is both stable and readable.
+  function addScreen() {
+    const taken = new Set(screens.map((s) => s.id));
+    let n = 1;
+    while (taken.has(`s${n}`)) n++;
+    setScreens([
+      ...screens,
+      { id: `s${n}`, name: `TV ${screens.length + 1}`, mode: "board", dark: false, rows: 7, voice: false },
+    ]);
+  }
+  const patchScreen = (id: string, patch: Partial<Screen>) =>
+    setScreens((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const removeScreen = (id: string) => setScreens((prev) => prev.filter((s) => s.id !== id));
+
+  const linkFor = (id: string) =>
+    typeof window === "undefined" ? `/queue-display?screen=${id}` : `${window.location.origin}/queue-display?screen=${id}`;
 
   // Downscale before storing: a phone photo is several MB, and the whole store
   // document is rewritten on every sale — an oversized picture would slow every
@@ -118,18 +149,6 @@ export default function TvDisplaysPage() {
     setBoardLogo(c.toDataURL("image/png"));
   }
 
-  const path = useMemo(() => {
-    const p = new URLSearchParams();
-    if (layout !== "board") p.set("mode", layout); // board is the default
-    if (dark) p.set("theme", "dark");
-    if (voice && layout !== "ads") p.set("voice", "1");
-    if (rows.trim() && layout !== "ads") p.set("rows", rows.trim());
-    const qs = p.toString();
-    return `/queue-display${qs ? `?${qs}` : ""}`;
-  }, [layout, dark, voice, rows]);
-
-  const fullUrl = typeof window === "undefined" ? path : `${window.location.origin}${path}`;
-
   async function save() {
     setSaving(true);
     setErr(null);
@@ -138,6 +157,7 @@ export default function TvDisplaysPage() {
         method: "PATCH",
         body: JSON.stringify({
           queueSettings: {
+            screens,
             maxPerLetter: Number(maxPerLetter) || 99,
             resetDaily,
             voice: voiceOn,
@@ -167,136 +187,153 @@ export default function TvDisplaysPage() {
       />
 
       {err && <ErrorBox message={err} />}
-
       <Card>
-        <div className="mb-4 flex items-center gap-2">
-          <Monitor size={16} className="text-brand-600" />
-          <h2 className="text-sm font-bold text-ink-900">Set up a screen</h2>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Monitor size={16} className="text-brand-600" />
+            <h2 className="text-sm font-bold text-ink-900">Your screens</h2>
+          </div>
+          {isOwner && (
+            <button type="button" onClick={addScreen} className="btn-ghost text-[12px]">
+              <Plus size={14} /> Add a TV
+            </button>
+          )}
         </div>
+        <p className="mb-4 text-[12px] text-slate-500">
+          One entry per TV in the shop. Open its link on that screen once and leave it — changing what it shows here
+          takes effect on the TV by itself, so nobody has to go back to it with a keyboard.
+        </p>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-4">
-            <div>
-              <label className="label">What should this TV show?</label>
-              <div className="space-y-2">
-                {LAYOUTS.map((l) => (
-                  <button
-                    key={l.value}
-                    type="button"
-                    onClick={() => setLayout(l.value)}
-                    className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${
-                      layout === l.value
-                        ? "border-brand-600 bg-brand-50/60 ring-1 ring-brand-600"
-                        : "border-slate-200 hover:border-slate-300"
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
-                        layout === l.value ? "border-brand-600 bg-brand-600 text-white" : "border-slate-300"
-                      }`}
-                    >
-                      {layout === l.value && <Check size={11} strokeWidth={3} />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold text-ink-900">{l.label}</span>
-                      <span className="block text-[11.5px] leading-snug text-slate-500">{l.blurb}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Background</label>
-                <Select
-                  value={dark ? "dark" : "light"}
-                  onChange={(v) => setDark(v === "dark")}
-                  options={[
-                    { value: "light", label: "Light (matches your board)" },
-                    { value: "dark", label: "Dark" },
-                  ]}
-                />
-              </div>
-              {layout !== "ads" && (
-                <div>
-                  <label className="label">Rows per column</label>
-                  <input
-                    className="input"
-                    inputMode="numeric"
-                    placeholder="7"
-                    value={rows}
-                    onChange={(e) => setRows(e.target.value.replace(/\D/g, ""))}
-                  />
-                </div>
-              )}
-            </div>
-
-            {layout !== "ads" && (
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3">
-                <input
-                  type="checkbox"
-                  checked={voice}
-                  onChange={(e) => setVoice(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-brand-600"
-                />
-                <span className="min-w-0">
-                  <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-900">
-                    <Volume2 size={13} /> This screen calls numbers out loud
-                  </span>
-                  <span className="block text-[11.5px] leading-snug text-slate-500">
-                    Turn on for ONE screen only. Two TVs in the same room announcing the same number talk over each
-                    other. Also needs the voice switch below.
-                  </span>
-                </span>
-              </label>
+        {screens.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center">
+            <p className="text-[13px] font-semibold text-ink-900">No screens set up yet</p>
+            <p className="mx-auto mt-1 max-w-md text-[12px] leading-snug text-slate-500">
+              Add one for each TV — for example &ldquo;Over the counter&rdquo; and &ldquo;Seating area&rdquo;. Any screen
+              opened without a link still shows the standard board.
+            </p>
+            {isOwner && (
+              <button type="button" onClick={addScreen} className="btn-primary mt-3">
+                <Plus size={14} /> Add a TV
+              </button>
             )}
           </div>
-
-          {/* The result: the address to open on that TV. */}
+        ) : (
           <div className="space-y-3">
-            <div>
-              <label className="label">Open this address on the TV</label>
-              <div className="flex gap-2">
-                <input readOnly value={fullUrl} className="input flex-1 font-mono text-[12px]" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(fullUrl);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1800);
-                  }}
-                  className="btn-ghost shrink-0"
-                  title="Copy"
-                >
-                  {copied ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
-                </button>
-                <a href={path} target="_blank" rel="noreferrer" className="btn-primary shrink-0">
-                  <ExternalLink size={15} /> Preview
-                </a>
-              </div>
-              <p className="mt-1.5 text-[11.5px] leading-snug text-slate-500">
-                Type it into the TV&apos;s browser once and leave the page open. It updates itself the moment a cashier
-                takes a payment or the kitchen presses Ready — it never needs refreshing.
-              </p>
-            </div>
+            {screens.map((sc) => (
+              <div key={sc.id} className="rounded-xl border border-slate-200 p-3.5">
+                <div className="mb-3 flex items-center gap-2">
+                  <input
+                    className="input flex-1 font-semibold"
+                    value={sc.name}
+                    disabled={!isOwner}
+                    maxLength={40}
+                    placeholder="Where is this TV?"
+                    onChange={(e) => patchScreen(sc.id, { name: e.target.value })}
+                  />
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => removeScreen(sc.id)}
+                      className="btn-ghost shrink-0 text-rose-600"
+                      title="Remove this TV"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
 
-            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-              <p className="mb-1.5 text-[12px] font-bold text-ink-900">Two TVs, set up the usual way</p>
-              <ul className="space-y-1 text-[11.5px] leading-snug text-slate-600">
-                <li>
-                  <b>Over the counter</b> — &ldquo;Queue board&rdquo;, voice on. The screen people check.
-                </li>
-                <li>
-                  <b>Seating area</b> — &ldquo;Advert + queue board&rdquo;, voice off. Promotions, with numbers to hand.
-                </li>
-                <li>
-                  <b>Menu screen</b> — &ldquo;Adverts only&rdquo;. Your food photos, no numbers.
-                </li>
-              </ul>
-            </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="lg:col-span-2">
+                    <label className="label">Shows</label>
+                    <Select
+                      value={sc.mode}
+                      disabled={!isOwner}
+                      onChange={(v) => patchScreen(sc.id, { mode: v as Layout })}
+                      options={LAYOUTS.map((l) => ({ value: l.value, label: l.label }))}
+                    />
+                    <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                      {LAYOUTS.find((l) => l.value === sc.mode)?.blurb}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="label">Background</label>
+                    <Select
+                      value={sc.dark ? "dark" : "light"}
+                      disabled={!isOwner}
+                      onChange={(v) => patchScreen(sc.id, { dark: v === "dark" })}
+                      options={[
+                        { value: "light", label: "Light" },
+                        { value: "dark", label: "Dark" },
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Rows per column</label>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      disabled={!isOwner || sc.mode === "ads"}
+                      value={sc.mode === "ads" ? "" : String(sc.rows ?? 7)}
+                      placeholder={sc.mode === "ads" ? "—" : "7"}
+                      onChange={(e) => patchScreen(sc.id, { rows: Number(e.target.value.replace(/\D/g, "")) || 7 })}
+                    />
+                  </div>
+                </div>
+
+                {sc.mode !== "ads" && (
+                  <label className="mt-3 flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={!!sc.voice}
+                      disabled={!isOwner}
+                      onChange={(e) => patchScreen(sc.id, { voice: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 accent-brand-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink-900">
+                        <Volume2 size={13} /> This screen calls numbers out loud
+                      </span>
+                      <span className="block text-[11px] leading-snug text-slate-500">
+                        Turn on for one screen only — two TVs in the same room announce over each other.
+                      </span>
+                    </span>
+                  </label>
+                )}
+
+                <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
+                  <input readOnly value={linkFor(sc.id)} className="input flex-1 font-mono text-[11.5px]" />
+                  <button
+                    type="button"
+                    className="btn-ghost shrink-0"
+                    title="Copy the link"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(linkFor(sc.id));
+                      setCopiedId(sc.id);
+                      setTimeout(() => setCopiedId(null), 1800);
+                    }}
+                  >
+                    {copiedId === sc.id ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
+                  </button>
+                  <a
+                    href={`/queue-display?screen=${sc.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-primary shrink-0"
+                  >
+                    <ExternalLink size={15} /> Preview
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        )}
+
+        {screens.some((s) => s.voice) && screens.filter((s) => s.voice).length > 1 && (
+          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800 ring-1 ring-amber-200">
+            {screens.filter((s) => s.voice).length} screens are set to speak. In one room they will talk over each
+            other — leave it on for just one.
+          </p>
+        )}
       </Card>
 
       <Card>

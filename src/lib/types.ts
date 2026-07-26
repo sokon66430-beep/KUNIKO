@@ -581,8 +581,28 @@ export type KitchenStation = {
   sort?: number;
 };
 
+/**
+ * One physical TV in the shop, configured by the owner.
+ *
+ * Each screen is opened once on its TV at /queue-display?screen=<id> and left
+ * there. Everything about WHAT it shows lives here on the server, so changing
+ * the seating-area TV from adverts to the board is done from the office — no
+ * one has to fetch a keyboard and retype a URL at the screen itself.
+ */
+export type QueueScreen = {
+  id: string; // short + URL-safe, e.g. "s1"
+  name: string; // "Over the counter", "Seating area"
+  mode: "board" | "split" | "ads";
+  dark?: boolean;
+  rows?: number; // numbers listed per column
+  voice?: boolean; // only ONE screen should have this on
+};
+
 /** Owner-controlled queue behaviour (Admin settings, Step 10). */
 export type QueueSettings = {
+  // The TVs in this store. Empty/absent = the default board on any screen that
+  // opens /queue-display with no id.
+  screens?: QueueScreen[];
   // How many numbers a letter holds before rolling to the next one (A099 → B001).
   maxPerLetter?: number; // default 99
   // Business-day reset. The counter returns to A001 on the store's next day.

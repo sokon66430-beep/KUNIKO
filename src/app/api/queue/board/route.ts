@@ -17,11 +17,15 @@ export const dynamic = "force-dynamic";
  * Only TODAY's tickets, because numbers restart each business day and showing a
  * stale A012 from yesterday would send the wrong person to the counter.
  */
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const db = await readDB();
+  // Which TV is asking. The screen's setup lives on the server, so the owner can
+  // change what this TV shows without anyone going to the screen to retype a URL.
+  const screenId = new URL(req.url).searchParams.get("screen");
+  const screen = screenId ? (db.meta.business.queueSettings?.screens || []).find((s) => s.id === screenId) : undefined;
   const today = storeToday();
   const cfg = db.meta.business.queueSettings || {};
 
@@ -56,6 +60,19 @@ export async function GET() {
     boardLogo: cfg.boardLogo || null,
     accent: cfg.accent || "#2544c7",
     boardNote: cfg.boardNote || "",
+    // This TV's own setup. Null when the link carries no id (or names a screen
+    // that has since been deleted) — the display then falls back to its URL
+    // parameters, so an unregistered screen still shows something sensible.
+    screen: screen
+      ? {
+          id: screen.id,
+          name: screen.name,
+          mode: screen.mode,
+          dark: !!screen.dark,
+          rows: screen.rows || 7,
+          voice: !!screen.voice,
+        }
+      : null,
     // "preparing" and anything still waiting both read as "being made" to a
     // customer — they don't know or care whether a cook has pressed START.
     preparing: [...pick("waiting"), ...pick("preparing")].sort((a, b) => a.at.localeCompare(b.at)),

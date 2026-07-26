@@ -104,7 +104,26 @@ export async function PATCH(req: Request) {
       const q = body.queueSettings;
       const isImg = (v: any) =>
         typeof v === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(v) && v.length < 3_000_000;
+      // The store's TVs. Ids are re-derived rather than trusted so a crafted id
+      // can never end up in a URL we hand back, and the list is capped so the
+      // store document can't be grown without bound through this field.
+      const screens = Array.isArray(q.screens)
+        ? q.screens
+            .slice(0, 12)
+            .map((s: any, i: number) => ({
+              id: String(s?.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 12) || `s${i + 1}`,
+              name: String(s?.name || `Screen ${i + 1}`).slice(0, 40),
+              mode: s?.mode === "split" || s?.mode === "ads" ? s.mode : ("board" as const),
+              dark: !!s?.dark,
+              rows: Math.min(12, Math.max(1, Math.round(Number(s?.rows) || 7))),
+              voice: !!s?.voice,
+            }))
+            // Two screens sharing an id would both answer to the same link, and
+            // the owner would have no way to tell which one they were editing.
+            .filter((s: any, i: number, all: any[]) => all.findIndex((x) => x.id === s.id) === i)
+        : undefined;
       b.queueSettings = {
+        screens,
         maxPerLetter: Math.min(999, Math.max(9, Math.round(Number(q.maxPerLetter) || 99))),
         resetDaily: q.resetDaily !== false,
         voice: !!q.voice,
