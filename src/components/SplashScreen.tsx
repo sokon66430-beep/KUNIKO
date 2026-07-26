@@ -40,6 +40,17 @@ export function SplashScreen({ theme = "auto", onFinish }: { theme?: "dark" | "l
   const [mode, setMode] = useState<"dark" | "light">(theme === "auto" ? "light" : theme);
 
   useEffect(() => {
+    // Customer-facing screens never show it. The queue TV on the wall and the
+    // T3's second display are signage: a customer looking for their number
+    // should see the board, not our logo animating. This lives here rather than
+    // in AppShell because the splash is mounted by the root layout, outside it.
+    const p = window.location.pathname;
+    if (p === "/queue-display" || p === "/customer-display") {
+      setPhase("done");
+      onFinish?.();
+      return;
+    }
+
     // The splash is store branding — show it ONCE when the app first opens, but
     // NOT on every in-session reload. Switching staff at the till reloads the
     // page; replaying the 3s splash each time reads as a freeze/glitch. Skip it

@@ -48,6 +48,11 @@ export type Product = {
   // it sells, the linked recipe's ingredients come off stock instead of this
   // product's own count — see lib/recipes.ts.
   recipeId?: string;
+  // --- Kitchen routing -----------------------------------------------------
+  // Which station makes this product (Grill, Fry, Drinks). When set, the item
+  // is sent to that station's lane on the Kitchen Display at payment. Unset
+  // means it needs no preparation — a packet of crisps never reaches a kitchen.
+  stationId?: string;
   // Set on an INGREDIENT bought in one unit and consumed in another. `unit`
   // stays what stock is counted in (the purchase unit, e.g. kg); this is what
   // recipes are written in (e.g. g). Display only — conversion works off the
@@ -478,6 +483,7 @@ export type Sale = {
   // back to the QueueTicket record.
   queueNumber?: number;
   queueTicketId?: string;
+  queueCode?: string; // "A001" — what the customer is called by
   // Money management: the till this sale rang up on, and the open cash shift it
   // belongs to (stamped server-side from the terminal's open shift). Both
   // optional so a sale never fails just because no shift is open — see the sales
@@ -508,19 +514,84 @@ export type Sale = {
 // wraps back to 001 after 099. This is ONLY for calling the customer; the
 // receipt number and transaction id stay separate and unique.
 // ---------------------------------------------------------------------------
-export type QueueStatus = "waiting" | "cancelled";
+// The kitchen lifecycle. "waiting" is the state a ticket is born in at payment;
+// the rest are driven from the Kitchen Display. "cancelled" is terminal and can
+// be reached from any state.
+export type QueueStatus = "waiting" | "preparing" | "ready" | "completed" | "cancelled";
+
+/**
+ * One entry per state change, so a disputed order can be reconstructed: who
+ * touched it, when, from which screen. Append-only — a correction is another
+ * entry, never an edit.
+ */
+export type QueueEvent = {
+  at: string;
+  status: QueueStatus;
+  by: string; // the signed-in user who pressed it
+  device?: string; // terminal / KDS station id that sent it
+  stationId?: string; // set when the change came from one station's lane
+};
+
+/** One kitchen station's slice of a ticket — the items it has to make. */
+export type QueueStationJob = {
+  stationId: string;
+  stationName: string; // snapshotted, so renaming a station later can't rewrite history
+  items: { name: string; qty: number; note?: string }[];
+  status: QueueStatus;
+  startedAt?: string;
+  readyAt?: string;
+};
 
 export type QueueTicket = {
   id: string; // Q-000001 — internal unique id (distinct from the queue number)
-  number: number; // 1..99, shown zero-padded to 3 digits
+  number: number; // 1..maxPerLetter, shown zero-padded to 3 digits
+  // Letter block ("A" in A001). Absent on tickets issued before letters existed;
+  // formatQueueCode() falls back to the bare number for those.
+  letter?: string;
+  code?: string; // "A001" — denormalised at issue for display and search
+  day?: string; // store business day (Asia/Phnom_Penh) this belongs to
   saleId: string;
   receiptNo: string; // the sale's invoiceNo
   posTerminalId?: string; // which till issued it
   cashier: string; // who took the payment
   status: QueueStatus;
+  // What the kitchen has to make, split by station. Empty when nothing on the
+  // order is routed to a station (a plain retail basket that just wants a
+  // pickup number).
+  jobs?: QueueStationJob[];
+  events?: QueueEvent[];
   createdAt: string;
+  startedAt?: string;
+  readyAt?: string;
+  completedAt?: string;
   cancelledAt?: string;
   cancelledBy?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Kitchen stations: where a product is actually made.
+//
+// A product carries a stationId; at payment the order is split into one job per
+// station, so the Grill lane only ever sees the grill items.
+// ---------------------------------------------------------------------------
+export type KitchenStation = {
+  id: string;
+  name: string; // "Grill", "Fry", "Drinks"
+  active: boolean;
+  sort?: number;
+};
+
+/** Owner-controlled queue behaviour (Admin settings, Step 10). */
+export type QueueSettings = {
+  // How many numbers a letter holds before rolling to the next one (A099 → B001).
+  maxPerLetter?: number; // default 99
+  // Business-day reset. The counter returns to A001 on the store's next day.
+  resetDaily?: boolean; // default true
+  // Announce a number by voice on the customer display when it turns ready.
+  voice?: boolean;
+  voiceLang?: string; // BCP-47, e.g. "en-US" / "km-KH"
+  // Minutes after which a waiting ticket is highlighted as late on the KDS.
+  lateAfterMins?: number; // default 10
 };
 
 // ---------------------------------------------------------------------------
@@ -932,6 +1003,9 @@ export type DB = {
   promotionUsages: PromotionUsage[];
   auditLog: AuditEvent[];
   queue: QueueTicket[];
+  // Kitchen stations a product can be routed to (Grill, Fry, Drinks). Optional
+  // so an existing store file loads without one; backfilled to [] on read.
+  kitchenStations?: KitchenStation[];
   shifts: Shift[];
   cashMovements: CashMovement[];
   surveys: ShiftSurvey[];
@@ -960,7 +1034,10 @@ export type DB = {
     // The store's shared pickup-number counter. `current` is the last number
     // issued (0 before any); the next sale that asks for a number gets
     // (current % 99) + 1, wrapping 099 → 001.
-    queue: { current: number; updatedAt: string };
+    // The store's single pickup-number counter, shared by every till. `letter`
+    // and `day` are optional so a store file written before letters existed
+    // still loads — issueQueueTicket treats a missing day as "reset now".
+    queue: { current: number; updatedAt: string; letter?: string; day?: string };
     nextShift: number;
     nextCashMovement: number;
     nextSurvey: number;
@@ -996,6 +1073,7 @@ export type DB = {
       poNotes: string[]; // standing notes printed on every PO
       approvers?: Approver[]; // who may approve edits to submitted receipts
       promotionSettings?: PromotionSettings; // how deals may interact (see lib/promotions)
+      queueSettings?: QueueSettings; // pickup-number format, reset & KDS behaviour
       receipt?: ReceiptSettings; // how the customer receipt is styled (Invoice Customization)
       customerDisplay?: CustomerDisplaySettings; // how the T3 second screen is styled (Customer Screen)
       menuOrder?: string[]; // legacy owner-set order (within-group) — superseded by menuLayout

@@ -16,6 +16,12 @@ import type { Role } from "@/lib/auth";
 // Management page (drawer/safe/reports). Everything else bounces back to /pos.
 const TILL_PATHS = ["/pos", "/money"];
 
+// Screens a CUSTOMER looks at, never staff: the Sunmi T3's second display and
+// the queue TV on the wall. They render with no sidebar, no till bar and no
+// session polling — app chrome on shop signage looks like a mistake, and on the
+// TV the menu bar sits right where the store name goes.
+const BARE_PAGES = new Set(["/customer-display", "/queue-display"]);
+
 // The login page renders bare (no sidebar); everything else gets the app shell.
 // The Suspense boundary lets pages use useSearchParams() (request-time data)
 // without breaking the production build.
@@ -39,7 +45,7 @@ function ShellInner({ children }: { children: ReactNode }) {
   // the built-in baseline middleware already enforces) still sends the user
   // back to their dashboard, even for a client-side <Link> transition.
   useEffect(() => {
-    if (pathname === "/login" || pathname === "/register" || pathname === "/customer-display") return;
+    if (pathname === "/login" || pathname === "/register" || BARE_PAGES.has(pathname)) return;
     let alive = true;
     fetch("/api/auth/session")
       .then((r) => (r.ok ? r.json() : null))
@@ -63,7 +69,7 @@ function ShellInner({ children }: { children: ReactNode }) {
   // try.
   useEffect(() => {
     if (!ready || !tillMode) return;
-    if (pathname === "/login" || pathname === "/register" || pathname === "/customer-display") return;
+    if (pathname === "/login" || pathname === "/register" || BARE_PAGES.has(pathname)) return;
     if (!TILL_PATHS.includes(pathname)) router.replace("/pos");
   }, [ready, tillMode, pathname, router]);
 
@@ -79,9 +85,11 @@ function ShellInner({ children }: { children: ReactNode }) {
 
   if (pathname === "/login" || pathname === "/register") return <Suspense>{children}</Suspense>;
 
-  // The customer-facing second screen (Sunmi T3) is chrome-free: no sidebar, no
-  // till bar — it only mirrors the sale for the customer to watch.
-  if (pathname === "/customer-display") return <Suspense>{children}</Suspense>;
+  // Customer-facing screens are chrome-free: no sidebar, no till bar. The T3's
+  // second display mirrors the sale; the queue TV is shop signage on a wall.
+  // Either with a hamburger menu across the top would look like someone left a
+  // laptop open, and on the TV it would cover the store name.
+  if (BARE_PAGES.has(pathname)) return <Suspense>{children}</Suspense>;
 
   // Locked till: slim bar, no sidebar, POS only. While a stray URL is being
   // bounced back to /pos, render nothing so the wrong page never flashes.

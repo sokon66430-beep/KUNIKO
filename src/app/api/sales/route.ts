@@ -6,6 +6,7 @@ import { canManageStaff } from "@/lib/access";
 import { profitFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
+import { publish } from "@/lib/realtime";
 import { issueQueueTicket } from "@/lib/queue";
 import { openShiftForTerminal } from "@/lib/money";
 import { currentActor } from "@/lib/actor";
@@ -388,9 +389,11 @@ export async function POST(req: Request) {
         posTerminalId: typeof body.posTerminalId === "string" ? body.posTerminalId : undefined,
         cashier: actor,
         at: now,
+        items, // so the kitchen lanes are built from what was actually sold
       });
       sale.queueNumber = ticket.number;
       sale.queueTicketId = ticket.id;
+      sale.queueCode = ticket.code;
     }
 
     db.meta.nextInvoice += 1;
@@ -401,6 +404,10 @@ export async function POST(req: Request) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
+  // Push the new ticket to the kitchen display and the customer TV. After the
+  // write has committed, and deliberately not inside mutateDB: a screen must
+  // never be able to hold up — or roll back — a payment.
+  if (result.sale.queueTicketId) publish(session?.storeId || "", "queue:changed", { saleId: result.sale.id });
   return NextResponse.json(result.sale, { status: 201 });
 }
 

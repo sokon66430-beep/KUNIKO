@@ -51,6 +51,7 @@ function backfill(db: DB): DB {
   // Customer pickup-number queue — stores created before it get an empty book
   // and a zeroed counter (first number issued will be 001).
   if (!db.queue) db.queue = [];
+  if (!db.kitchenStations) db.kitchenStations = [];
   if (db.meta.nextQueueId == null) db.meta.nextQueueId = 1;
   if (!db.meta.queue) db.meta.queue = { current: 0, updatedAt: new Date().toISOString() };
   // Money management — cash shifts + drawer movements. Stores predating it get

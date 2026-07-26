@@ -98,6 +98,18 @@ export async function PATCH(req: Request) {
         adSeconds: Math.min(30, Math.max(3, Math.round(Number(c.adSeconds) || 6))),
       };
     }
+    // Queue & kitchen behaviour. Owner-only: the reset rule and the block size
+    // change the number a customer is holding, so this is not a till setting.
+    if (body.queueSettings && typeof body.queueSettings === "object" && s.role === "owner") {
+      const q = body.queueSettings;
+      b.queueSettings = {
+        maxPerLetter: Math.min(999, Math.max(9, Math.round(Number(q.maxPerLetter) || 99))),
+        resetDaily: q.resetDaily !== false,
+        voice: !!q.voice,
+        voiceLang: String(q.voiceLang || "en-US").slice(0, 12),
+        lateAfterMins: Math.min(120, Math.max(1, Math.round(Number(q.lateAfterMins) || 10))),
+      };
+    }
     // Owner-set sidebar order (Menu Layout) — a list of page hrefs.
     if (Array.isArray(body.menuOrder)) {
       b.menuOrder = body.menuOrder.map((x: any) => String(x)).filter(Boolean).slice(0, 100);
