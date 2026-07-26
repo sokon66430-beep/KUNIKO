@@ -592,6 +592,15 @@ export type QueueSettings = {
   voiceLang?: string; // BCP-47, e.g. "en-US" / "km-KH"
   // Minutes after which a waiting ticket is highlighted as late on the KDS.
   lateAfterMins?: number; // default 10
+  // --- Customer TV look ----------------------------------------------------
+  // A picture shown under the "now serving" number — the shop's own logo or a
+  // small promo. Data-URL, same as the customer-screen adverts.
+  boardLogo?: string;
+  // The colour of the called number and the ready figures. Defaults to the
+  // brand blue the store's existing board uses.
+  accent?: string;
+  // Optional line under the number, e.g. "Please collect at the counter".
+  boardNote?: string;
 };
 
 // ---------------------------------------------------------------------------

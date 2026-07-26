@@ -102,12 +102,19 @@ export async function PATCH(req: Request) {
     // change the number a customer is holding, so this is not a till setting.
     if (body.queueSettings && typeof body.queueSettings === "object" && s.role === "owner") {
       const q = body.queueSettings;
+      const isImg = (v: any) =>
+        typeof v === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(v) && v.length < 3_000_000;
       b.queueSettings = {
         maxPerLetter: Math.min(999, Math.max(9, Math.round(Number(q.maxPerLetter) || 99))),
         resetDaily: q.resetDaily !== false,
         voice: !!q.voice,
         voiceLang: String(q.voiceLang || "en-US").slice(0, 12),
         lateAfterMins: Math.min(120, Math.max(1, Math.round(Number(q.lateAfterMins) || 10))),
+        // "" clears the picture; anything that isn't a sane data-URL image is
+        // dropped rather than stored, so the store file can't fill with junk.
+        boardLogo: isImg(q.boardLogo) ? q.boardLogo : undefined,
+        accent: /^#[0-9a-fA-F]{6}$/.test(String(q.accent)) ? String(q.accent) : "#2544c7",
+        boardNote: String(q.boardNote || "").slice(0, 80),
       };
     }
     // Owner-set sidebar order (Menu Layout) — a list of page hrefs.

@@ -53,6 +53,9 @@ export async function GET() {
     logo: db.meta.business.logo || null,
     ads: cd.ads || [],
     adSeconds: cd.adSeconds || 6,
+    boardLogo: cfg.boardLogo || null,
+    accent: cfg.accent || "#2544c7",
+    boardNote: cfg.boardNote || "",
     // "preparing" and anything still waiting both read as "being made" to a
     // customer — they don't know or care whether a cook has pressed START.
     preparing: [...pick("waiting"), ...pick("preparing")].sort((a, b) => a.at.localeCompare(b.at)),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Monitor, Volume2, Check, ExternalLink, Copy } from "lucide-react";
+import { Monitor, Volume2, Check, ExternalLink, Copy, Upload, Image as ImageIcon } from "lucide-react";
 import { PageHeader, Card, ErrorBox } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { useFetch, api } from "@/lib/client";
@@ -17,7 +17,7 @@ import { useRole } from "@/lib/client";
 // a replacement TV is live the moment someone types the link.
 // ---------------------------------------------------------------------------
 
-type Layout = "split" | "queue" | "ads";
+type Layout = "board" | "split" | "ads";
 
 type Business = {
   name?: string;
@@ -27,13 +27,30 @@ type Business = {
     voice?: boolean;
     voiceLang?: string;
     lateAfterMins?: number;
+    boardLogo?: string;
+    accent?: string;
+    boardNote?: string;
   };
 };
 
+const ACCENTS = ["#2544c7", "#0ea5e9", "#7c3aed", "#059669", "#dc2626", "#ea580c", "#0f172a"];
+
 const LAYOUTS: { value: Layout; label: string; blurb: string }[] = [
-  { value: "split", label: "Advert + queue numbers", blurb: "Promotion fills the screen with the numbers down one side. Best over the seating area." },
-  { value: "queue", label: "Queue numbers only", blurb: "No advert — numbers as large as the screen allows. Best directly above the counter." },
-  { value: "ads", label: "Adverts only", blurb: "Promotions with no numbers at all. For a screen customers see on the way in." },
+  {
+    value: "board",
+    label: "Queue board",
+    blurb: "Now serving · Preparing · Order ready, the way your board looks today. Best directly above the counter.",
+  },
+  {
+    value: "split",
+    label: "Advert + queue board",
+    blurb: "Your promotion beside the board. Best over the seating area, where people are waiting.",
+  },
+  {
+    value: "ads",
+    label: "Adverts only",
+    blurb: "Promotions with no numbers — for a menu screen, like the one by your noodle counter.",
+  },
 ];
 
 export default function TvDisplaysPage() {
@@ -42,11 +59,10 @@ export default function TvDisplaysPage() {
   const { data: business, reload } = useFetch<Business>("/api/business");
 
   // --- the link builder ---
-  const [layout, setLayout] = useState<Layout>("split");
-  const [railLeft, setRailLeft] = useState(false);
+  const [layout, setLayout] = useState<Layout>("board");
+  const [dark, setDark] = useState(false);
   const [voice, setVoice] = useState(false);
-  const [ready, setReady] = useState("");
-  const [prep, setPrep] = useState("");
+  const [rows, setRows] = useState("");
   const [copied, setCopied] = useState(false);
 
   // --- store-wide queue rules ---
@@ -55,6 +71,9 @@ export default function TvDisplaysPage() {
   const [voiceOn, setVoiceOn] = useState(false);
   const [voiceLang, setVoiceLang] = useState("en-US");
   const [lateAfter, setLateAfter] = useState("10");
+  const [boardLogo, setBoardLogo] = useState<string>("");
+  const [accent, setAccent] = useState("#2544c7");
+  const [boardNote, setBoardNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -67,18 +86,47 @@ export default function TvDisplaysPage() {
     setVoiceOn(!!q.voice);
     setVoiceLang(q.voiceLang || "en-US");
     setLateAfter(String(q.lateAfterMins ?? 10));
+    setBoardLogo(q.boardLogo || "");
+    setAccent(q.accent || "#2544c7");
+    setBoardNote(q.boardNote || "");
   }, [business]);
+
+  // Downscale before storing: a phone photo is several MB, and the whole store
+  // document is rewritten on every sale — an oversized picture would slow every
+  // transaction in the shop, not just this screen.
+  async function pickLogo(file: File) {
+    const dataUrl = await new Promise<string>((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result));
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+    const img = new Image();
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = rej;
+      img.src = dataUrl;
+    });
+    const MAX_W = 600;
+    const scale = Math.min(1, MAX_W / img.width);
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * scale);
+    c.height = Math.round(img.height * scale);
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    // PNG keeps a logo's transparent background; JPEG would put a white box
+    // behind it on a dark board.
+    setBoardLogo(c.toDataURL("image/png"));
+  }
 
   const path = useMemo(() => {
     const p = new URLSearchParams();
-    if (layout !== "split") p.set("mode", layout);
-    if (railLeft && layout === "split") p.set("rail", "left");
+    if (layout !== "board") p.set("mode", layout); // board is the default
+    if (dark) p.set("theme", "dark");
     if (voice && layout !== "ads") p.set("voice", "1");
-    if (ready.trim() && layout !== "ads") p.set("ready", ready.trim());
-    if (prep.trim() && layout !== "ads") p.set("prep", prep.trim());
+    if (rows.trim() && layout !== "ads") p.set("rows", rows.trim());
     const qs = p.toString();
     return `/queue-display${qs ? `?${qs}` : ""}`;
-  }, [layout, railLeft, voice, ready, prep]);
+  }, [layout, dark, voice, rows]);
 
   const fullUrl = typeof window === "undefined" ? path : `${window.location.origin}${path}`;
 
@@ -95,6 +143,9 @@ export default function TvDisplaysPage() {
             voice: voiceOn,
             voiceLang,
             lateAfterMins: Number(lateAfter) || 10,
+            boardLogo,
+            accent,
+            boardNote,
           },
         }),
       });
@@ -155,44 +206,31 @@ export default function TvDisplaysPage() {
               </div>
             </div>
 
-            {layout === "split" && (
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">Numbers on which side?</label>
+                <label className="label">Background</label>
                 <Select
-                  value={railLeft ? "left" : "right"}
-                  onChange={(v) => setRailLeft(v === "left")}
+                  value={dark ? "dark" : "light"}
+                  onChange={(v) => setDark(v === "dark")}
                   options={[
-                    { value: "right", label: "Right (default)" },
-                    { value: "left", label: "Left" },
+                    { value: "light", label: "Light (matches your board)" },
+                    { value: "dark", label: "Dark" },
                   ]}
                 />
               </div>
-            )}
-
-            {layout !== "ads" && (
-              <div className="grid grid-cols-2 gap-3">
+              {layout !== "ads" && (
                 <div>
-                  <label className="label">Ready numbers shown</label>
+                  <label className="label">Rows per column</label>
                   <input
                     className="input"
                     inputMode="numeric"
-                    placeholder={layout === "queue" ? "8" : "5"}
-                    value={ready}
-                    onChange={(e) => setReady(e.target.value.replace(/\D/g, ""))}
+                    placeholder="7"
+                    value={rows}
+                    onChange={(e) => setRows(e.target.value.replace(/\D/g, ""))}
                   />
                 </div>
-                <div>
-                  <label className="label">Preparing shown</label>
-                  <input
-                    className="input"
-                    inputMode="numeric"
-                    placeholder={layout === "queue" ? "12" : "6"}
-                    value={prep}
-                    onChange={(e) => setPrep(e.target.value.replace(/\D/g, ""))}
-                  />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {layout !== "ads" && (
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3">
@@ -255,6 +293,101 @@ export default function TvDisplaysPage() {
                 </li>
               </ul>
             </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 text-sm font-bold text-ink-900">How the board looks</h2>
+        <p className="mb-4 text-[12px] text-slate-500">
+          Applies to every queue TV in this store.
+        </p>
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <div>
+            <label className="label">Picture under the number</label>
+            <div className="flex items-center gap-3">
+              <div className="grid h-16 w-28 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-200">
+                {boardLogo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={boardLogo} alt="" className="max-h-full max-w-full object-contain" />
+                ) : (
+                  <ImageIcon size={18} className="text-slate-300" />
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="btn-ghost cursor-pointer text-[12px]">
+                  <Upload size={13} /> Choose picture
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={!isOwner}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) pickLogo(f).catch(() => setErr("Couldn't read that image."));
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {boardLogo && (
+                  <button type="button" onClick={() => setBoardLogo("")} className="text-left text-[11.5px] text-rose-600">
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+              Your logo, shown small beneath the called number. Shrunk automatically so it can&apos;t slow the tills down.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">Number colour</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {ACCENTS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  disabled={!isOwner}
+                  onClick={() => setAccent(c)}
+                  aria-label={c}
+                  className={`h-8 w-8 rounded-full ring-2 ring-offset-2 transition ${
+                    accent.toLowerCase() === c ? "ring-ink-900" : "ring-transparent"
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <input
+                type="color"
+                value={accent}
+                disabled={!isOwner}
+                onChange={(e) => setAccent(e.target.value)}
+                className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white"
+                title="Any colour"
+              />
+            </div>
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Preview</span>
+              <span className="text-2xl font-black tabular-nums" style={{ color: accent }}>
+                A001
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Message under the number</label>
+            <input
+              className="input"
+              value={boardNote}
+              disabled={!isOwner}
+              maxLength={80}
+              placeholder="e.g. Please collect at the counter"
+              onChange={(e) => setBoardNote(e.target.value)}
+            />
+            <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+              Optional. Leave empty to show nothing.
+            </p>
           </div>
         </div>
       </Card>

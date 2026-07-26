@@ -23,6 +23,9 @@ type Board = {
   logo: string | null;
   ads: string[];
   adSeconds: number;
+  boardLogo: string | null;
+  accent: string;
+  boardNote: string;
   preparing: Entry[];
   ready: Entry[];
   voice: boolean;
@@ -183,13 +186,19 @@ export default function QueueDisplayPage() {
         <div className="q-now-wrap">
           <span className={`q-now ${nowServing ? "has" : ""}`}>{nowServing ? nowServing.code : "—"}</span>
         </div>
+        {board?.boardNote ? <p className="q-note">{board.boardNote}</p> : null}
         <div className="q-foot">
           <span className="q-time">{now.time}</span>
           <span className="q-date">{now.date}</span>
-          <span className="q-brand">
-            <span className={`q-dot ${live ? "on" : "off"}`} aria-hidden />
-            {board?.storeName || ""}
-          </span>
+          {board?.boardLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={board.boardLogo} alt="" className="q-board-logo" />
+          ) : (
+            <span className="q-brand">
+              <span className={`q-dot ${live ? "on" : "off"}`} aria-hidden />
+              {board?.storeName || ""}
+            </span>
+          )}
         </div>
       </section>
 
@@ -228,7 +237,10 @@ export default function QueueDisplayPage() {
   );
 
   return (
-    <div className={`q ${cfg.dark ? "dark" : ""} mode-${cfg.mode}`}>
+    <div
+      className={`q ${cfg.dark ? "dark" : ""} mode-${cfg.mode}`}
+      style={{ ["--q-accent" as any]: board?.accent || "#2544c7" }}
+    >
       {cfg.mode === "split" && AdPanel}
       {BoardPanel}
       <Style />
@@ -365,19 +377,23 @@ function Style() {
         min-height: 0;
       }
       .q-now {
-        font-size: 22vh;
+        /* Bounded by the COLUMN's width as well as the screen height. Sized on
+           height alone, a four-character code like A001 ran past the divider and
+           clipped its last digit — the number is ~2.6em wide and this column is
+           roughly a third of the screen, so the width limit is what binds on a
+           16:9 TV. min() takes whichever is smaller, so it fits either way. */
+        font-size: min(19vh, 11.5vw);
         font-weight: 900;
-        line-height: 0.9;
-        letter-spacing: -0.02em;
+        line-height: 0.95;
+        letter-spacing: -0.03em;
         font-variant-numeric: tabular-nums;
         color: #c9cee4;
+        max-width: 100%;
+        white-space: nowrap;
       }
       .q-now.has {
-        color: #2544c7;
+        color: var(--q-accent, #2544c7);
         animation: q-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3);
-      }
-      .q.dark .q-now.has {
-        color: #6f8cff;
       }
       .q-foot {
         display: flex;
@@ -467,6 +483,20 @@ function Style() {
       }
       .q.dark .q-code-ready {
         color: #4ade80;
+      }
+      .q-note {
+        margin: 0 0 1.2vh;
+        text-align: center;
+        font-size: 1.9vh;
+        font-weight: 600;
+        opacity: 0.7;
+        padding: 0 1vw;
+      }
+      .q-board-logo {
+        margin-top: 1vh;
+        max-height: 5vh;
+        max-width: 70%;
+        object-fit: contain;
       }
 
       @keyframes q-pop {
