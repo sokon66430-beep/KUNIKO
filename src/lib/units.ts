@@ -98,6 +98,15 @@ export function unitDimension(raw: string | undefined): UnitDimension | null {
 }
 
 /**
+ * The stock units a recipe can convert from, for telling the user what to type.
+ *
+ * Built from UNITS rather than written out by hand: the hand-written list in the
+ * product editor had gone stale and omitted "slice", so a perfectly valid unit
+ * looked unsupported. Deriving it means the message can never drift again.
+ */
+export const UNIT_CODES: string = UNITS.map((u) => u.code).join(", ");
+
+/**
  * How a product's pack/box units are sized, and what one piece CONTAINS
  * (pieceSize + pieceSizeUnit, e.g. 1000 g) — all off the product record.
  */

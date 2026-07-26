@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { itemIdPrefix, packagingPrefix } from "@/lib/itemId";
 import { defaultShowOnPos } from "@/lib/pos";
-import { normalizeUnit, unitDimension } from "@/lib/units";
+import { normalizeUnit, unitDimension, UNIT_CODES } from "@/lib/units";
 import { baseUnitName } from "@/lib/sellingUnits";
 
 // What a convenience store actually stacks. A fixed list rather than a text box
@@ -660,7 +660,7 @@ export function ProductModal({
           <p className="mt-1 text-[11px] text-slate-400">
             {unitDimension(form.unit)
               ? `Stock is counted in ${normalizeUnit(form.unit)} — recipes convert to it automatically.`
-              : "Recipes can't use this product until its unit is one of: g, kg, ml, L, pcs, unit, pack, box."}
+              : `Recipes can't use this product until its unit is one of: ${UNIT_CODES}.`}
           </p>
         </div>
         {/* Pack/box only convert for products counted in pieces — a "pack" of a
@@ -714,8 +714,15 @@ export function ProductModal({
                   />
                 </div>
               </div>
+              {/* Weight/volume ONLY, deliberately. This field bridges count →
+                  weight/volume; a countable content (12 slices in a pack) goes
+                  in "Pieces per pack" instead, which already converts correctly.
+                  Offering "slice" here would silently deduct 12× — convert()
+                  only consults pieceSize when the two units are of DIFFERENT
+                  dimensions, so slice→pack would fall through to a flat 1:1. */}
               <p className="mt-1 text-[11px] text-slate-400">
                 e.g. a 1000 g pack → 1000 g. Lets recipes use 45 g of it: 0.045 units come off stock.
+                Counting instead (12 slices in a pack)? Use <b>Pieces per pack</b> above.
               </p>
             </div>
           </>
