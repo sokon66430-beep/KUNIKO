@@ -23,6 +23,7 @@ import { PageHeader, Card, ErrorBox, EmptyState, Badge } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
 import { usd, num, rielShelfPrice, EXCHANGE_RATE } from "@/lib/format";
 import { productLocations, formatLocation } from "@/lib/location";
+import { KHMER_FONT } from "@/lib/fonts";
 
 // Riel price = USD × 4,100 rounded UP to the next 100 riel — the rule now lives
 // in lib/format (rielShelfPrice) so the promotion sticker rounds identically.
@@ -38,7 +39,6 @@ function today(): string {
 }
 
 const LABEL_FONT = `'Plus Jakarta Sans Variable','Segoe UI',sans-serif`;
-const KHMER_FONT = `'Kantumruy Pro','Battambang','Khmer UI','Noto Sans Khmer','Leelawadee UI',sans-serif`;
 const LABEL_BLUE = "#4a72c4"; // bottom strip
 const LABEL_GREEN = "#b5cc18"; // top band
 

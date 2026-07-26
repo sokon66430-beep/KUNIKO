@@ -5,6 +5,7 @@ import { Monitor, Save, Upload, Image as ImageIcon, Trash2, Check, QrCode, Shopp
 import { useFetch, api } from "@/lib/client";
 import { PageHeader, Card, Spinner, ErrorBox } from "@/components/ui";
 import type { CustomerDisplaySettings, CustomerDisplayTheme } from "@/lib/types";
+import { MIXED_FONT } from "@/lib/fonts";
 
 // Colour swatches the owner picks the screen's highlight from. Each is a hex the
 // customer screen reads straight into its --cd-accent variable.
@@ -270,7 +271,7 @@ function Preview({
   );
 
   // Match the real customer screen: Jakarta for Latin, Kantumruy Pro for Khmer.
-  const font = "'Plus Jakarta Sans Variable','Kantumruy Pro','Battambang','Noto Sans Khmer','Khmer UI','Segoe UI',sans-serif";
+  const font = MIXED_FONT;
 
   return (
     <div className="overflow-hidden rounded-2xl shadow-soft ring-1 ring-slate-200" style={{ aspectRatio: "16 / 9", background: bg, color: fg, fontFamily: font }}>

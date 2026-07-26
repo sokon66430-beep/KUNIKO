@@ -2,9 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Niradei — the store's Khmer typeface.
+
+   Self-hosted rather than installed from npm: Niradei isn't published on
+   @fontsource or Google Fonts (unlike Battambang and Kantumruy Pro), so the
+   font files are dropped into public/fonts/ and declared here.
+
+   `font-display: swap` means Khmer text paints immediately in the fallback and
+   re-renders when Niradei arrives — a price label or a queue TV must never sit
+   blank waiting for a font. Until the files are added the whole stack simply
+   falls through to Kantumruy Pro, so nothing breaks in the meantime.
+   --------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Niradei";
+  src:
+    url("/fonts/niradei-regular.woff2") format("woff2"),
+    url("/fonts/niradei-regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Niradei";
+  src:
+    url("/fonts/niradei-bold.woff2") format("woff2"),
+    url("/fonts/niradei-bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Self-hosted Plus Jakarta Sans (variable weight 200–800). */
   --font-sans: "Plus Jakarta Sans Variable", system-ui, "Segoe UI", Roboto, sans-serif;
+  /* One Khmer stack for the whole app — price labels, promo stickers, the
+     customer screen and the queue TV all read this, so switching typeface is a
+     one-line change here instead of five files drifting apart. */
+  --font-khmer: "Niradei", "Kantumruy Pro", "Battambang", "Khmer UI", "Noto Sans Khmer", "Leelawadee UI", sans-serif;
 }
 
 html,

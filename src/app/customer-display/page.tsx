@@ -323,7 +323,7 @@ const CSS = `
   background: var(--cd-bg); color: var(--cd-fg);
   /* Plus Jakarta for Latin, Kantumruy Pro for Khmer — so "សូមស្វាគមន៍ / អរគុណ"
      render in Kantumruy Pro (Bold weights used on headings). */
-  font-family: 'Plus Jakarta Sans Variable', 'Kantumruy Pro', 'Battambang', 'Noto Sans Khmer', 'Khmer UI', 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans), var(--font-khmer);
   overflow: hidden;
 }
 .cd-top {

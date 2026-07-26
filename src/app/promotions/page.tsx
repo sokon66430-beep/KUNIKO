@@ -15,6 +15,7 @@ import { usd, rielShelfPrice } from "@/lib/format";
 import { MARKDOWN_PERCENTS, markdownStatus, storeToday, daysLeft, type MarkdownStatus } from "@/lib/markdowns";
 import { shortDay } from "@/lib/storetime";
 import { canMarkDown } from "@/lib/access";
+import { KHMER_FONT } from "@/lib/fonts";
 
 const STATUS_TONE: Record<MarkdownStatus, "emerald" | "brand" | "slate" | "rose"> = {
   Active: "emerald",
@@ -45,7 +46,6 @@ const SHEET_MARGIN_MM = 10.25;
 const MAX_LABELS = 200;
 const clampQty = (n: number) => Math.max(1, Math.min(MAX_LABELS, Math.floor(n) || 1));
 const LABEL_FONT = `'Plus Jakarta Sans Variable','Segoe UI',sans-serif`;
-const KHMER_FONT = `'Battambang','Khmer UI','Noto Sans Khmer','Leelawadee UI',sans-serif`;
 const LABEL_RED = "#e11d48"; // markdown band — the shelf label's green means full price
 const LABEL_BLUE = "#4a72c4"; // same footer strip as the shelf label
 const rielNum = (n: number) => n.toLocaleString("en-US");
