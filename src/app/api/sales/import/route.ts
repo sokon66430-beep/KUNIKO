@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
+import { canManageStaff } from "@/lib/access";
 import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
 import { readDB, mutateDB } from "@/lib/db";
@@ -148,6 +150,15 @@ function toHHMM(timeCellValue: any, timeText: string, dateCellValue: any): strin
 }
 
 export async function POST(req: Request) {
+  // Leadership only. This endpoint rewrites sales history AND drives stock down
+  // through the ledger, so an ordinary till login must not reach it: a cashier
+  // could otherwise upload a spreadsheet that "sells" the stock they took, and
+  // during an open stock count those quantities land in soldAfterCount — which
+  // is exactly how a shelf shortage gets papered over mid-audit.
+  const session = await getSession();
+  if (!session || !canManageStaff(session.role)) {
+    return NextResponse.json({ error: "Managers only" }, { status: 403 });
+  }
   const actor = await currentActor();
   const form = await req.formData();
   const file = form.get("file");

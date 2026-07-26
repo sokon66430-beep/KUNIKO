@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { Product, Supplier, Recipe, Promotion } from "./types";
 import { repairBarcodes } from "./barcodes";
+import { writeFileAtomic } from "./atomicWrite";
 import { DATA_DIR, DEFAULT_STORE_ID, readSystem } from "./system";
 import { readDB, mutateDB } from "./db";
 
@@ -61,7 +62,7 @@ async function ensureMaster(): Promise<void> {
     seed = [];
   }
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(MASTER_FILE, JSON.stringify(seed, null, 2), "utf8");
+  await writeFileAtomic(MASTER_FILE, JSON.stringify(seed, null, 2));
 }
 
 export async function readMaster(): Promise<Product[]> {
@@ -77,7 +78,7 @@ export async function mutateMaster<T>(mutator: (products: Product[]) => T | Prom
     const products = JSON.parse(raw) as Product[];
     const result = await mutator(products);
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(MASTER_FILE, JSON.stringify(products, null, 2), "utf8");
+    await writeFileAtomic(MASTER_FILE, JSON.stringify(products, null, 2));
     return result;
   };
   const next = masterWriteChain.then(run, run);
@@ -117,7 +118,7 @@ async function ensureMasterSuppliers(): Promise<void> {
     seed = [];
   }
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(MASTER_SUPPLIERS_FILE, JSON.stringify(seed, null, 2), "utf8");
+  await writeFileAtomic(MASTER_SUPPLIERS_FILE, JSON.stringify(seed, null, 2));
 }
 
 export async function readMasterSuppliers(): Promise<Supplier[]> {
@@ -133,7 +134,7 @@ export async function mutateMasterSuppliers<T>(mutator: (suppliers: Supplier[]) 
     const suppliers = JSON.parse(raw) as Supplier[];
     const result = await mutator(suppliers);
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(MASTER_SUPPLIERS_FILE, JSON.stringify(suppliers, null, 2), "utf8");
+    await writeFileAtomic(MASTER_SUPPLIERS_FILE, JSON.stringify(suppliers, null, 2));
     return result;
   };
   const next = masterSupWriteChain.then(run, run);
@@ -451,7 +452,7 @@ async function ensureMasterRecipes(): Promise<void> {
     /* an empty master is recoverable; a half-written one is not */
   }
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(MASTER_RECIPES_FILE, JSON.stringify(seed, null, 2), "utf8");
+  await writeFileAtomic(MASTER_RECIPES_FILE, JSON.stringify(seed, null, 2));
 }
 
 async function ensureMasterPromotions(): Promise<void> {
@@ -468,7 +469,7 @@ async function ensureMasterPromotions(): Promise<void> {
     /* as above */
   }
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(MASTER_PROMOTIONS_FILE, JSON.stringify(seed, null, 2), "utf8");
+  await writeFileAtomic(MASTER_PROMOTIONS_FILE, JSON.stringify(seed, null, 2));
 }
 
 export async function readMasterRecipes(): Promise<MasterRecipes> {
@@ -484,7 +485,7 @@ export async function mutateMasterRecipes<T>(mutator: (m: MasterRecipes) => T | 
     const m = JSON.parse(raw) as MasterRecipes;
     const result = await mutator(m);
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(MASTER_RECIPES_FILE, JSON.stringify(m, null, 2), "utf8");
+    await writeFileAtomic(MASTER_RECIPES_FILE, JSON.stringify(m, null, 2));
     return result;
   };
   const next = masterRecipeWriteChain.then(run, run);
@@ -505,7 +506,7 @@ export async function mutateMasterPromotions<T>(mutator: (m: MasterPromotions) =
     const m = JSON.parse(raw) as MasterPromotions;
     const result = await mutator(m);
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(MASTER_PROMOTIONS_FILE, JSON.stringify(m, null, 2), "utf8");
+    await writeFileAtomic(MASTER_PROMOTIONS_FILE, JSON.stringify(m, null, 2));
     return result;
   };
   const next = masterPromoWriteChain.then(run, run);

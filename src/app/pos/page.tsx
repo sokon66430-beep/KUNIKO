@@ -41,7 +41,7 @@ import { ManagerGate } from "@/components/ManagerGate";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
-import { usd, riel, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
+import { usd, riel, rielDue, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
 import { publishCustomerDisplay } from "@/lib/customerDisplay";
 import { loadHeld, saveHeld, type HeldOrder } from "@/lib/heldOrders";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -146,6 +146,7 @@ export default function PosPage() {
   }, [terminal]);
   const [submitting, setSubmitting] = useState(false);
   const [khqrOpen, setKhqrOpen] = useState(false);
+  const [khqrBill, setKhqrBill] = useState("");
   const [cashOpen, setCashOpen] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -443,6 +444,16 @@ export default function PosPage() {
   // unless someone set a pack as default), which is what tapping a tile means.
   function addToCart(product: Product, markdown?: Markdown, unit?: ResolvedUnit) {
     const u = unit || defaultUnitOf(product);
+    // A product with no selling price would ring up FREE — the customer walks out
+    // with stock the store paid for. Refuse it at the till; a price is a manager
+    // fix in Products, not something a cashier can sort out with a queue waiting.
+    // (Giving something away on purpose is what the discount field is for.)
+    // Mirrors linePrice() above, so the check is on what this line would ACTUALLY charge.
+    const unitPrice = markdown ? markdown.price * u.conversion : u.price;
+    if (!(unitPrice > 0)) {
+      setToast(`"${product.name}" has no price set — it can't be sold until a manager adds one.`);
+      return;
+    }
     const key = lineKey(product, markdown, u);
     setCart((prev) => {
       const existing = prev[key];
@@ -679,6 +690,13 @@ export default function PosPage() {
     // every Cambodian bank app read KHQR), wait for the payment, then commit and
     // print the receipt. ABA is paid this way too — one QR, scanned in ABA.
     if (payment === "KHQR" || payment === "ABA") {
+      // Mint the bill number ONCE, here. It used to be built inline in the JSX,
+      // which re-ran on every render — and this page re-renders every ~20s from
+      // the background polling. That silently replaced the QR (and its md5)
+      // while the customer was mid-scan: they paid the code they were looking
+      // at, the till was already watching a different one, and the sale never
+      // completed. The QR must stay fixed for as long as the dialog is open.
+      setKhqrBill(`MK-${Date.now().toString().slice(-6)}`);
       setKhqrOpen(true);
       return;
     }
@@ -1351,7 +1369,7 @@ export default function PosPage() {
                   </div>
                   <span className="text-right">
                     <span className="block text-lg font-bold text-brand-600">{usd(total)}</span>
-                    <span className="block text-[11px] text-slate-400">{riel(total)}</span>
+                    <span className="block text-[11px] text-slate-400">{rielDue(total)}</span>
                   </span>
                 </div>
               </div>
@@ -1415,7 +1433,7 @@ export default function PosPage() {
       {khqrOpen && (
         <KhqrModal
           amount={total}
-          billNumber={`MK-${Date.now().toString().slice(-6)}`}
+          billNumber={khqrBill}
           storeName={business?.name || "ON Mart"}
           onCancel={() => setKhqrOpen(false)}
           onConfirmed={async (md5) => {
@@ -1973,7 +1991,7 @@ function CashModal({
             <span className="text-sm font-semibold text-slate-500">Amount due</span>
             <span className="text-right">
               <span className="block text-xl font-extrabold text-ink-900">{usd(total)}</span>
-              <span className="block text-[11px] text-slate-400">{riel(total)}</span>
+              <span className="block text-[11px] text-slate-400">{rielDue(total)}</span>
             </span>
           </div>
         </div>
@@ -2254,7 +2272,7 @@ function KhqrModal({
               <div className="text-center">
                 <p className="text-sm text-slate-500">{data.merchantName}</p>
                 <p className="mt-0.5 text-2xl font-bold text-ink-900">{usd(amount)}</p>
-                <p className="text-xs text-slate-400">{riel(amount)}</p>
+                <p className="text-xs text-slate-400">{rielDue(amount)}</p>
               </div>
 
               <div className="relative mx-auto mt-4 w-fit rounded-xl border border-slate-200 p-3">

@@ -47,11 +47,20 @@ export function matchesBarcode(p: Pick<Product, "barcode" | "altBarcodes">, code
   return barcodesOf(p).includes(q);
 }
 
-/** Does any of this product's codes contain `text`? For type-ahead search. */
+/**
+ * Does any of this product's codes START WITH `text`? For type-ahead search.
+ *
+ * Deliberately a PREFIX match, not a substring one. A substring match reads as a
+ * hit while being nothing of the kind: typing "71213" matched
+ * "8801047121350" and "8801047121312" — the digits sit in the MIDDLE of two
+ * unrelated tuna cans. At a till that is how the wrong product gets rung up, so
+ * a code either matches from the front or it doesn't match at all. A full code
+ * from a scanner still matches exactly (a whole string is its own prefix).
+ */
 export function barcodeIncludes(p: Pick<Product, "barcode" | "altBarcodes">, text: string): boolean {
   const q = text.trim();
   if (!q) return false;
-  return barcodesOf(p).some((b) => b.includes(q));
+  return barcodesOf(p).some((b) => b.startsWith(q));
 }
 
 /**

@@ -5,7 +5,7 @@
 // Styling comes from the store's business.receipt settings.
 
 import type { Sale, ReceiptSettings } from "@/lib/types";
-import { usd, riel } from "@/lib/format";
+import { usd, riel, rielDue } from "@/lib/format";
 import { formatQueue } from "@/lib/queue";
 
 export type ReceiptBusiness = {
@@ -102,7 +102,7 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
         {/* No separate VAT line — the total already includes it, so just say so. */}
         <div className="flex items-center justify-between text-[11px] text-slate-400">
           <span>{!showVat ? `Includes VAT ${vatPct}%` : ""}</span>
-          <span>{riel(sale.total)}</span>
+          <span>{rielDue(sale.total)}</span>
         </div>
         {sale.tendered != null && (
           <div className="mt-1 space-y-1 border-t border-dashed border-slate-200 pt-2">

@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { DATA_DIR } from "./paths";
 import { readBlob } from "./blobStore";
+import { writeFileAtomic } from "./atomicWrite";
 import { readSystem } from "./system";
 
 // A full backup = the system (stores + logins) plus every store's data, in one
@@ -48,7 +49,7 @@ export async function saveDailyBackup(now: Date): Promise<{ saved: boolean; file
       /* not there yet — make it below */
     }
     const backup = await buildBackup();
-    await fs.writeFile(file, JSON.stringify(backup), "utf8");
+    await writeFileAtomic(file, JSON.stringify(backup));
     await pruneOld();
     return { saved: true, file };
   } catch (e: any) {

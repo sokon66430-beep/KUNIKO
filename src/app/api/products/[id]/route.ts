@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
+import { canManageStaff } from "@/lib/access";
 import { currentActor } from "@/lib/actor";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -21,6 +23,14 @@ const STRING_FIELDS = new Set(["sku", "subGroupCode", "catCode", "name", "nameKh
 const BOOLEAN_FIELDS = new Set(["favourite"]);
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  // Guards the price/cost fields. Without this a till login could PATCH an item
+  // to $0.01, ring it through, then PATCH the real price back — the audit line
+  // would name them, but nothing would have stopped it happening.
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!canManageStaff(session.role)) {
+    return NextResponse.json({ error: "Only a manager can change a product" }, { status: 403 });
+  }
   const actor = await currentActor();
   const body = await req.json();
   const result = await mutateDB((db) => {
@@ -131,6 +141,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!canManageStaff(session.role)) {
+    return NextResponse.json({ error: "Only a manager can delete a product" }, { status: 403 });
+  }
   const actor = await currentActor();
   const ok = await mutateDB((db) => {
     const idx = db.products.findIndex((p) => p.id === params.id);

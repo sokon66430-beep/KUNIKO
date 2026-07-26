@@ -731,7 +731,7 @@ export function buildWriteOffWorkbook(
 // you can export, edit suppliers/prices in Excel, and re-import to update.
 // Empty supplier cells are highlighted yellow so gaps are easy to spot & fill.
 // ---------------------------------------------------------------------------
-export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
+export function buildProductsWorkbook(products: Product[], showCost = true): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Products", {
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 },
@@ -747,7 +747,7 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
     { header: "Unit", key: "unit", width: 8 },
     { header: "Supplier Code", key: "supplierCode", width: 14 },
     { header: "Supplier Name", key: "supplierName", width: 30 },
-    { header: "Cost", key: "cost", width: 10 },
+    ...(showCost ? [{ header: "Cost", key: "cost", width: 10 }] : []),
     { header: "Price", key: "price", width: 10 },
     { header: "Stock", key: "stock", width: 8 },
     { header: "Low Stock Alert", key: "reorderLevel", width: 14 },
@@ -777,7 +777,7 @@ export function buildProductsWorkbook(products: Product[]): ExcelJS.Workbook {
       unit: p.unit || "",
       supplierCode: p.supplierCode || "",
       supplierName: p.supplier && p.supplier !== "—" ? p.supplier : "",
-      cost: p.cost,
+      ...(showCost ? { cost: p.cost } : {}),
       price: p.price,
       stock: p.stock,
       reorderLevel: p.reorderLevel,

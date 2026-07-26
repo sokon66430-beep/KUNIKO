@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
+import { canManageStaff } from "@/lib/access";
 import { currentActor } from "@/lib/actor";
 import { readDB, mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
@@ -14,6 +16,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // Creating a product sets its price and cost — leadership only.
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!canManageStaff(session.role)) {
+    return NextResponse.json({ error: "Only a manager can add products" }, { status: 403 });
+  }
   const actor = await currentActor();
   const body = await req.json();
   if (!body?.name || body?.price == null) {

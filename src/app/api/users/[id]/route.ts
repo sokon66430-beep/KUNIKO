@@ -69,7 +69,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
       target.role = body.role as Role;
     }
+    // Moving an account to another STORE is an owner-only act. This sat outside
+    // the non-owner guard above, so a store manager could create a crew member
+    // in their own store and then PATCH them into a different branch with a
+    // password of their choosing — the one way store isolation could be crossed.
     if (typeof body.storeId === "string" && body.storeId && sys.stores.some((st) => st.id === body.storeId)) {
+      if (s.role !== "owner" && body.storeId !== target.storeId) {
+        return { error: "Only an owner can move staff to another store", status: 403 };
+      }
       target.storeId = body.storeId;
     }
     // Owner-assigned extra stores for an Area Manager. Cleared automatically if

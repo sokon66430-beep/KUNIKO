@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { DATA_DIR, STORES_DIR } from "./paths";
+import { writeFileAtomic } from "./atomicWrite";
 
 /**
  * Blob storage for the whole-store JSON documents (Stage 1 of the Postgres move).
@@ -126,7 +127,20 @@ export async function readBlob(kind: string, id: string): Promise<string | null>
   }
 }
 
-/** Write (create or replace) a document's JSON text. */
+/**
+ * Write (create or replace) a document's JSON text.
+ *
+ * On the file backend this is ATOMIC: temp file in the same directory → fsync →
+ * rename over the target. It has to be. Every single sale rewrites the store's
+ * WHOLE document (~1.5 MB), and a plain fs.writeFile truncates the real file to
+ * zero before streaming the new bytes in. Anything that kills the process inside
+ * that window — a Render deploy's SIGKILL, an OOM kill (this service has had
+ * them; see the Dockerfile) — leaves a truncated file. That is not a soft
+ * failure: readBlob returns "" rather than null, JSON.parse("") throws, and the
+ * store then fails to open on EVERY request until someone restores a backup.
+ * A rename within one filesystem is atomic, so a reader sees either the whole
+ * old document or the whole new one, never a half of either.
+ */
 export async function writeBlob(kind: string, id: string, jsonText: string): Promise<void> {
   if (usingPostgres()) {
     await ensureReady();
@@ -134,7 +148,5 @@ export async function writeBlob(kind: string, id: string, jsonText: string): Pro
     await rawPut(pool, kind, id, jsonText);
     return;
   }
-  const file = filePath(kind, id);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, jsonText, "utf8");
+  await writeFileAtomic(filePath(kind, id), jsonText);
 }

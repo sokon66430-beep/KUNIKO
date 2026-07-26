@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
+import { canManageStaff } from "@/lib/access";
 import { currentActor } from "@/lib/actor";
 import ExcelJS from "exceljs";
 import { mutateDB } from "@/lib/db";
@@ -37,6 +39,14 @@ const num = (v: string) => {
 };
 
 export async function POST(req: Request) {
+  // Leadership only — one upload rewrites cost, price, barcode, supplier AND
+  // stock for the whole catalogue, so this must never be reachable from an
+  // ordinary till login.
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!canManageStaff(session.role)) {
+    return NextResponse.json({ error: "Only a manager can import products" }, { status: 403 });
+  }
   const actor = await currentActor();
   const form = await req.formData();
   const file = form.get("file");

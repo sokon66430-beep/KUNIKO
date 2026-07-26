@@ -34,9 +34,26 @@ export function rielShelfPrice(usdAmount: number, rate = EXCHANGE_RATE): number 
   return Math.ceil(Math.round(raw) / 100) * 100;
 }
 
-// Same round-up-to-100 rule as rielShelfPrice, just pre-formatted as a string —
-// so a screen total/change and the printed receipt for the same sale never disagree.
+/**
+ * Riel for amounts that are NOT a shelf price — change handed back, revenue
+ * figures, informational sub-lines. Rounds to the NEAREST riel.
+ *
+ * Deliberately not the round-up rule: rounding up is a pricing rule that favours
+ * the store on money coming IN, so applying it to money going OUT inverts it.
+ * Change of $0.53 is 2,173៛; rounded up the cashier hands back 2,200៛ and the
+ * drawer quietly runs ~27៛ short on every cash sale. Use rielShelfPrice() for
+ * anything the customer PAYS, and this for anything they RECEIVE.
+ */
 export function riel(usdAmount: number, rate = EXCHANGE_RATE): string {
+  return `៛${new Intl.NumberFormat("en-US").format(Math.round((usdAmount || 0) * rate))}`;
+}
+
+/**
+ * Riel for an amount the customer PAYS (a total, an amount due) — formatted with
+ * the same round-up-to-100 rule the printed receipt and shelf labels use, so the
+ * figure on screen and the figure on paper can never disagree.
+ */
+export function rielDue(usdAmount: number, rate = EXCHANGE_RATE): string {
   return `៛${new Intl.NumberFormat("en-US").format(rielShelfPrice(usdAmount, rate))}`;
 }
 

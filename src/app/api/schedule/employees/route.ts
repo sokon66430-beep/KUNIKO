@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
+import { canManageStaff } from "@/lib/access";
 import { getSession } from "@/lib/session";
 import { hashPassword } from "@/lib/password";
 import type { ScheduleEmployee } from "@/lib/types";
@@ -35,6 +36,9 @@ function clean(body: any): Partial<ScheduleEmployee> {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (!canManageStaff(s.role)) {
+    return NextResponse.json({ error: "Only a manager can change the staff roster" }, { status: 403 });
+  }
   const body = await req.json().catch(() => ({}));
   const patch = clean(body);
   if (!patch.name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -72,6 +76,9 @@ function safe(e: ScheduleEmployee) {
 export async function PATCH(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (!canManageStaff(s.role)) {
+    return NextResponse.json({ error: "Only a manager can change the staff roster" }, { status: 403 });
+  }
   const body = await req.json().catch(() => ({}));
   const id = String(body.id || "");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -94,6 +101,9 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (!canManageStaff(s.role)) {
+    return NextResponse.json({ error: "Only a manager can change the staff roster" }, { status: 403 });
+  }
   const id = new URL(req.url).searchParams.get("id") || "";
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 

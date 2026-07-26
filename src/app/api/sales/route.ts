@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
 import { getSession } from "@/lib/session";
+import { canManageStaff } from "@/lib/access";
 import { profitFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
@@ -48,6 +49,8 @@ export async function POST(req: Request) {
   }
 
   const actor = await currentActor();
+  const session = await getSession();
+  const role = session?.role ?? "store_crew";
 
   const result = await mutateDB((db) => {
     // Idempotency for KHQR/ABA (and any card-network) payments: the request
@@ -161,7 +164,17 @@ export async function POST(req: Request) {
 
     // A manual discount and the automatic ones stack into one figure, capped so
     // a basket can never total below zero.
-    const manualDiscount = Math.max(0, Number(body.discount) || 0);
+    //
+    // The manual figure is the ONE money input taken from the client, so it is
+    // also the one a till session could abuse — POSTing {discount: 999} would
+    // otherwise ring a full basket through at $0.00 with stock deducted and a
+    // valid invoice. The POS no longer sends it at all, so anything non-zero
+    // from a non-leadership session is refused rather than honoured.
+    const requestedDiscount = Math.max(0, Number(body.discount) || 0);
+    if (requestedDiscount > 0 && !canManageStaff(role)) {
+      return { error: "Only a manager can apply a discount" as const };
+    }
+    const manualDiscount = requestedDiscount;
     const discount = round2(Math.min(manualDiscount + basket.discount, gross));
     const total = round2(gross - discount);
     const subtotal = round2(total / (1 + db.meta.business.vatRate)); // net of VAT
