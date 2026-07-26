@@ -710,19 +710,19 @@ export function ProductModal({
                       { value: "kg", label: "kg" },
                       { value: "ml", label: "ml" },
                       { value: "L", label: "L" },
+                      // Countable contents — beef/cheese/ham are bought as a
+                      // piece and used by the slice. convert() has a dedicated
+                      // count→count branch for this; without it a slice and a
+                      // whole piece would read as the same thing.
+                      { value: "slice", label: "slice" },
+                      { value: "pcs", label: "pcs" },
                     ]}
                   />
                 </div>
               </div>
-              {/* Weight/volume ONLY, deliberately. This field bridges count →
-                  weight/volume; a countable content (12 slices in a pack) goes
-                  in "Pieces per pack" instead, which already converts correctly.
-                  Offering "slice" here would silently deduct 12× — convert()
-                  only consults pieceSize when the two units are of DIFFERENT
-                  dimensions, so slice→pack would fall through to a flat 1:1. */}
               <p className="mt-1 text-[11px] text-slate-400">
                 e.g. a 1000 g pack → 1000 g. Lets recipes use 45 g of it: 0.045 units come off stock.
-                Counting instead (12 slices in a pack)? Use <b>Pieces per pack</b> above.
+                Counted instead? A tray of 20 slices → <b>20 slice</b>, so a recipe using 3 slices takes 0.15 trays.
               </p>
             </div>
           </>

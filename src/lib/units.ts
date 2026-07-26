@@ -141,6 +141,33 @@ export function convert(qty: number, from: string | undefined, to: string | unde
   const a = unitDef(from);
   const b = unitDef(to);
   if (!a || !b) return null;
+
+  // COUNTABLE contents — "one tray holds 20 slices". Beef, cheese and ham are
+  // bought as a piece and used by the slice, so the contents are counted, not
+  // weighed. Both sides are `count` here, which means the plain base-ratio path
+  // below would treat a slice and a tray as the same thing and take 20x too much
+  // off stock. Bridge it explicitly instead, in whichever direction is asked.
+  //
+  // Only fires when pieceSizeUnit is itself a count unit, so nothing that uses
+  // the weight/volume bridge (the only kind the editor allowed until now) can
+  // change behaviour.
+  const pieceU = unitDef(sizes.pieceSizeUnit);
+  const pieceN = sizes.pieceSize;
+  if (pieceU && pieceU.dim === "count" && pieceN && pieceN > 0 && a.dim === "count" && b.dim === "count" && a.code !== b.code) {
+    if (a.code === pieceU.code) {
+      // slices → whole pieces (then into packs/boxes if that's what's stocked)
+      const toBase = unitBase(to, sizes);
+      if (toBase == null || toBase === 0) return null;
+      return clean(qty / pieceN / toBase);
+    }
+    if (b.code === pieceU.code) {
+      // whole pieces → slices
+      const fromBase = unitBase(from, sizes);
+      if (fromBase == null) return null;
+      return clean(qty * fromBase * pieceN);
+    }
+  }
+
   if (a.dim !== b.dim) return convertAcross(qty, a, b, sizes);
   const fromBase = unitBase(from, sizes);
   const toBase = unitBase(to, sizes);
