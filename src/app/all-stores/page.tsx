@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Building2, Package, Users, Truck, DollarSign, ArrowRight, Download, Upload, ShieldAlert } from "lucide-react";
+import { Building2, Package, Users, Truck, DollarSign, ArrowRight, Download, Upload, ShieldAlert, Clock } from "lucide-react";
 import { useFetch } from "@/lib/client";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState } from "@/components/ui";
 import { confirmDialog } from "@/components/confirm";
@@ -25,6 +25,7 @@ type AllStores = {
 
 export default function AllStoresPage() {
   const { data, loading, error } = useFetch<AllStores>("/api/all-stores");
+  const { data: autoBk } = useFetch<{ dates: string[] }>("/api/backup/auto");
   const [opening, setOpening] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -161,6 +162,33 @@ export default function AllStoresPage() {
         <p className="mt-3 text-xs text-slate-400">
           Tip: download a backup regularly (e.g. weekly). Restoring <b>replaces</b> all current data with the backup.
         </p>
+      </Card>
+
+      <Card className="mt-4">
+        <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-ink-900">
+          <Clock size={16} /> Automatic daily backups
+        </p>
+        <p className="mb-4 text-sm text-slate-500">
+          The server saves a full backup once a day on its own and keeps the last 14. Download one here to restore it,
+          or to keep an off-server copy.
+        </p>
+        {(autoBk?.dates || []).length === 0 ? (
+          <p className="text-sm text-slate-400">
+            None saved yet — the first one is written shortly after the app starts.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(autoBk?.dates || []).map((d) => (
+              <a
+                key={d}
+                href={`/api/backup/auto?date=${d}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-ink-800 hover:bg-slate-50"
+              >
+                <Download size={13} /> {d}
+              </a>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );

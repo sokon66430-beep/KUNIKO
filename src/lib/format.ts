@@ -22,11 +22,6 @@ export function usd(n: number): string {
   }).format(n || 0);
 }
 
-export function riel(usdAmount: number, rate = EXCHANGE_RATE): string {
-  const value = Math.round((usdAmount || 0) * rate);
-  return `៛${new Intl.NumberFormat("en-US").format(value)}`;
-}
-
 /**
  * Riel price as it goes on a printed shelf label — a business rule, not a
  * display choice: USD × 4,100, then ALWAYS rounded UP to the next 100 riel
@@ -37,6 +32,12 @@ export function riel(usdAmount: number, rate = EXCHANGE_RATE): string {
 export function rielShelfPrice(usdAmount: number, rate = EXCHANGE_RATE): number {
   const raw = (usdAmount || 0) * rate;
   return Math.ceil(Math.round(raw) / 100) * 100;
+}
+
+// Same round-up-to-100 rule as rielShelfPrice, just pre-formatted as a string —
+// so a screen total/change and the printed receipt for the same sale never disagree.
+export function riel(usdAmount: number, rate = EXCHANGE_RATE): string {
+  return `៛${new Intl.NumberFormat("en-US").format(rielShelfPrice(usdAmount, rate))}`;
 }
 
 export function num(n: number): string {
