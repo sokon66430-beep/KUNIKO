@@ -494,7 +494,7 @@ export default function PriceLabelsPage() {
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-ink-800">
                         {p.name}
-                        {p.nameKh ? <span className="ml-1.5 text-slate-500">· {p.nameKh}</span> : null}
+                        {p.nameKh ? <span className="ml-1.5 text-slate-500" style={{ fontFamily: KHMER_FONT }}>· {p.nameKh}</span> : null}
                       </span>
                       <span className="block truncate text-[11px] text-slate-400">
                         {p.barcode || "no barcode"} · {p.sku} · {usd(p.price)}
@@ -615,7 +615,7 @@ export default function PriceLabelsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink-800">
                       {p.name}
-                      {p.nameKh && <span className="ml-1.5 font-normal text-slate-500">· {p.nameKh}</span>}
+                      {p.nameKh && <span className="ml-1.5 font-normal text-slate-500" style={{ fontFamily: KHMER_FONT }}>· {p.nameKh}</span>}
                     </p>
                     <p className="text-[11px] text-slate-400">
                       {p.sku} · {usd(p.price)} → <span className="font-semibold text-brand-600">{riel(rielPrice(p.price))}៛</span>
