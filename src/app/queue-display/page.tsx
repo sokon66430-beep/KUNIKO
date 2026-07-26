@@ -252,7 +252,11 @@ function Style() {
         grid-template-columns: 1fr;
         background: #eceef7;
         color: #12183a;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans Khmer", sans-serif;
+        /* Plus Jakarta for Latin, Kantumruy Pro for Khmer — the same pairing the
+           customer second screen uses, so កំពុងហៅ / រួចរាល់ render in the store's
+           typeface rather than whatever Khmer face the TV happens to ship. */
+        font-family: "Plus Jakarta Sans Variable", "Kantumruy Pro", "Battambang", "Noto Sans Khmer", "Khmer UI",
+          "Segoe UI", Roboto, sans-serif;
         user-select: none;
       }
       .q.dark {
@@ -336,8 +340,13 @@ function Style() {
         gap: 0.2vh;
       }
       .q-kh {
-        font-size: 2.9vh;
-        font-weight: 800;
+        font-size: 3.1vh;
+        /* 700 is the heaviest Kantumruy Pro ships. Asking for 800 makes the
+           browser SYNTHESISE a bolder face, which smears Khmer diacritics —
+           worse than the real Bold at this size on a screen across a room. */
+        font-weight: 700;
+        font-family: "Kantumruy Pro", "Battambang", "Noto Sans Khmer", sans-serif;
+        line-height: 1.35; /* Khmer needs room above/below for its marks */
       }
       .q-en {
         font-size: 2.5vh;
