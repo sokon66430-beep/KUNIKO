@@ -80,14 +80,6 @@ const ICON = {
       <path className="q-steam q-steam-2" d="M11.8 9.2c.85-1.1.85-1.9 0-3" />
     </svg>
   ),
-  // A little clock for the footer, drawn in the same outline style as the rest
-  // so the corner doesn't look like it came from somewhere else.
-  clock: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="8.6" />
-      <path d="M12 7.4V12l3 1.9" />
-    </svg>
-  ),
   // A takeaway box — this order is DONE and waiting to be collected.
   ready: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -324,23 +316,18 @@ export default function QueueDisplayPage() {
             deliberate part of the board instead of something left over. */}
         <div className="q-foot">
           <div className="q-clockcard">
-            <span className="q-clock-ico" aria-hidden>
-              {ICON.clock}
-            </span>
-            <span className="q-clock-text">
-              <span className="q-time">{now.time}</span>
-              <span className="q-date">{now.date}</span>
-            </span>
+            <span className="q-time">{now.time}</span>
+            <span className="q-date">{now.date}</span>
+            {board?.boardLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={board.boardLogo} alt="" className="q-board-logo" />
+            ) : (
+              <span className="q-brand">
+                <span className={`q-dot ${live ? "on" : "off"}`} aria-hidden />
+                {board?.storeName || ""}
+              </span>
+            )}
           </div>
-          {board?.boardLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={board.boardLogo} alt="" className="q-board-logo" />
-          ) : (
-            <span className="q-brand">
-              <span className={`q-dot ${live ? "on" : "off"}`} aria-hidden />
-              {board?.storeName || ""}
-            </span>
-          )}
         </div>
       </section>
 
@@ -820,81 +807,64 @@ function Style() {
         align-items: center;
         gap: 0.9vh;
       }
-      /* One soft pill holding the clock, instead of two orphan lines of text. */
+      /* No card, no box. Tried a white panel here and it read as a sticker
+         pasted onto the board — the corner is quiet information, and giving it
+         a surface of its own made it shout. Plain type on the background, with
+         the spacing doing the grouping instead. */
       .q-clockcard {
         display: flex;
-        align-items: center;
-        gap: 0.7vw;
-        padding: 1vh 1.4vw;
-        border-radius: 999px;
-        background: #fff;
-        box-shadow:
-          0 1px 2px rgba(18, 24, 58, 0.05),
-          0 6px 18px rgba(18, 24, 58, 0.06);
-      }
-      .q.dark .q-clockcard {
-        background: rgba(255, 255, 255, 0.07);
-        box-shadow: none;
-      }
-      .q-clock-ico {
-        display: block;
-        width: 2.9vh;
-        height: 2.9vh;
-        flex: 0 0 auto;
-        color: var(--q-accent, #2544c7);
-        opacity: 0.85;
-      }
-      .q-clock-ico svg {
-        width: 100%;
-        height: 100%;
-        vector-effect: non-scaling-stroke;
-      }
-      .q-clock-text {
-        display: flex;
         flex-direction: column;
-        line-height: 1.1;
+        align-items: center;
+        gap: 0.3vh;
       }
       .q-time {
-        font-size: 2.7vh;
+        font-size: 3.6vh;
         font-weight: 800;
-        letter-spacing: -0.01em;
+        line-height: 1;
+        letter-spacing: -0.015em;
         font-variant-numeric: tabular-nums;
       }
       .q-date {
         font-size: 1.6vh;
         font-weight: 600;
-        opacity: 0.45;
+        opacity: 0.4;
+        letter-spacing: 0.04em;
         font-variant-numeric: tabular-nums;
       }
-      /* The shop name gets its own quieter pill, so the two never read as one
-         run-on line. */
       .q-brand {
+        margin-top: 1vh;
         display: flex;
         align-items: center;
         gap: 0.5vw;
-        padding: 0.6vh 1.1vw;
-        border-radius: 999px;
-        background: rgba(18, 24, 58, 0.05);
         font-size: 1.6vh;
         font-weight: 700;
-        letter-spacing: 0.02em;
-        opacity: 0.75;
+        letter-spacing: 0.03em;
+        opacity: 0.55;
       }
-      .q.dark .q-brand {
-        background: rgba(255, 255, 255, 0.08);
+      /* The live light breathes. It is the only thing on the board that says
+         "this screen is still talking to the till" — a dead dot and a live one
+         look identical until one of them moves. */
+      @keyframes qBlink {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0.3vh rgba(34, 197, 94, 0.28);
+        }
+        50% {
+          box-shadow: 0 0 0 0.75vh rgba(34, 197, 94, 0);
+        }
       }
       .q-dot {
-        width: 0.9vh;
-        height: 0.9vh;
+        width: 1vh;
+        height: 1vh;
         border-radius: 999px;
         background: #22c55e;
-        /* A soft ring so the live light reads as a glow rather than a full stop. */
-        box-shadow: 0 0 0 0.35vh rgba(34, 197, 94, 0.2);
         flex: 0 0 auto;
+        animation: qBlink 2.4s ease-out infinite;
       }
       .q-dot.off {
         background: #f59e0b;
-        box-shadow: 0 0 0 0.35vh rgba(245, 158, 11, 0.2);
+        animation: none; /* a screen that has lost the feed shouldn't look busy */
+        box-shadow: 0 0 0 0.35vh rgba(245, 158, 11, 0.22);
       }
 
       /* Lists */
