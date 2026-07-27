@@ -1122,7 +1122,13 @@ export default function PosPage() {
                   ({directSaleCount} items)
                 </span>
               </p>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
+              {/* CATEGORIES stay narrow. Widening these to fit long product
+                  names was a mistake: a category name is two short words, so the
+                  extra width bought nothing and cost a column — which pushed the
+                  TILL row off the bottom of the T3 and made the cashier scroll
+                  to reach it. The wide tiles are for PRODUCTS, where the names
+                  actually are long. */}
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
                 {/* Favourites pinned FIRST — same square tile as a category, so
                     the whole grid lines up. */}
                 {(favourites.length > 0 || favouriteSuggestions.length > 0) && (
