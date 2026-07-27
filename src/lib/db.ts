@@ -65,6 +65,12 @@ function backfill(db: DB): DB {
   if (db.meta.business && db.meta.business.cashDrawerLimit == null) db.meta.business.cashDrawerLimit = 500;
   if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
   if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;
+  // Coupons — the voucher a customer hands over. Stores that existed before
+  // them open with an empty book rather than failing to load.
+  if (!db.coupons) db.coupons = [];
+  if (!db.couponRedemptions) db.couponRedemptions = [];
+  if (db.meta.nextCoupon == null) db.meta.nextCoupon = 1;
+  if (db.meta.nextCouponRedemption == null) db.meta.nextCouponRedemption = 1;
   // Deals don't combine or stack until the owner says so — see lib/promotions.
   if (db.meta.business && !db.meta.business.promotionSettings) {
     db.meta.business.promotionSettings = { allowCombine: false, allowStackWithMarkdown: false };

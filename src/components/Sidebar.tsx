@@ -36,6 +36,7 @@ import {
   TicketPercent,
   CalendarClock,
   ChefHat,
+  Ticket,
   ReceiptText,
   ShieldCheck,
   BookOpen,
@@ -78,6 +79,7 @@ const OPERATIONS = {
     // Down is a label on specific items being cleared, and stays per store —
     // which is why it's still here and the basket-wide deals engine isn't.
     { href: "/promotions", label: "Mark Down", icon: TicketPercent },
+    { href: "/coupons", label: "Coupons", icon: Ticket },
     { href: "/purchase-requests", label: "Purchase Requests", icon: FileText },
     { href: "/job-schedule", label: "Job Schedule", icon: CalendarClock },
     { href: "/customers", label: "Customers", icon: Users },

@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   CheckCircle2,
   X,
+  Ticket,
   QrCode,
   Loader2,
   RefreshCw,
@@ -123,6 +124,9 @@ export default function PosPage() {
   const [favPending, setFavPending] = useState<Record<string, boolean>>({});
   const [customerId, setCustomerId] = useState<string>("");
   const [discount, setDiscount] = useState<string>("");
+  // The one coupon on this sale. Held as what the server said it was worth at
+  // scan time; the server checks it again for real when the sale commits.
+  const [coupon, setCoupon] = useState<{ code: string; name: string; detail: string; discount: number } | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("Cash");
   // Pickup number: the cashier turns this on for orders the customer waits for
   // (coffee, noodles, warmed food). The server issues the number centrally.
@@ -434,7 +438,17 @@ export default function PosPage() {
   // works these out again for real when the sale lands — this is the preview
   // that lets the cashier tell the customer BEFORE taking the money, and it has
   // to be in the total or the change owed would be wrong.
-  const discountNum = Math.min(manualDiscount + promoDiscount, gross);
+  // The coupon comes off LAST, after promotions and the cashier's discount —
+  // it discounts what the customer would otherwise have paid. Recalculated
+  // whenever the basket changes, so removing an item can't leave a $5 voucher
+  // sitting on a $3 basket.
+  const afterDeals = Math.max(0, gross - manualDiscount - promoDiscount);
+  const couponOff = coupon ? Math.min(coupon.discount, afterDeals) : 0;
+  // Read by the scan handler, which is created once and would otherwise send
+  // the basket total as it stood when the till was opened.
+  const afterDealsRef = useRef(afterDeals);
+  afterDealsRef.current = afterDeals;
+  const discountNum = Math.min(manualDiscount + promoDiscount + couponOff, gross);
   const total = gross - discountNum; // what the customer pays (VAT included)
   const subtotal = total / (1 + VAT_RATE); // net of the included VAT
   const tax = total - subtotal; // VAT already contained in the price
@@ -480,6 +494,9 @@ export default function PosPage() {
   function clearCart() {
     setCart({});
     setDiscount("");
+    // The coupon belongs to the basket, not the till: leaving it attached would
+    // silently discount the NEXT customer's sale.
+    setCoupon(null);
     setCustomerId("");
     setPayment("Cash");
   }
@@ -523,6 +540,11 @@ export default function PosPage() {
     saveHeld(terminal, list);
     setCart(o.cart);
     setDiscount(o.discount || "");
+    // A held basket comes back WITHOUT its coupon. The voucher was never spent
+    // (nothing is reserved at scan time), and its value depends on a basket
+    // that may have been edited since — so it is rescanned rather than restored
+    // at a figure that might now be wrong.
+    setCoupon(null);
     setCustomerId(o.customerId || "");
     setWantQueue(!!o.wantQueue);
     setResumeOpen(false);
@@ -536,6 +558,41 @@ export default function PosPage() {
   // Shared scan handler for BOTH scan paths (hardware keyboard-wedge scanner and
   // the on-screen camera scanner): find the product by barcode or SKU and ring
   // it straight into the cart. Returns whether a product was matched.
+  /**
+   * A scanned code that matched no product — is it a coupon?
+   *
+   * Asks the server, because whether a voucher has already been spent is not
+   * something the till can know. Nothing is reserved by asking: the coupon is
+   * only spent when the sale commits, so a cashier can scan it, change their
+   * mind, and the customer still has a valid coupon.
+   */
+  async function tryCoupon(code: string) {
+    try {
+      const res = await fetch("/api/coupons/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, basketTotal: afterDealsRef.current }),
+      });
+      if (res.status === 404) {
+        setToast(`Barcode ${code} isn't in the system.`);
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        // Why it was refused, in words the cashier can say to the customer.
+        setToast(data.reason || "That coupon can't be used.");
+        return;
+      }
+      // One coupon per sale. Scanning a second replaces the first rather than
+      // stacking — stacking is a policy question, and a counter is the wrong
+      // place to answer it.
+      setCoupon({ code: data.code, name: data.name, detail: data.detail, discount: data.discount });
+      setToast(`${data.name} — ${data.detail}`);
+    } catch {
+      setToast("Couldn't check that coupon — try again.");
+    }
+  }
+
   function ringUpByCode(code: string): boolean {
     const q = code.trim();
     if (!q) return false;
@@ -574,7 +631,16 @@ export default function PosPage() {
     // A pack/case barcode resolves to the product AND the packaging it was on,
     // so scanning a case rings up a case — the cashier never picks the unit.
     const hit = findByBarcode(productsRef.current, q);
-    if (!hit) return false;
+    if (!hit) {
+      // Not a product. It may be a coupon the customer handed over — checked
+      // against the server, because only the server knows whether this voucher
+      // has already been spent. Fire-and-forget so the scan gun isn't blocked
+      // waiting on the network; the answer arrives as a toast a moment later.
+      void tryCoupon(q);
+      // Claim the scan either way: returning false would drop the code into the
+      // search box, and "930000004" as a search term helps nobody.
+      return true;
+    }
     addToCart(hit.product, undefined, hit.unit);
     setToast(
       hit.unit.isBase
@@ -645,6 +711,9 @@ export default function PosPage() {
         // is the server's own to work out — sending it back would have it
         // counted twice.
         discount: manualDiscount,
+        // Only the CODE. What it is worth is the server's to decide — sending
+        // an amount would be handing the till a blank cheque.
+        couponCode: coupon?.code,
         paymentMethod: payment,
         paymentRef: opts?.paymentRef,
         tendered: opts?.tendered,
@@ -951,7 +1020,7 @@ export default function PosPage() {
             loading ? (
               <Spinner label="Loading products…" />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
                 {filtered.slice(0, 24).map((r) => (
                   <ProductCard
                     key={`${r.product.id}:${r.unit.id}`}
@@ -994,7 +1063,7 @@ export default function PosPage() {
                 </p>
               </div>
               {favourites.length > 0 ? (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
                   {favourites.map((p) => (
                     <ProductCard key={p.id} p={p} onAdd={(x) => addToCart(x)} onToggleFavourite={toggleFavourite} />
                   ))}
@@ -1031,7 +1100,7 @@ export default function PosPage() {
                   {openGroup.category} <span className="font-normal text-slate-400">· {openGroup.items.length}</span>
                 </p>
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
                 {openGroup.items.map((p) => (
                   <ProductCard key={p.id} p={p} onAdd={(x) => addToCart(x)} onToggleFavourite={toggleFavourite} />
                 ))}
@@ -1053,7 +1122,7 @@ export default function PosPage() {
                   ({directSaleCount} items)
                 </span>
               </p>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
                 {/* Favourites pinned FIRST — same square tile as a category, so
                     the whole grid lines up. */}
                 {(favourites.length > 0 || favouriteSuggestions.length > 0) && (
@@ -1216,11 +1285,14 @@ export default function PosPage() {
                     // product name's length.
                     <div key={lineKey(l.product, l.markdown, l.unit)} className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
-                        {/* The packaging badge sits OUTSIDE the truncating name:
-                            "Case" is the one word the cashier must see, and a
-                            long product name would otherwise cut it off. */}
-                        <p className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-semibold text-ink-800">{l.product.name}</span>
+                        {/* The packaging badge sits OUTSIDE the name: "Case" is
+                            the one word the cashier must see, and it must not be
+                            pushed off the end by a long product name.
+                            The name itself wraps rather than truncating — the
+                            cashier checks the basket against what the customer
+                            handed over, and "ICE Shaken…" doesn't let them. */}
+                        <p className="flex items-start gap-1.5">
+                          <span className="break-words text-sm font-semibold text-ink-800">{l.product.name}</span>
                           {!l.unit.isBase && (
                             <span className="shrink-0 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">
                               {l.unit.name}
@@ -1360,8 +1432,35 @@ export default function PosPage() {
                 </div>
               )}
 
+              {/* The scanned coupon, with a way to take it off. A cashier who
+                  scans the wrong voucher must be able to undo it without
+                  clearing the whole basket. */}
+              {coupon && (
+                <div className="mb-2 flex items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 ring-1 ring-violet-200">
+                  <Ticket size={15} className="shrink-0 text-violet-600" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-bold text-violet-900">{coupon.name}</p>
+                    <p className="text-[11px] text-violet-700">
+                      {coupon.detail} · {coupon.code}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-[13px] font-bold tabular-nums text-violet-800">
+                    - {usd(couponOff)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCoupon(null)}
+                    title="Remove this coupon"
+                    className="shrink-0 rounded-lg p-1 text-violet-400 transition hover:bg-violet-100 hover:text-violet-700"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
                 {promoDiscount > 0 && <Row label="Promotions" value={`- ${usd(promoDiscount)}`} tone="rose" />}
+                {couponOff > 0 && <Row label="Coupon" value={`- ${usd(couponOff)}`} tone="rose" />}
                 {manualDiscount > 0 && <Row label="Discount" value={`- ${usd(manualDiscount)}`} tone="rose" />}
                 <div className="flex items-center justify-between">
                   <div>
@@ -1533,14 +1632,22 @@ function ProductCard({
     // (a cashier taps anywhere to sell), and a button can't legally nest inside
     // another, so the star is a sibling layered over it.
     <div className="group relative">
-      {/* Square tile (height = width): image on top, then name, price pinned to
-          the bottom — a compact grid the cashier taps to sell. */}
+      {/* The tile grows to fit its name rather than cropping it. This shop sells
+          several products whose names differ only near the END — two "ICE Shaken
+          Espresso" variants, three sizes of the same drink — and a clipped name
+          made them identical on screen, which is a wrong-item sale waiting to
+          happen. A minimum height keeps short names tidy, and CSS grid already
+          levels every tile in a row, so one long name costs a little height on
+          its own row and nothing anywhere else. */}
       <button
         onClick={() => onAdd(p, unit)}
-        className="card flex aspect-square w-full flex-col p-2 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+        // h-full matters: the grid stretches the WRAPPER to the tallest tile in
+        // the row, but the button inside would keep its own content height, so
+        // the prices sat at different heights and the row read as ragged.
+        className="card flex h-full min-h-[7rem] w-full flex-col p-2 text-left transition hover:-translate-y-0.5 hover:shadow-soft"
       >
         {p.image && (
-          <div className="mb-1 h-1/2 w-full overflow-hidden rounded-lg bg-slate-100">
+          <div className="mb-1 h-16 w-full shrink-0 overflow-hidden rounded-lg bg-slate-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/product-image/${p.image}`} alt="" className="h-full w-full object-cover" loading="lazy" />
           </div>
@@ -1548,7 +1655,13 @@ function ProductCard({
         {/* Name and price only — the cashier taps the tile to sell. Item code,
             stock and status stay on the Inventory screen. `pr-4` keeps the name
             clear of the favourite star in the top-right corner. */}
-        <p className="line-clamp-2 pr-4 text-[11.5px] font-semibold leading-tight text-ink-800">{p.name}</p>
+        {/* The name gets a reserved block three lines deep. Short names leave it
+            part-empty, which is what puts every price on the same line across a
+            row and stops the grid looking like scattered text. Longer names grow
+            past it rather than being cut — the whole point of this change. */}
+        <p className="min-h-[2.7rem] break-words pr-4 text-[11.5px] font-semibold leading-tight text-ink-800">
+          {p.name}
+        </p>
         {/* When a pack/carton code was matched, say so plainly — the price below
             is that whole pack, not one unit. */}
         {showPack && (

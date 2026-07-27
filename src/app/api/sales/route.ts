@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
-import type { Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
+import type { Coupon, Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { canManageStaff } from "@/lib/access";
 import { profitFor } from "@/lib/caps";
@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
 import { publish } from "@/lib/realtime";
 import { issueQueueTicket } from "@/lib/queue";
+import { checkCoupon, findCoupon, redeemCoupon } from "@/lib/coupons";
 import { openShiftForTerminal } from "@/lib/money";
 import { currentActor } from "@/lib/actor";
 import { findByCode, isSellable, storeToday } from "@/lib/markdowns";
@@ -176,7 +177,30 @@ export async function POST(req: Request) {
       return { error: "Only a manager can apply a discount" as const };
     }
     const manualDiscount = requestedDiscount;
-    const discount = round2(Math.min(manualDiscount + basket.discount, gross));
+
+    // The coupon the customer handed over. Unlike the manual discount above,
+    // NOTHING about its value is taken from the client — only the code is. The
+    // amount is re-derived here from the stored coupon, so a till that posts
+    // {couponCode:"93…", discount:999} still only gets what that coupon is
+    // worth.
+    //
+    // Validated against the basket AFTER promotions and mark-downs, because a
+    // coupon comes off what the customer would otherwise have paid.
+    const scannedCoupon = String(body.couponCode || "").trim();
+    const afterDeals = round2(Math.max(0, gross - manualDiscount - basket.discount));
+    let coupon: Coupon | undefined;
+    let couponOff = 0;
+    if (scannedCoupon) {
+      coupon = findCoupon(db.coupons || [], scannedCoupon);
+      // Re-checked here, inside the write-lock, even though the till already
+      // asked: between the scan and this moment another till may have spent the
+      // same single-use voucher. This is the check that decides.
+      const verdict = checkCoupon(coupon, afterDeals, { storeId: session?.storeId });
+      if (!verdict.ok) return { error: verdict.reason };
+      couponOff = verdict.discount;
+    }
+
+    const discount = round2(Math.min(manualDiscount + basket.discount + couponOff, gross));
     const total = round2(gross - discount);
     const subtotal = round2(total / (1 + db.meta.business.vatRate)); // net of VAT
     const tax = round2(total - subtotal); // VAT already contained in the price
@@ -394,6 +418,23 @@ export async function POST(req: Request) {
       sale.queueNumber = ticket.number;
       sale.queueTicketId = ticket.id;
       sale.queueCode = ticket.code;
+    }
+
+    // Spend the coupon. Here, and only here — the same write-lock that wrote
+    // the sale — so a single-use voucher can be redeemed exactly once even if
+    // three tills scan it in the same second, and so an abandoned basket never
+    // burns a customer's coupon.
+    if (coupon && couponOff > 0) {
+      sale.coupon = { code: coupon.code, name: coupon.name, discount: couponOff };
+      redeemCoupon(db, coupon, {
+        saleId,
+        invoiceNo,
+        cashier: actor,
+        posTerminalId: sale.posTerminalId,
+        basketTotal: afterDeals,
+        discount: couponOff,
+        at: now,
+      });
     }
 
     db.meta.nextInvoice += 1;

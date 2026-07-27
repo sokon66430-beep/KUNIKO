@@ -345,6 +345,72 @@ export type PromotionScope =
 
 export type PromotionStatus = "Active" | "Paused";
 
+// ---------------------------------------------------------------------------
+// Coupons: a piece of paper the customer hands over.
+//
+// Distinct from the two discounts that already exist, and deliberately so:
+//   Promotion — automatic, fires on what's in the basket, nobody presents it
+//   Mark-down — a sticker on ONE item's shelf price
+//   Coupon    — the customer brings it, and it is scanned like a product
+//
+// The `code` is whatever is actually printed on the paper. Coupons Stookii
+// prints get a 93… code (its own range, so it can't collide with a shelf
+// barcode or a 92… mark-down label), but a supplier's coupon with its own
+// barcode is entered as-is and works identically — the till looks a scan up
+// against this list when no product matches it.
+// ---------------------------------------------------------------------------
+export type Coupon = {
+  id: string;
+  code: string; // the barcode on the paper
+  name: string; // what the cashier and the report call it
+
+  // Exactly one of these. Percent coupons may carry a cap so "20% off" on a
+  // large basket can't cost more than intended.
+  discountAmount?: number; // USD off the basket
+  discountPercent?: number;
+  maxDiscount?: number; // percent coupons only; 0/absent = no cap
+
+  minSpend?: number; // basket must reach this before the coupon is allowed
+
+  startDate: string; // yyyy-mm-dd
+  endDate: string; // LAST valid day
+  active: boolean; // switched off without deleting the history
+
+  // TRUE means this exact code may be redeemed once, ever — the normal case for
+  // a printed voucher. FALSE is a campaign code reprinted on many leaflets.
+  //
+  // Redemption is recorded inside the sale's own write-lock, which is what
+  // stops two tills scanning the same voucher at the same moment from both
+  // accepting it.
+  singleUse: boolean;
+
+  storeIds?: string[]; // empty/absent = every store, same rule as Promotion
+
+  timesUsed: number;
+  lastUsedAt?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  updatedAt?: string;
+};
+
+// One coupon actually spent, kept as its own row for the same reason
+// PromotionUsage is: the report must not have to re-derive what a coupon cost
+// from coupons that may since have been edited.
+export type CouponRedemption = {
+  id: string;
+  at: string;
+  couponId: string;
+  code: string;
+  name: string;
+  saleId: string;
+  invoiceNo: string;
+  cashier: string;
+  posTerminalId?: string;
+  basketTotal: number; // before the coupon came off
+  discount: number; // what it actually took off
+};
+
 export type Promotion = {
   id: string;
   code: string; // PRM-100001
@@ -463,6 +529,9 @@ export type Sale = {
   // The reporting source is db.promotionUsages — this is the customer-facing
   // summary of the same event, written in the same transaction.
   promotions?: { code: string; name: string; detail: string; discount: number; freeQty: number }[];
+  // The voucher the customer handed over, if any. One per sale — a counter is
+  // no place to reason about two coupons stacking.
+  coupon?: { code: string; name: string; discount: number };
   paymentMethod: PaymentMethod;
   paymentRef?: string; // e.g. KHQR md5 of the confirmed Bakong transaction
   // Cash sales only: what the customer handed over and what went back to them.
@@ -1042,6 +1111,8 @@ export type DB = {
   ledger: LedgerEntry[];
   historicalPurchases: HistoricalPurchase[];
   promotions: Promotion[];
+  coupons: Coupon[];
+  couponRedemptions: CouponRedemption[];
   promotionUsages: PromotionUsage[];
   auditLog: AuditEvent[];
   queue: QueueTicket[];
@@ -1071,6 +1142,8 @@ export type DB = {
     nextHistorical: number;
     nextPromotion: number;
     nextPromotionUsage: number;
+    nextCoupon: number;
+    nextCouponRedemption: number;
     nextAudit: number;
     nextQueueId: number;
     // The store's shared pickup-number counter. `current` is the last number

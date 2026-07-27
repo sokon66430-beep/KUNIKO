@@ -51,6 +51,54 @@ type Board = {
 const ROWS = 7; // what fits a 16:9 screen at this row height, matching the existing board
 
 // ---------------------------------------------------------------------------
+// The three column icons.
+//
+// Emoji, not drawn icons. Tried both: hand-drawn silhouettes are tidier on
+// paper, but on a board glanced at from across a shop the emoji win — they are
+// already the shapes people know, they carry their own colour, and a customer
+// reads "pan" and "bag" faster than any icon set we could draw.
+//
+// The trade worth knowing: the exact drawing belongs to the device, so the pan
+// looks slightly different on an Android TV box than in a desktop preview. The
+// meaning doesn't change, which is all this has to do.
+// ---------------------------------------------------------------------------
+const ICON = {
+  // A megaphone — this number is being CALLED.
+  now: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 10h2.6l9-4.6a.8.8 0 0 1 1.2.7v11.8a.8.8 0 0 1-1.2.7l-9-4.6H5a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2Z" />
+      <path d="M8.2 15.5 9.4 19.6a1 1 0 0 0 1 .7h.8a1 1 0 0 0 1-1.3l-1-3.3" />
+      <path d="M20.4 10.3a3.2 3.2 0 0 1 0 3.4" />
+    </svg>
+  ),
+  // A pan on the heat with steam — this order is being MADE.
+  preparing: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.2 12.2h13.2v1.6a6.2 6.2 0 0 1-6.2 6.2H9.4a6.2 6.2 0 0 1-6.2-6.2v-1.6Z" />
+      <path d="M16.4 13.4h3a1.8 1.8 0 0 1 0 3.6h-1.2" />
+      <path className="q-steam" d="M7.6 9.2c.85-1.1.85-1.9 0-3" />
+      <path className="q-steam q-steam-2" d="M11.8 9.2c.85-1.1.85-1.9 0-3" />
+    </svg>
+  ),
+  // A little clock for the footer, drawn in the same outline style as the rest
+  // so the corner doesn't look like it came from somewhere else.
+  clock: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.6" />
+      <path d="M12 7.4V12l3 1.9" />
+    </svg>
+  ),
+  // A takeaway box — this order is DONE and waiting to be collected.
+  ready: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5.6 8.7h12.8l-1.1 10a2 2 0 0 1-2 1.8H8.7a2 2 0 0 1-2-1.8l-1.1-10Z" />
+      <path d="M4.6 8.7 12 4.9l7.4 3.8" />
+      <path d="M9.4 5.7a2.6 2.6 0 0 1 5.2 0" />
+    </svg>
+  ),
+};
+
+// ---------------------------------------------------------------------------
 // Which TV this is.
 //
 // The normal way is a registered screen: the TV opens /queue-display?screen=s2
@@ -255,16 +303,35 @@ export default function QueueDisplayPage() {
       {/* NOW SERVING — the hero, exactly as the in-store board shows it. */}
       <section className="q-col q-col-now">
         <h2 className="q-h">
+          <span className="q-ico q-ico-now" aria-hidden>
+            {ICON.now}
+          </span>
           <span className="q-kh">កំពុងហៅ</span>
           <span className="q-en">NOW SERVING</span>
         </h2>
         <div className="q-now-wrap">
-          <span className={`q-now ${nowServing ? "has" : ""}`}>{nowServing ? show(nowServing.code) : "—"}</span>
+          {/* `key` is the code, so React replaces this element whenever the
+              number changes and the pop animation plays again. Without it the
+              same element would just have its text swapped and a customer who
+              glanced away would never know a new number had been called. */}
+          <span key={nowServing?.code || "none"} className={`q-now ${nowServing ? "has" : ""}`}>
+            {nowServing ? show(nowServing.code) : "—"}
+          </span>
         </div>
         {board?.boardNote ? <p className="q-note">{board.boardNote}</p> : null}
+        {/* Clock and shop name. They used to be three loose lines of text
+            floating in the corner; gathered into one soft pill they read as a
+            deliberate part of the board instead of something left over. */}
         <div className="q-foot">
-          <span className="q-time">{now.time}</span>
-          <span className="q-date">{now.date}</span>
+          <div className="q-clockcard">
+            <span className="q-clock-ico" aria-hidden>
+              {ICON.clock}
+            </span>
+            <span className="q-clock-text">
+              <span className="q-time">{now.time}</span>
+              <span className="q-date">{now.date}</span>
+            </span>
+          </div>
           {board?.boardLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={board.boardLogo} alt="" className="q-board-logo" />
@@ -279,12 +346,15 @@ export default function QueueDisplayPage() {
 
       <section className="q-col">
         <h2 className="q-h">
+          <span className="q-ico q-ico-prep" aria-hidden>
+            {ICON.preparing}
+          </span>
           <span className="q-kh">កំពុងរៀបចំ</span>
           <span className="q-en">PREPARING</span>
         </h2>
         <ul className="q-list">
           {preparing.map((e) => (
-            <li key={e.id} className="q-row">
+            <li key={e.id} className="q-row q-in">
               <span className="q-where">{e.where}</span>
               <span className="q-code">{show(e.code)}</span>
             </li>
@@ -295,12 +365,15 @@ export default function QueueDisplayPage() {
 
       <section className="q-col q-col-ready">
         <h2 className="q-h">
+          <span className="q-ico q-ico-ready" aria-hidden>
+            {ICON.ready}
+          </span>
           <span className="q-kh">រួចរាល់</span>
           <span className="q-en">ORDER READY</span>
         </h2>
         <ul className="q-list">
           {alsoReady.map((e) => (
-            <li key={e.id} className="q-row">
+            <li key={e.id} className="q-row q-in">
               <span className="q-where">{e.where}</span>
               <span className="q-code q-code-ready">{show(e.code)}</span>
             </li>
@@ -339,6 +412,226 @@ function Style() {
         margin: 0;
         overflow: hidden;
         background: #eceef7;
+      }
+      /* ---------------------------------------------------------------------
+         Motion.
+         This board is watched by someone eating, queueing, or looking at their
+         phone. Movement is what pulls a glance back — a number that merely
+         appears is a number that gets missed. So the called number lands with a
+         bounce and then breathes gently, and each row slides in as it arrives.
+
+         Kept slow and soft on purpose: a screen that runs all day in a shop
+         should be noticeable, never annoying, and nothing loops fast enough to
+         become the thing you can't stop looking at.
+      --------------------------------------------------------------------- */
+      @keyframes qPop {
+        0% {
+          transform: scale(0.55) translateY(0.1em);
+          opacity: 0;
+        }
+        55% {
+          transform: scale(1.12) translateY(0);
+          opacity: 1;
+        }
+        75% {
+          transform: scale(0.97);
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      /* The slow breath afterwards, so the number still reads as "live" minutes
+         later when nothing has changed. */
+      @keyframes qBreathe {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.035);
+        }
+      }
+      @keyframes qHalo {
+        0%,
+        100% {
+          opacity: 0.16;
+          transform: translate(-50%, -50%) scale(1);
+        }
+        50% {
+          opacity: 0.05;
+          transform: translate(-50%, -50%) scale(1.25);
+        }
+      }
+      @keyframes qSlideIn {
+        from {
+          opacity: 0;
+          transform: translateX(0.6em);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      .q-now.has {
+        /* pop once on arrival, then breathe for ever */
+        animation:
+          qPop 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+          qBreathe 3.6s ease-in-out 0.75s infinite;
+        transform-origin: center;
+      }
+      /* A soft halo behind the called number. Purely decorative, so it sits
+         behind everything and never takes a click or affects layout. */
+      .q-now-wrap {
+        position: relative;
+      }
+      .q-now-wrap::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 1.6em;
+        height: 1.6em;
+        border-radius: 50%;
+        background: var(--q-accent, #2544c7);
+        transform: translate(-50%, -50%);
+        animation: qHalo 3.6s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .q-now {
+        position: relative;
+        z-index: 1;
+      }
+      .q-in {
+        animation: qSlideIn 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+      }
+      /* A ready number is the one a customer is waiting for, so it gets a small
+         nudge of its own rather than sharing the preparing column's entrance. */
+      .q-code-ready {
+        animation: qPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        display: inline-block;
+      }
+      /* Some people get motion sick, and a board is not something you can look
+         away from while you wait for your food. Honour the system setting. */
+      @media (prefers-reduced-motion: reduce) {
+        .q-now.has,
+        .q-now-wrap::before,
+        .q-in,
+        .q-code-ready {
+          animation: none;
+        }
+      }
+      /* Column icons. Sized from the heading so they track the text on any TV
+         rather than needing a breakpoint per screen size. */
+      /* The emoji on its own — no badge, no disc behind it. A filled circle in
+         each column's colour turned the headings into three traffic lights and
+         competed with the numbers, which are the thing to look at.
+
+         Sized against the VIEWPORT rather than the heading text: the headings
+         are deliberately small so the numbers can be big, but an icon read from
+         across a shop has to be big in its own right. */
+      .q-ico {
+        display: block;
+        margin: 0 auto 0.5vh;
+        width: min(5.4vh, 3.6vw);
+        height: min(5.4vh, 3.6vw);
+        transform-origin: center bottom;
+      }
+      .q-ico svg {
+        width: 100%;
+        height: 100%;
+        /* Line weight is set on the SVG, but stroke SCALES with the viewBox, so
+           on a big TV the lines would fatten into a filled blob. vector-effect
+           holds them at a constant width whatever size the board is drawn at. */
+        vector-effect: non-scaling-stroke;
+      }
+      /* Each one moves differently, so the three columns read as three separate
+         things happening rather than one animation copied three times. */
+      .q-ico-now {
+        color: var(--q-accent, #2544c7);
+        animation: qShout 3.2s ease-in-out infinite;
+      }
+      .q-ico-prep {
+        color: #d97706;
+        animation: qSizzle 2.2s ease-in-out infinite;
+      }
+      .q-ico-ready {
+        color: #059669;
+        animation: qNudge 4s ease-in-out infinite;
+      }
+      /* Steam rising off the pan — the one thing on the board that says work is
+         happening out of sight. */
+      @keyframes qSteam {
+        0%,
+        100% {
+          opacity: 0.3;
+          transform: translateY(1px);
+        }
+        50% {
+          opacity: 1;
+          transform: translateY(-1.5px);
+        }
+      }
+      .q-steam {
+        animation: qSteam 2.4s ease-in-out infinite;
+      }
+      .q-steam-2 {
+        animation-delay: 0.9s;
+      }
+      /* The megaphone tips as if calling out. */
+      @keyframes qShout {
+        0%,
+        70%,
+        100% {
+          transform: rotate(0deg) scale(1);
+        }
+        78% {
+          transform: rotate(-9deg) scale(1.1);
+        }
+        86% {
+          transform: rotate(7deg) scale(1.1);
+        }
+        94% {
+          transform: rotate(-3deg) scale(1.04);
+        }
+      }
+      /* The pan shakes the way a pan does — small, quick, never still. */
+      @keyframes qSizzle {
+        0%,
+        100% {
+          transform: translate(0, 0) rotate(0deg);
+        }
+        25% {
+          transform: translate(-0.03em, -0.05em) rotate(-3deg);
+        }
+        50% {
+          transform: translate(0.03em, 0) rotate(3deg);
+        }
+        75% {
+          transform: translate(-0.02em, -0.03em) rotate(-2deg);
+        }
+      }
+      /* The takeaway box hops once in a while — a nudge to come and collect. */
+      @keyframes qNudge {
+        0%,
+        84%,
+        100% {
+          transform: translateY(0) scale(1);
+        }
+        90% {
+          transform: translateY(-0.18em) scale(1.06);
+        }
+        95% {
+          transform: translateY(0) scale(0.98);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .q-ico-now,
+        .q-ico-prep,
+        .q-ico-ready {
+          animation: none;
+        }
       }
       .q-sound {
         position: fixed;
@@ -517,41 +810,91 @@ function Style() {
       }
       .q-now.has {
         color: var(--q-accent, #2544c7);
-        animation: q-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+        /* The motion itself is defined once, further up (qPop + qBreathe). This
+           rule used to carry its own plain fade, which — being later in the
+           sheet — quietly won and left the number static between calls. */
       }
       .q-foot {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.4vh;
+        gap: 0.9vh;
+      }
+      /* One soft pill holding the clock, instead of two orphan lines of text. */
+      .q-clockcard {
+        display: flex;
+        align-items: center;
+        gap: 0.7vw;
+        padding: 1vh 1.4vw;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow:
+          0 1px 2px rgba(18, 24, 58, 0.05),
+          0 6px 18px rgba(18, 24, 58, 0.06);
+      }
+      .q.dark .q-clockcard {
+        background: rgba(255, 255, 255, 0.07);
+        box-shadow: none;
+      }
+      .q-clock-ico {
+        display: block;
+        width: 2.9vh;
+        height: 2.9vh;
+        flex: 0 0 auto;
+        color: var(--q-accent, #2544c7);
+        opacity: 0.85;
+      }
+      .q-clock-ico svg {
+        width: 100%;
+        height: 100%;
+        vector-effect: non-scaling-stroke;
+      }
+      .q-clock-text {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.1;
       }
       .q-time {
-        font-size: 2.4vh;
-        font-weight: 700;
+        font-size: 2.7vh;
+        font-weight: 800;
+        letter-spacing: -0.01em;
         font-variant-numeric: tabular-nums;
       }
       .q-date {
-        font-size: 1.8vh;
-        opacity: 0.6;
+        font-size: 1.6vh;
+        font-weight: 600;
+        opacity: 0.45;
         font-variant-numeric: tabular-nums;
       }
+      /* The shop name gets its own quieter pill, so the two never read as one
+         run-on line. */
       .q-brand {
-        margin-top: 0.8vh;
         display: flex;
         align-items: center;
         gap: 0.5vw;
-        font-size: 1.7vh;
+        padding: 0.6vh 1.1vw;
+        border-radius: 999px;
+        background: rgba(18, 24, 58, 0.05);
+        font-size: 1.6vh;
         font-weight: 700;
+        letter-spacing: 0.02em;
         opacity: 0.75;
+      }
+      .q.dark .q-brand {
+        background: rgba(255, 255, 255, 0.08);
       }
       .q-dot {
         width: 0.9vh;
         height: 0.9vh;
         border-radius: 999px;
         background: #22c55e;
+        /* A soft ring so the live light reads as a glow rather than a full stop. */
+        box-shadow: 0 0 0 0.35vh rgba(34, 197, 94, 0.2);
+        flex: 0 0 auto;
       }
       .q-dot.off {
         background: #f59e0b;
+        box-shadow: 0 0 0 0.35vh rgba(245, 158, 11, 0.2);
       }
 
       /* Lists */
@@ -623,16 +966,6 @@ function Style() {
         object-fit: contain;
       }
 
-      @keyframes q-pop {
-        from {
-          transform: scale(0.9);
-          opacity: 0;
-        }
-        to {
-          transform: scale(1);
-          opacity: 1;
-        }
-      }
       @media (prefers-reduced-motion: reduce) {
         .q-now.has {
           animation: none;
