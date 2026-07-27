@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { playChime, audioBlocked, unlockAudio } from "@/lib/chimes";
+import { localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
+import { speakQueueCode } from "@/lib/announce";
 
 // ---------------------------------------------------------------------------
 // Customer queue TV.
@@ -26,11 +29,23 @@ type Board = {
   boardLogo: string | null;
   accent: string;
   boardNote: string;
-  screen: { id: string; name: string; mode: Mode; dark: boolean; rows: number; voice: boolean } | null;
+  screen: {
+    id: string;
+    name: string;
+    mode: Mode;
+    dark: boolean;
+    rows: number;
+    voice: boolean;
+    chime: string;
+    volume: number;
+  } | null;
   preparing: Entry[];
   ready: Entry[];
   voice: boolean;
   voiceLang: string;
+  chime: string;
+  volume: number;
+  numberStyle: QueueNumberStyle;
 };
 
 const ROWS = 7; // what fits a 16:9 screen at this row height, matching the existing board
@@ -85,12 +100,46 @@ export default function QueueDisplayPage() {
     ? { mode: s.mode, dark: s.dark, voice: s.voice, rows: Math.min(12, Math.max(1, s.rows)) }
     : urlCfg;
 
+  // Latin in the data, Khmer on the glass. Every number on this screen goes
+  // through here, so the board can't end up half-translated.
+  const style: QueueNumberStyle = (board?.numberStyle as QueueNumberStyle) || "latin";
+  const show = (code: string) => localizeQueueCode(code, style);
+
   const announced = useRef<Set<string>>(new Set());
   const firstLoad = useRef(true);
   const voiceRef = useRef(false);
   useEffect(() => {
     voiceRef.current = cfg.voice;
   }, [cfg.voice]);
+
+  // The chime is read through a ref because load() is created once: without it
+  // a screen would keep playing whatever sound was set when it was opened.
+  const soundRef = useRef({ chime: "ding", volume: 80 });
+  useEffect(() => {
+    soundRef.current = {
+      // An adverts-only screen shows no numbers, so it has no business chiming
+      // about them — that's the seating-area TV startling the room.
+      chime: cfg.mode === "ads" ? "none" : (board?.screen?.chime ?? board?.chime ?? "ding"),
+      volume: board?.screen?.volume ?? board?.volume ?? 80,
+    };
+  }, [board, cfg.mode]);
+
+  // Browsers won't make a sound until someone has touched the page, and a TV is
+  // opened once and then left alone. Without this a shop would pick a chime,
+  // hear nothing all day, and reasonably conclude it doesn't work.
+  const [needsTap, setNeedsTap] = useState(false);
+  useEffect(() => {
+    const check = () => setNeedsTap(audioBlocked() && soundRef.current.chime !== "none");
+    check();
+    const t = setInterval(check, 5_000);
+    return () => clearInterval(t);
+  }, []);
+  const enableSound = useCallback(async () => {
+    if (await unlockAudio()) {
+      setNeedsTap(false);
+      playChime(soundRef.current.chime, soundRef.current.volume); // confirm it audibly
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -100,18 +149,28 @@ export default function QueueDisplayPage() {
       const next: Board = await r.json();
       setBoard(next);
 
+      const fresh = next.ready.filter((e) => !announced.current.has(e.code));
       if (firstLoad.current) {
-        // Seed silently, so opening the screen doesn't read out every number
-        // already on the board.
+        // Seed silently, so opening the screen doesn't chime and read out every
+        // number already on the board.
         next.ready.forEach((e) => announced.current.add(e.code));
         firstLoad.current = false;
-      } else if (next.voice && voiceRef.current && "speechSynthesis" in window) {
-        for (const e of next.ready) {
-          if (announced.current.has(e.code)) continue;
-          announced.current.add(e.code);
-          const u = new SpeechSynthesisUtterance(`Order ${e.code.split("").join(" ")}, ready for pickup`);
-          u.lang = next.voiceLang;
-          window.speechSynthesis.speak(u);
+      } else if (fresh.length) {
+        fresh.forEach((e) => announced.current.add(e.code));
+        // ONE chime, however many orders turned ready at once. Two tills
+        // finishing together must not make the shop sound like an alarm.
+        playChime(soundRef.current.chime, soundRef.current.volume);
+        // The voice is separate and optional: the bell says "look up", the
+        // voice says which number. Delayed so it doesn't talk over the bell.
+        if (next.voice && voiceRef.current) {
+          window.setTimeout(() => {
+            for (const e of fresh) {
+              void speakQueueCode(e.code, {
+                lang: next.voiceLang,
+                style: (next.numberStyle as QueueNumberStyle) || "latin",
+              });
+            }
+          }, 900);
         }
       }
       const onBoard = new Set(next.ready.map((e) => e.code));
@@ -200,7 +259,7 @@ export default function QueueDisplayPage() {
           <span className="q-en">NOW SERVING</span>
         </h2>
         <div className="q-now-wrap">
-          <span className={`q-now ${nowServing ? "has" : ""}`}>{nowServing ? nowServing.code : "—"}</span>
+          <span className={`q-now ${nowServing ? "has" : ""}`}>{nowServing ? show(nowServing.code) : "—"}</span>
         </div>
         {board?.boardNote ? <p className="q-note">{board.boardNote}</p> : null}
         <div className="q-foot">
@@ -227,7 +286,7 @@ export default function QueueDisplayPage() {
           {preparing.map((e) => (
             <li key={e.id} className="q-row">
               <span className="q-where">{e.where}</span>
-              <span className="q-code">{e.code}</span>
+              <span className="q-code">{show(e.code)}</span>
             </li>
           ))}
           {preparing.length === 0 && <li className="q-row q-row-empty">—</li>}
@@ -243,7 +302,7 @@ export default function QueueDisplayPage() {
           {alsoReady.map((e) => (
             <li key={e.id} className="q-row">
               <span className="q-where">{e.where}</span>
-              <span className="q-code q-code-ready">{e.code}</span>
+              <span className="q-code q-code-ready">{show(e.code)}</span>
             </li>
           ))}
           {alsoReady.length === 0 && <li className="q-row q-row-empty">—</li>}
@@ -259,6 +318,14 @@ export default function QueueDisplayPage() {
     >
       {cfg.mode === "split" && AdPanel}
       {BoardPanel}
+      {/* Shown once, the first time this screen is set up, and never again on
+          that TV. Small and in the corner: if nobody presses it the board still
+          works perfectly, it is just silent. */}
+      {needsTap && (
+        <button className="q-sound" onClick={enableSound}>
+          🔔 Tap once to turn on sound
+        </button>
+      )}
       <Style />
     </div>
   );
@@ -272,6 +339,21 @@ function Style() {
         margin: 0;
         overflow: hidden;
         background: #eceef7;
+      }
+      .q-sound {
+        position: fixed;
+        right: 1.2vw;
+        bottom: 1.2vw;
+        z-index: 20;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.9vh 1.6vw;
+        font: inherit;
+        font-size: min(2.1vh, 1.4vw);
+        font-weight: 700;
+        color: #fff;
+        background: rgba(20, 24, 45, 0.86);
+        cursor: pointer;
       }
       .q {
         position: fixed;

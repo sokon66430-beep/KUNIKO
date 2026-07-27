@@ -7,6 +7,7 @@
 import type { Sale, ReceiptSettings } from "@/lib/types";
 import { usd, riel, rielDue } from "@/lib/format";
 import { formatQueue } from "@/lib/queue";
+import { localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
 
 export type ReceiptBusiness = {
   name?: string;
@@ -15,6 +16,9 @@ export type ReceiptBusiness = {
   logo?: string;
   vatRate?: number; // e.g. 0.10 — shown as "Includes VAT 10%" under the total
   receipt?: ReceiptSettings;
+  // Only the number style is needed here: the printed pickup number must be
+  // drawn in the same script as the board the customer will be watching.
+  queueSettings?: { numberStyle?: string };
 };
 
 const ACCENT: Record<string, string> = {
@@ -119,7 +123,15 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
       {showPickup && sale.queueNumber != null && (
         <div className="mt-2 flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-sm">
           <span className="font-semibold text-ink-800">Pickup Number</span>
-          <span className="text-lg font-extrabold tabular-nums text-ink-900">{formatQueue(sale.queueNumber)}</span>
+          {/* The full code (A001), drawn the way the board draws it — the
+              customer matches this against the TV, so the two must agree.
+              Falls back to the bare number for a sale taken before letters. */}
+          <span className="text-lg font-extrabold tabular-nums text-ink-900">
+            {localizeQueueCode(
+              sale.queueCode || formatQueue(sale.queueNumber),
+              (business?.queueSettings?.numberStyle as QueueNumberStyle) || "latin",
+            )}
+          </span>
         </div>
       )}
 

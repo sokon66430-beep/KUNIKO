@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { formatQueueCode } from "@/lib/queue";
+import { localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
 import { storeToday } from "@/lib/storetime";
 import type { Sale } from "@/lib/types";
 
@@ -25,6 +26,7 @@ export async function GET(req: Request) {
   const db = await readDB();
   const today = storeToday();
   const stationId = new URL(req.url).searchParams.get("station") || "";
+  const style = (db.meta.business.queueSettings?.numberStyle as QueueNumberStyle) || "latin";
 
   const saleById = new Map<string, Sale>(db.sales.map((s) => [s.id, s]));
   const dayOf = (t: { day?: string; createdAt: string }) => t.day ?? storeToday(new Date(t.createdAt));
@@ -48,7 +50,9 @@ export async function GET(req: Request) {
       const lane = stationId ? (t.jobs || []).find((j) => j.stationId === stationId) : undefined;
       return {
         id: t.id,
-        code: formatQueueCode(t),
+        // Drawn the way the customer's receipt and the TV draw it, so kitchen
+        // staff are matching the same characters the customer is holding.
+        code: localizeQueueCode(formatQueueCode(t), style),
         status: t.status,
         receiptNo: t.receiptNo,
         cashier: t.cashier,

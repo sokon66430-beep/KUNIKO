@@ -71,6 +71,10 @@ export async function GET(req: Request) {
           dark: !!screen.dark,
           rows: screen.rows || 7,
           voice: !!screen.voice,
+          // A screen that hasn't chosen a sound follows the store's default,
+          // so setting the chime once covers every TV the shop adds later.
+          chime: screen.chime ?? cfg.chime ?? "ding",
+          volume: screen.volume ?? cfg.volume ?? 80,
         }
       : null,
     // "preparing" and anything still waiting both read as "being made" to a
@@ -79,6 +83,12 @@ export async function GET(req: Request) {
     ready: pick("ready"),
     voice: cfg.voice === true,
     voiceLang: cfg.voiceLang || "en-US",
+    // Store default, for an unregistered screen with no id in its link.
+    chime: cfg.chime ?? "ding",
+    volume: cfg.volume ?? 80,
+    // How to DRAW the code. Sent rather than applied here so the stored code
+    // stays Latin in the payload — the voice needs the Latin form to read it.
+    numberStyle: cfg.numberStyle ?? "latin",
     at: new Date().toISOString(),
   });
 }

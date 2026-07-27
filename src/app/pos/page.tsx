@@ -50,6 +50,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { CameraScanner } from "@/components/CameraScanner";
 import { canSeeProfit } from "@/lib/access";
 import { formatQueue } from "@/lib/queue";
+import { localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
 import { hasThermalPrinter, printThermalReceipt, buildReceiptPayload } from "@/lib/printer";
 import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
 import { PosShiftModal, type ShiftAction } from "@/components/PosShiftModal";
@@ -1703,7 +1704,10 @@ function ReceiptModal({ sale, business, onClose }: { sale: Sale; business?: Rece
           <div className="mb-4 rounded-xl bg-brand-50 py-4 text-center ring-1 ring-brand-200">
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-700">Pickup Number</p>
             <p className="my-1 text-5xl font-extrabold tabular-nums tracking-wide text-brand-700">
-              {formatQueue(sale.queueNumber)}
+              {localizeQueueCode(
+                sale.queueCode || formatQueue(sale.queueNumber),
+                (business?.queueSettings?.numberStyle as QueueNumberStyle) || "latin",
+              )}
             </p>
             <p className="text-[12px] text-brand-700/80">Please wait for your number.</p>
           </div>

@@ -596,6 +596,11 @@ export type QueueScreen = {
   dark?: boolean;
   rows?: number; // numbers listed per column
   voice?: boolean; // only ONE screen should have this on
+  // The sound this screen makes when a number is called. A ChimeId from
+  // lib/chimes (kept as a string here so the shared type file stays free of
+  // browser-audio code). Absent = use the store's default chime.
+  chime?: string;
+  volume?: number; // 0–100, this screen's own loudness
 };
 
 /** Owner-controlled queue behaviour (Admin settings, Step 10). */
@@ -610,6 +615,14 @@ export type QueueSettings = {
   // Announce a number by voice on the customer display when it turns ready.
   voice?: boolean;
   voiceLang?: string; // BCP-47, e.g. "en-US" / "km-KH"
+  // The store's default chime, used by any screen that hasn't chosen its own.
+  // A ChimeId from lib/chimes; "none" for a silent shop.
+  chime?: string;
+  volume?: number; // 0–100
+  // How the pickup number is DRAWN for customers: "latin" (A001), "mixed"
+  // (A០០១) or "khmer" (ក០០១). The stored code stays Latin either way — see
+  // lib/khmer for why.
+  numberStyle?: string;
   // Minutes after which a waiting ticket is highlighted as late on the KDS.
   lateAfterMins?: number; // default 10
   // --- Customer TV look ----------------------------------------------------

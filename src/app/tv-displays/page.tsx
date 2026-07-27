@@ -1,11 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Monitor, Volume2, Check, ExternalLink, Copy, Upload, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
+import {
+  Monitor,
+  Volume2,
+  Check,
+  ExternalLink,
+  Copy,
+  Upload,
+  Image as ImageIcon,
+  Plus,
+  Trash2,
+  Play,
+} from "lucide-react";
 import { PageHeader, Card, ErrorBox } from "@/components/ui";
 import { Select } from "@/components/Select";
 import { useFetch, api } from "@/lib/client";
 import { useRole } from "@/lib/client";
+import { CHIMES, DEFAULT_CHIME, playChime, unlockAudio } from "@/lib/chimes";
+import { QUEUE_NUMBER_STYLES, localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
+import { speakQueueCode, voicesReady, hasVoiceFor } from "@/lib/announce";
 
 // ---------------------------------------------------------------------------
 // TV Displays — set up each screen in the shop.
@@ -31,6 +45,8 @@ type Screen = {
   dark?: boolean;
   rows?: number;
   voice?: boolean;
+  chime?: string;
+  volume?: number;
 };
 
 type Business = {
@@ -45,6 +61,9 @@ type Business = {
     boardLogo?: string;
     accent?: string;
     boardNote?: string;
+    chime?: string;
+    volume?: number;
+    numberStyle?: string;
   };
 };
 
@@ -86,6 +105,14 @@ export default function TvDisplaysPage() {
   const [boardLogo, setBoardLogo] = useState<string>("");
   const [accent, setAccent] = useState("#2544c7");
   const [boardNote, setBoardNote] = useState("");
+  // The fallback sound. A TV added later, or one whose sound was never chosen,
+  // uses this — so a shop sets its bell once and every screen follows.
+  const [storeChime, setStoreChime] = useState<string>(DEFAULT_CHIME);
+  const [storeVolume, setStoreVolume] = useState(80);
+  const [numberStyle, setNumberStyle] = useState<QueueNumberStyle>("latin");
+  // What the device in front of the owner can actually speak. Shown as a
+  // warning rather than discovered at the counter — see lib/announce.
+  const [khmerVoice, setKhmerVoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -101,6 +128,9 @@ export default function TvDisplaysPage() {
     setBoardLogo(q.boardLogo || "");
     setAccent(q.accent || "#2544c7");
     setBoardNote(q.boardNote || "");
+    setStoreChime(q.chime || DEFAULT_CHIME);
+    setStoreVolume(q.volume ?? 80);
+    setNumberStyle((q.numberStyle as QueueNumberStyle) || "latin");
     setScreens(q.screens?.length ? q.screens : []);
   }, [business]);
 
@@ -112,11 +142,45 @@ export default function TvDisplaysPage() {
     while (taken.has(`s${n}`)) n++;
     setScreens([
       ...screens,
-      { id: `s${n}`, name: `TV ${screens.length + 1}`, mode: "board", dark: false, rows: 7, voice: false },
+      {
+        id: `s${n}`,
+        name: `TV ${screens.length + 1}`,
+        mode: "board",
+        dark: false,
+        rows: 7,
+        voice: false,
+        chime: DEFAULT_CHIME,
+        volume: 80,
+      },
     ]);
   }
   const patchScreen = (id: string, patch: Partial<Screen>) =>
     setScreens((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+
+  // Preview a chime here in the office. unlockAudio first because the browser
+  // blocks sound until a real click — which this is, so it always succeeds.
+  const preview = (chime: string, volume: number) => {
+    void unlockAudio().then(() => playChime(chime, volume));
+  };
+
+  // Hear the whole thing exactly as the shop will: bell, then the number said
+  // out loud, in the language and script that are currently selected.
+  const previewCall = () => {
+    void unlockAudio().then(() => {
+      playChime(storeChime, storeVolume);
+      setTimeout(() => void speakQueueCode("A001", { lang: voiceLang, style: numberStyle }), 900);
+    });
+  };
+
+  // Does the machine we're standing at have a Khmer voice? Checked once so the
+  // owner is told here, not left wondering why the TV goes quiet.
+  useEffect(() => {
+    let alive = true;
+    void voicesReady().then((v) => alive && setKhmerVoice(hasVoiceFor("km", v)));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const removeScreen = (id: string) => setScreens((prev) => prev.filter((s) => s.id !== id));
 
   const linkFor = (id: string) =>
@@ -166,6 +230,9 @@ export default function TvDisplaysPage() {
             boardLogo,
             accent,
             boardNote,
+            chime: storeChime,
+            volume: storeVolume,
+            numberStyle,
           },
         }),
       });
@@ -279,6 +346,56 @@ export default function TvDisplaysPage() {
                     />
                   </div>
                 </div>
+
+                {/* Sound. Every option previews on the spot: nobody can pick a
+                    chime from a name, and a shop shouldn't have to save and walk
+                    to the TV to find out what it chose. */}
+                {sc.mode !== "ads" && (
+                  <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+                    <div>
+                      <label className="label">Sound when a number is called</label>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={sc.chime ?? DEFAULT_CHIME}
+                          disabled={!isOwner}
+                          onChange={(v) => {
+                            patchScreen(sc.id, { chime: v });
+                            preview(v, sc.volume ?? 80); // hear it the moment it is chosen
+                          }}
+                          options={CHIMES.map((c) => ({ value: c.id, label: c.name }))}
+                        />
+                        <button
+                          type="button"
+                          className="btn-ghost shrink-0"
+                          title="Play it"
+                          onClick={() => preview(sc.chime ?? DEFAULT_CHIME, sc.volume ?? 80)}
+                        >
+                          <Play size={15} />
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                        {CHIMES.find((c) => c.id === (sc.chime ?? DEFAULT_CHIME))?.hint}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="label">Volume · {sc.volume ?? 80}%</label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        disabled={!isOwner || (sc.chime ?? DEFAULT_CHIME) === "none"}
+                        value={sc.volume ?? 80}
+                        onChange={(e) => patchScreen(sc.id, { volume: Number(e.target.value) })}
+                        // Play on release, not on every drag step — otherwise
+                        // dragging the slider machine-guns the chime.
+                        onMouseUp={() => preview(sc.chime ?? DEFAULT_CHIME, sc.volume ?? 80)}
+                        onTouchEnd={() => preview(sc.chime ?? DEFAULT_CHIME, sc.volume ?? 80)}
+                        className="h-9 w-full accent-brand-600"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {sc.mode !== "ads" && (
                   <label className="mt-3 flex cursor-pointer items-start gap-2.5">
@@ -498,16 +615,39 @@ export default function TvDisplaysPage() {
             <p className="mt-1 text-[11px] text-slate-400">Minutes before the kitchen screen flags an order.</p>
           </div>
           <div>
-            <label className="label">Announce voice</label>
+            <label className="label">Default sound</label>
+            <div className="flex items-center gap-2">
+              <Select
+                value={storeChime}
+                disabled={!isOwner}
+                onChange={(v) => {
+                  setStoreChime(v);
+                  preview(v, storeVolume);
+                }}
+                options={CHIMES.map((c) => ({ value: c.id, label: c.name }))}
+              />
+              <button
+                type="button"
+                className="btn-ghost shrink-0"
+                title="Play it"
+                onClick={() => preview(storeChime, storeVolume)}
+              >
+                <Play size={15} />
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">Used by any TV that hasn&apos;t chosen its own.</p>
+          </div>
+          <div>
+            <label className="label">Number looks like</label>
             <Select
-              value={voiceLang}
-              onChange={setVoiceLang}
+              value={numberStyle}
+              onChange={(v) => setNumberStyle(v as QueueNumberStyle)}
               disabled={!isOwner}
-              options={[
-                { value: "en-US", label: "English" },
-                { value: "km-KH", label: "Khmer" },
-              ]}
+              options={QUEUE_NUMBER_STYLES.map((s) => ({ value: s.value, label: s.label }))}
             />
+            <p className="mt-1 text-[11px] text-slate-400">
+              On every screen and receipt. Saved as A001 either way, so searching still works.
+            </p>
           </div>
           <div className="flex flex-col justify-end gap-2">
             <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink-900">
@@ -518,19 +658,63 @@ export default function TvDisplaysPage() {
                 disabled={!isOwner}
                 className="h-4 w-4 accent-brand-600"
               />
-              Start again at A001 each day
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink-900">
-              <input
-                type="checkbox"
-                checked={voiceOn}
-                onChange={(e) => setVoiceOn(e.target.checked)}
-                disabled={!isOwner}
-                className="h-4 w-4 accent-brand-600"
-              />
-              Call numbers out loud
+              Start again at {localizeQueueCode("A001", numberStyle)} each day
             </label>
           </div>
+        </div>
+
+        {/* Reading the number out loud. Its own block, because a checkbox
+            wedged between two dropdowns is exactly how a shop misses that the
+            feature exists at all. */}
+        <div className="mt-5 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={voiceOn}
+              onChange={(e) => setVoiceOn(e.target.checked)}
+              disabled={!isOwner}
+              className="mt-0.5 h-4 w-4 accent-brand-600"
+            />
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 text-[13px] font-bold text-ink-900">
+                <Volume2 size={14} /> Read the number out loud
+              </span>
+              <span className="block text-[11.5px] leading-snug text-slate-500">
+                After the bell, the TV says the number so a customer facing away still hears it.
+              </span>
+            </span>
+          </label>
+
+          {voiceOn && (
+            <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-200 pt-3">
+              <div className="w-40">
+                <label className="label">Language</label>
+                <Select
+                  value={voiceLang}
+                  onChange={setVoiceLang}
+                  disabled={!isOwner}
+                  options={[
+                    { value: "en-US", label: "English" },
+                    { value: "km-KH", label: "Khmer" },
+                  ]}
+                />
+              </div>
+              <button type="button" onClick={previewCall} className="btn-ghost">
+                <Play size={15} /> Hear it
+              </button>
+              {/* Khmer speech is a device feature, not something the app can
+                  install. Saying so here beats silence at the counter. */}
+              {voiceLang.startsWith("km") && khmerVoice === false && (
+                <p className="w-full rounded-lg bg-slate-100 px-3 py-2 text-[11.5px] leading-relaxed text-slate-600">
+                  Khmer speech comes from the device, not from Stookii. This computer doesn&apos;t have it, so the
+                  preview above speaks English — that is normal on Windows. Most Android TV boxes do have it. Nothing
+                  breaks either way: the number is always shown in Khmer on screen, and spoken in English if Khmer
+                  isn&apos;t available. To add it on an Android TV box: Settings → Accessibility → Text-to-speech →
+                  Google → Install voice data → ខ្មែរ.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {isOwner && (

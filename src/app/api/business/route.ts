@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { canManagePromotions } from "@/lib/access";
+import { CHIME_IDS, DEFAULT_CHIME } from "@/lib/chimes";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,16 @@ export async function PATCH(req: Request) {
       // ample for a logo and still bounds a direct API call.
       const isImg = (v: any) =>
         typeof v === "string" && /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(v) && v.length < 1_000_000;
+      // Chimes are synthesised from a fixed list, so only a known id is stored —
+      // there is no uploaded audio here to size-check or scan.
+      const chimeId = (v: any) => (CHIME_IDS.includes(String(v)) ? String(v) : DEFAULT_CHIME);
+      // Written out rather than a one-liner: a missing volume must fall back to
+      // 80, not to 0. Coercing undefined through `|| 0` would store "silent"
+      // and the shop would think the chime never worked.
+      const volumePct = (v: any) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 80;
+      };
       // The store's TVs. Ids are re-derived rather than trusted so a crafted id
       // can never end up in a URL we hand back, and the list is capped so the
       // store document can't be grown without bound through this field.
@@ -131,6 +142,10 @@ export async function PATCH(req: Request) {
               dark: !!s?.dark,
               rows: Math.min(12, Math.max(1, Math.round(Number(s?.rows) || 7))),
               voice: !!s?.voice,
+              // Only a chime we actually ship. An unknown name would leave the
+              // screen silently doing nothing, which reads as a broken feature.
+              chime: chimeId(s?.chime),
+              volume: volumePct(s?.volume),
             }))
             // Two screens sharing an id would both answer to the same link, and
             // the owner would have no way to tell which one they were editing.
@@ -148,6 +163,9 @@ export async function PATCH(req: Request) {
         boardLogo: isImg(q.boardLogo) ? q.boardLogo : undefined,
         accent: /^#[0-9a-fA-F]{6}$/.test(String(q.accent)) ? String(q.accent) : "#2544c7",
         boardNote: String(q.boardNote || "").slice(0, 80),
+        chime: chimeId(q.chime),
+        volume: volumePct(q.volume),
+        numberStyle: ["latin", "mixed", "khmer"].includes(String(q.numberStyle)) ? String(q.numberStyle) : "latin",
       };
     }
     // Owner-set sidebar order (Menu Layout) — a list of page hrefs.
