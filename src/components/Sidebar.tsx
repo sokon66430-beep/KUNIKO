@@ -35,6 +35,7 @@ import {
   Tag,
   TicketPercent,
   CalendarClock,
+  ChefHat,
   ReceiptText,
   ShieldCheck,
   BookOpen,
@@ -59,6 +60,10 @@ const OPERATIONS = {
     // Money Management isn't a separate menu item — it lives inside the POS,
     // opened from the "Cash Drawer" button in the till header. Pickup Queue is
     // likewise not a sidebar item — the pickup number is issued at the POS.
+    // Queue Management IS a menu item, unlike the two above: it's a screen
+    // someone stands in front of for a whole shift, not a panel inside another
+    // page. The kitchen tablet opens it and stays there.
+    { href: "/queue-management", label: "Queue Management", icon: ChefHat },
     { href: "/inventory", label: "Inventory", icon: Package },
     { href: "/stock-count", label: "Stock Count", icon: ClipboardCheck },
     { href: "/write-offs", label: "Write-Off", icon: PackageX },

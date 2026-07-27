@@ -63,6 +63,7 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
   { href: "/pos", label: "Point of Sale" },
   { href: "/money", label: "Cash Management" },
   { href: "/queue", label: "Pickup Queue" },
+  { href: "/queue-management", label: "Queue Management" },
   { href: "/inventory", label: "Inventory" },
   { href: "/stock-count", label: "Stock Count" },
   { href: "/write-offs", label: "Write-Off" },
