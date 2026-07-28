@@ -519,12 +519,55 @@ function EditReceiptModal({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const changed = grn.items.some((i) => (Number(qty[i.productId]) || 0) !== i.qtyReceived);
+  // The ORDER, not just the receipt.
+  //
+  // A line delivered as zero was never written to the receipt, so correcting it
+  // was impossible — the one case the screen is most needed for. Every ordered
+  // product is listed, with what the receipt currently says beside it.
+  // The endpoint wraps the order alongside the business header it prints with,
+  // so the lines live at `.po.items`, not at the top level.
+  const { data: poDoc } = useFetch<{
+    po?: { items: { productId: string; name: string; sku: string; qtyOrdered: number }[] };
+  }>(`/api/purchase-orders/${grn.poId}`);
+  const poItems = poDoc?.po?.items;
+
+  const lines = useMemo(() => {
+    const received = new Map(grn.items.map((i) => [i.productId, i]));
+    const rows = (poItems || []).map((p) => {
+      const got = received.get(p.productId);
+      return {
+        productId: p.productId,
+        name: got?.name || p.name,
+        sku: got?.sku || p.sku,
+        qtyOrdered: p.qtyOrdered,
+        qtyReceived: got?.qtyReceived ?? 0,
+        onReceipt: !!got,
+      };
+    });
+    // Anything on the receipt but not on the order (the order was edited after
+    // delivery, say) still has to be correctable — never drop a line that is
+    // already holding stock.
+    for (const i of grn.items) {
+      if (!rows.some((r) => r.productId === i.productId)) {
+        rows.push({
+          productId: i.productId,
+          name: i.name,
+          sku: i.sku,
+          qtyOrdered: i.qtyOrdered,
+          qtyReceived: i.qtyReceived,
+          onReceipt: true,
+        });
+      }
+    }
+    return rows;
+  }, [poItems, grn.items]);
+
+  const changed = lines.some((l) => (Number(qty[l.productId]) || 0) !== l.qtyReceived);
 
   async function submit() {
-    const items = grn.items.map((i) => ({
-      productId: i.productId,
-      qtyReceived: Math.max(0, Number(qty[i.productId]) || 0),
+    const items = lines.map((l) => ({
+      productId: l.productId,
+      qtyReceived: Math.max(0, Number(qty[l.productId]) || 0),
     }));
     setBusy(true);
     try {
@@ -566,20 +609,27 @@ function EditReceiptModal({
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
               <th className="px-3 py-2 font-semibold">Product</th>
+              <th className="px-3 py-2 text-center font-semibold">Ordered</th>
               <th className="px-3 py-2 text-center font-semibold">Received</th>
               <th className="px-3 py-2 text-center font-semibold">Correct to</th>
             </tr>
           </thead>
           <tbody>
-            {grn.items.map((it) => {
+            {lines.map((it) => {
               const v = Number(qty[it.productId]) || 0;
               const diff = v - it.qtyReceived;
               return (
                 <tr key={it.productId} className="border-b border-slate-50 last:border-0">
                   <td className="px-3 py-2">
                     <p className="font-semibold text-ink-800">{it.name}</p>
-                    <p className="text-xs text-slate-400">{it.sku}</p>
+                    <p className="text-xs text-slate-400">
+                      {it.sku}
+                      {/* Ordered but never received — the line this screen could
+                          not previously show at all. */}
+                      {!it.onReceipt && <span className="ml-2 font-semibold text-amber-600">not received</span>}
+                    </p>
                   </td>
+                  <td className="px-3 py-2 text-center text-slate-400">{it.qtyOrdered}</td>
                   <td className="px-3 py-2 text-center text-slate-400">{it.qtyReceived}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-center gap-2">

@@ -102,7 +102,11 @@ const PAYMENTS: PaymentMethod[] = ["Cash", "ABA", "Card"];
 const VAT_RATE = 0.1;
 
 export default function PosPage() {
-  const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products");
+  // The catalogue is loaded once when the till starts and then left alone —
+  // it's the biggest feed in the app and it changes in the office, not at the
+  // counter. Refreshed overnight, or on demand from Sync catalogue. Everything
+  // below stays live, because it does change while the shop trades.
+  const { data: products, loading, error, reload } = useFetch<Product[]>("/api/products", { policy: "catalog" });
   const { data: customers, reload: reloadCustomers } = useFetch<Customer[]>("/api/customers");
   const { data: markdowns } = useFetch<Markdown[]>("/api/markdowns");
   // What actually sells — used to offer the obvious favourites rather than

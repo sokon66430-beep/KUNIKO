@@ -12,6 +12,7 @@ import {
   readMasterRecipes,
   readMasterPromotions,
   parseStoreIds,
+  syncMasterIntoStore,
 } from "@/lib/master";
 import { readSystem } from "@/lib/system";
 import { mutateDB } from "@/lib/db";
@@ -60,64 +61,18 @@ export async function POST(req: Request) {
 
   const results: { store: string; added: number; updated: number; removed: number; keptWithStock: number }[] = [];
 
+  // One shared implementation with the till's Sync catalogue — see
+  // syncMasterIntoStore. It also mirrors suppliers, recipes and promotions into
+  // each store it touches.
   for (const store of stores) {
-    const r = await mutateDB((db) => {
-      const byId = new Map(db.products.map((p) => [p.id, p]));
-      let added = 0;
-      let updated = 0;
-      for (const m of master) {
-        const existing = byId.get(m.id);
-        if (existing) {
-          applyMasterFields(existing, m); // shared fields only
-          updated++;
-        } else {
-          const product: Product = {
-            ...m,
-            price: Math.max(0, Number(m.price) || 0), // follows master (kept in sync every run)
-            reorderLevel: Math.max(0, Number(m.reorderLevel) || 0), // per-store, seeded from master
-            stock: 0,
-          };
-          // Drop the master's shelf location — a new store registers its own on
-          // the Price labels page.
-          delete product.gondola;
-          delete product.shelf;
-          delete product.locations;
-          db.products.push(product);
-          added++;
-        }
-      }
-      // Remove store-only products (not in the master) that hold no stock; keep
-      // and report any that still have stock so nothing is lost by surprise.
-      let removed = 0;
-      let keptWithStock = 0;
-      db.products = db.products.filter((p) => {
-        if (masterIds.has(p.id)) return true;
-        if ((Number(p.stock) || 0) > 0) {
-          keptWithStock++;
-          return true;
-        }
-        removed++;
-        return false;
-      });
-      logAudit(db, {
-        actor,
-        action: "Synced",
-        entityType: "Product",
-        entity: "Master catalog",
-        detail: `${added} added · ${updated} updated · ${removed} removed`,
-      });
-      return { added, updated, removed, keptWithStock };
-    }, store.id);
+    const r = await syncMasterIntoStore(store.id, actor);
     results.push({ store: store.name, ...r });
   }
 
-  // Suppliers follow the master too — mirror them into the same store(s) this
-  // run is for, not always all of them: "sync PDK" shouldn't quietly rewrite
-  // the other two shops' supplier lists as a side effect.
-  await propagateSuppliersToStores(target.ids);
-  // As do recipes and promotions: built once centrally, run in every shop.
-  await propagateRecipesToStores(target.ids);
-  await propagatePromotionsToStores(target.ids);
+  // Suppliers, recipes and promotions are mirrored by syncMasterIntoStore, once
+  // per store in the loop above — and only into the stores this run targets, so
+  // "sync PDK" still can't rewrite the other two shops' supplier lists. These
+  // are read here purely for the counts in the reply.
   const recipes = (await readMasterRecipes()).items.length;
   const promotions = (await readMasterPromotions()).items.length;
 

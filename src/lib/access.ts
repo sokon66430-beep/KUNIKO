@@ -306,6 +306,17 @@ export function canUseMasterData(role: Role, caps?: RoleCaps): boolean {
   return hasCap(role, MASTER_DATA_CAP, caps);
 }
 
+// Who may pull a fresh price list onto a till.
+//
+// The catalogue loads when the till starts and refreshes overnight; this is the
+// override for a price that has to be corrected today. It sits with the people
+// who own what the prices ARE — procurement, and the owner — rather than with
+// whoever is standing at the counter. A cashier pulling a mid-edit price list
+// onto a live till is the failure this prevents.
+export function canSyncCatalog(role: Role): boolean {
+  return role === "owner" || role === "procurement";
+}
+
 // Who may put a product on markdown. Cutting a price 30–70% is a margin
 // decision, so it stays with store leadership and above — crew print and stick
 // the labels, but don't decide the discount.

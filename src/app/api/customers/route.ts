@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
+import { jsonWithEtag } from "@/lib/httpCache";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Customer } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   const db = await readDB();
   const sorted = [...db.customers].sort((a, b) => b.totalSpent - a.totalSpent);
-  return NextResponse.json(sorted);
+  return jsonWithEtag(req, sorted);
 }
 
 export async function POST(req: Request) {

@@ -3,6 +3,7 @@ import { mutateDB } from "@/lib/db";
 import { poStatus } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
+import { purchaseUnitCost } from "@/lib/sellingUnits";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,33 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const po = db.purchaseOrders.find((p) => p.id === grn.poId);
     const changes: string[] = [];
     for (const e of grn.pendingEdit.items) {
-      const li = grn.items.find((i) => i.productId === e.productId);
-      if (!li) continue;
-      const current = li.qtyReceived;
+      let li = grn.items.find((i) => i.productId === e.productId);
       const newQty = Math.max(0, Number(e.qtyReceived) || 0);
+
+      // A line the receipt never had — it was delivered as zero, or missed.
+      // Add it now, taking its name, code and ordered quantity from the order.
+      //
+      // Only when the correction actually puts something on it: approving an
+      // edit that leaves a line at zero must not litter the receipt with rows
+      // for goods that never arrived.
+      if (!li) {
+        if (newQty === 0) continue;
+        const poLine = po?.items.find((p) => p.productId === e.productId);
+        if (!poLine) continue; // not on the receipt AND not on the order — ignore
+        const product = db.products.find((p) => p.id === e.productId);
+        li = {
+          productId: poLine.productId,
+          sku: poLine.sku,
+          name: poLine.name,
+          qtyOrdered: poLine.qtyOrdered,
+          qtyReceived: 0, // set below, so the delta maths is the same as any line
+          // Same cost rule as receiving: the case rate when there is one.
+          cost: product ? purchaseUnitCost(product) : poLine.cost,
+        };
+        grn.items.push(li);
+      }
+
+      const current = li.qtyReceived;
 
       // The corrected figure is what ARRIVED — it is not clamped to the order.
       //

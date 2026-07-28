@@ -61,6 +61,53 @@ export async function api<T = any>(url: string, options?: RequestInit & { timeou
   return res.json();
 }
 
+/** A poll's answer: fresh data, or "you already have it". */
+export type Fetched<T> = { changed: true; data: T; etag: string | null } | { changed: false };
+
+/**
+ * GET that asks "has this changed?" before accepting the whole thing.
+ *
+ * Sends back the fingerprint the server gave us last time. If the data is
+ * untouched the server answers 304 with no body, and the caller keeps what it
+ * has — no download, no JSON parse, no re-render. That is what stops a till
+ * pulling the whole 1.2 MB catalogue down every twenty seconds to discover
+ * nothing changed. See lib/httpCache for the server half.
+ *
+ * `res.json()` is only ever called on a 200, because a 304 has no body to read.
+ */
+async function apiConditional<T>(url: string, etag: string | null): Promise<Fetched<T>> {
+  const res = await rawGet(url, etag);
+  if (res.status === 304) return { changed: false };
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error || `Request failed (${res.status})`);
+  }
+  return { changed: true, data: (await res.json()) as T, etag: res.headers.get("etag") };
+}
+
+/** The bare GET behind apiConditional — same timeout/abort handling as api(). */
+async function rawGet(url: string, etag: string | null): Promise<Response> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT);
+  try {
+    return await fetch(url, {
+      signal: ctl.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(etag ? { "If-None-Match": etag } : {}),
+      },
+      // Our own revalidation, not the browser's: we hold the fingerprint and
+      // decide, so the browser must not serve a cached copy behind our back.
+      cache: "no-store",
+    });
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error("The store took too long to respond. Check the connection.");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // How long to wait before each retry of a failed load. A shop's wifi drops for a
 // second or two at a time, so two quick goes recover almost every real blip
 // without the cashier seeing anything.
@@ -72,12 +119,50 @@ const RETRY_DELAYS = [600, 2000];
 // cashier saw.
 type FetchState<T> = { data: T | null; loading: boolean; error: string | null };
 
-export function useFetch<T>(url: string): {
+/**
+ * How often a feed should be re-checked.
+ *
+ *  - "live"    — the default. Poll every 20s and on focus. For anything that
+ *                changes while the shop trades: orders, the queue, shifts, the
+ *                session, markdowns made at the till.
+ *
+ *  - "catalog" — load once when the till starts, refresh once overnight, and
+ *                otherwise only when someone asks. For the product list, which
+ *                is over a megabyte and changes when the office edits it, not
+ *                while the counter is busy. Re-checking it 180 times an hour
+ *                made the server read and fingerprint the whole catalogue every
+ *                20 seconds, per till, to learn nothing.
+ *
+ * A till powered off at night reloads the catalogue when it starts next
+ * morning, so the overnight window is a safety net for tills left running —
+ * not the only way fresh prices arrive.
+ */
+export type RefreshPolicy = "live" | "catalog";
+
+// The quiet hours a catalogue may refresh itself in — after close, before open.
+const CATALOG_SYNC_FROM_HOUR = 2;
+const CATALOG_SYNC_TO_HOUR = 4;
+// How often a catalogue feed looks at the clock. No network — just a glance to
+// see whether it is the middle of the night yet.
+const CLOCK_CHECK_MS = 10 * 60_000;
+// "Sync the catalogue now" — the manager's button, for a price that has to be
+// right before tomorrow.
+export const SYNC_CATALOG_EVENT = "stookii-sync-catalog";
+
+export function syncCatalogNow() {
+  window.dispatchEvent(new Event(SYNC_CATALOG_EVENT));
+}
+
+export function useFetch<T>(
+  url: string,
+  opts?: { policy?: RefreshPolicy },
+): {
   data: T | null;
   loading: boolean;
   error: string | null;
   reload: () => void;
 } {
+  const policy: RefreshPolicy = opts?.policy ?? "live";
   const [state, setState] = useState<FetchState<T>>({ data: null, loading: true, error: null });
   const [tick, setTick] = useState(0);
 
@@ -90,6 +175,9 @@ export function useFetch<T>(url: string): {
     // responses arrive in whatever order the network feels like.
     let seq = 0;
     let haveData = false;
+    // The fingerprint of the data we hold, handed back on the next poll so the
+    // server can answer "unchanged" instead of resending it.
+    let etag: string | null = null;
     const timers: number[] = [];
 
     const load = (silent: boolean, attempt = 0) => {
@@ -98,11 +186,24 @@ export function useFetch<T>(url: string): {
       // refresh happens underneath it — a till that blanks to a spinner every
       // 20 seconds is unusable.
       if (!silent && !haveData) setState((s) => ({ ...s, loading: true, error: null }));
-      api<T>(url)
-        .then((d) => {
+      apiConditional<T>(url, etag)
+        .then((r) => {
           if (!alive || mine !== seq) return; // superseded by a newer request
+          if (!r.changed) {
+            // Nothing new. Deliberately no setState: an identical object would
+            // still re-render every consumer of this hook, which on the POS
+            // means rebuilding thousands of product tiles for no reason. Doing
+            // nothing IS the optimisation.
+            //
+            // One exception: clear a stale error, so a screen that recovered
+            // stops showing a warning about a failure that has passed.
+            haveData = true;
+            setState((s) => (s.loading || s.error ? { ...s, loading: false, error: null } : s));
+            return;
+          }
           haveData = true;
-          setState({ data: d, loading: false, error: null });
+          etag = r.etag;
+          setState({ data: r.data, loading: false, error: null });
         })
         .catch((e: any) => {
           if (!alive || mine !== seq) return;
@@ -129,10 +230,56 @@ export function useFetch<T>(url: string): {
     const refresh = () => {
       if (document.visibilityState === "visible") load(true);
     };
-    // A global "refetch now" signal — used when the till swaps staff in place
-    // (no page reload) so the session/name and any data refresh immediately.
-    const onRefetch = () => load(true);
+    // A "refetch now" signal — used when the till swaps staff in place (no page
+    // reload) so the new person's name shows immediately.
+    //
+    // SCOPED, via `detail.urls`. It used to refetch every hook on the page, and
+    // on the POS that meant re-downloading the whole catalogue — over a
+    // megabyte, thousands of products — every time one cashier handed the till
+    // to the next. On a T3 the parse and re-render of that is a visible freeze,
+    // and with several tills in the shop it is that much load on the server for
+    // data that did not change: swapping who is signed in changes the SESSION,
+    // not the products, the customers or the store's settings.
+    //
+    // A signal with no `urls` still refreshes everything, so any caller that
+    // genuinely changed the store's data keeps working.
+    const onRefetch = (e: Event) => {
+      const only = (e as CustomEvent<{ urls?: string[] }>).detail?.urls;
+      if (only && !only.some((u) => url.startsWith(u))) return;
+      load(true);
+    };
     window.addEventListener("stookii-refetch", onRefetch);
+
+    // A catalogue is fetched once at startup and then left alone while the shop
+    // trades. It refreshes on three things only: the manager's Sync button, the
+    // overnight window, and an explicit scoped refetch.
+    if (policy === "catalog") {
+      const onSync = () => load(true);
+      window.addEventListener(SYNC_CATALOG_EVENT, onSync);
+
+      // Once per night, not once per check: `syncedOn` remembers the date we
+      // last synced so a till left running through the window doesn't refetch
+      // every ten minutes until 4am.
+      let syncedOn = new Date().toDateString();
+      const clock = window.setInterval(() => {
+        const now = new Date();
+        const today = now.toDateString();
+        const h = now.getHours();
+        if (today !== syncedOn && h >= CATALOG_SYNC_FROM_HOUR && h < CATALOG_SYNC_TO_HOUR) {
+          syncedOn = today;
+          load(true);
+        }
+      }, CLOCK_CHECK_MS);
+
+      return () => {
+        alive = false;
+        for (const t of timers) window.clearTimeout(t);
+        window.removeEventListener("stookii-refetch", onRefetch);
+        window.removeEventListener(SYNC_CATALOG_EVENT, onSync);
+        window.clearInterval(clock);
+      };
+    }
+
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     const interval = window.setInterval(refresh, 20000);
@@ -145,7 +292,7 @@ export function useFetch<T>(url: string): {
       document.removeEventListener("visibilitychange", refresh);
       window.clearInterval(interval);
     };
-  }, [url, tick]);
+  }, [url, tick, policy]);
 
   return { data: state.data, loading: state.loading, error: state.error, reload };
 }

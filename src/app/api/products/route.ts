@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonWithEtag } from "@/lib/httpCache";
 import { getSession } from "@/lib/session";
 import { canManageStaff } from "@/lib/access";
 import { currentActor } from "@/lib/actor";
@@ -10,9 +11,11 @@ import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   const db = await readDB();
-  return NextResponse.json(db.products);
+  // The biggest, hottest read in the app and the least likely to have changed —
+  // see lib/httpCache.
+  return jsonWithEtag(req, db.products);
 }
 
 export async function POST(req: Request) {

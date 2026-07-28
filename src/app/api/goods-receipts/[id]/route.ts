@@ -19,16 +19,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // Past the edit window, the receipt is final — no more corrections.
     if (!receiptEditOpen(grn.createdAt)) return { error: "window_closed" as const };
 
-    // Only existing lines can be corrected; anything else is ignored.
-    const edits = grn.items.map((li) => {
-      const m = items.find((x) => x.productId === li.productId);
-      const qty = m ? Math.max(0, Number(m.qtyReceived) || 0) : li.qtyReceived;
-      return { productId: li.productId, qtyReceived: qty };
+    // Correctable lines = what the receipt already has, PLUS anything else on
+    // the purchase order.
+    //
+    // A line delivered as zero was never written to the receipt at all, so the
+    // correction screen could not show it and there was no way to say "this DID
+    // arrive, we missed it" — the receiver's only recourse was a second receipt
+    // against the same PO. The order is the list of what was expected, so it is
+    // the right list to correct against.
+    //
+    // Still bounded: a productId on neither the receipt nor the order is
+    // ignored, so this cannot invent stock for something never ordered.
+    const po = db.purchaseOrders.find((p) => p.id === grn.poId);
+    const correctable = new Map<string, number>();
+    for (const li of grn.items) correctable.set(li.productId, li.qtyReceived);
+    for (const pl of po?.items || []) if (!correctable.has(pl.productId)) correctable.set(pl.productId, 0);
+
+    const edits = [...correctable.entries()].map(([productId, current]) => {
+      const m = items.find((x) => x.productId === productId);
+      const qty = m ? Math.max(0, Number(m.qtyReceived) || 0) : current;
+      return { productId, qtyReceived: qty };
     });
-    const changed = edits.some((e) => {
-      const li = grn.items.find((i) => i.productId === e.productId)!;
-      return e.qtyReceived !== li.qtyReceived;
-    });
+    // A line that isn't on the receipt counts as 0 today, so raising it from 0
+    // is a change like any other.
+    const changed = edits.some((e) => e.qtyReceived !== (correctable.get(e.productId) ?? 0));
     if (!changed) return { error: "nochange" as const };
 
     grn.status = "PendingApproval";

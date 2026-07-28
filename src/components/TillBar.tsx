@@ -7,8 +7,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon, MonitorCog, Store } from "lucide-react";
-import { useFetch } from "@/lib/client";
+import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon, MonitorCog, Store, RefreshCw } from "lucide-react";
+import { useFetch, syncCatalogNow } from "@/lib/client";
+import { canSyncCatalog } from "@/lib/access";
+import type { Role } from "@/lib/auth";
 import { useTheme } from "@/components/theme";
 import { useTillMode } from "@/lib/tillmode";
 import { ManagerGate } from "@/components/ManagerGate";
@@ -96,6 +98,34 @@ export function TillBar() {
     ? now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
     : "";
 
+  // Pull the price list down from MASTER DATA, then refresh the till.
+  //
+  // Two steps, and both matter. Prices are owned centrally: a correction made in
+  // Master Data isn't in this store's catalogue until the master has been copied
+  // into it. Refreshing the till alone would just re-read the same stale store
+  // list and look like it had worked — the worst possible outcome for a button
+  // someone presses when a price is wrong in front of a customer.
+  const [syncing, setSyncing] = useState(false);
+  async function syncCatalog() {
+    setSyncing(true);
+    try {
+      const r = await fetch("/api/catalog/pull", { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Catalogue sync failed");
+      syncCatalogNow(); // the store now holds the new prices — reload them here
+      const moved = (j.added || 0) + (j.updated || 0);
+      alert(
+        moved
+          ? `Catalogue updated — ${j.added || 0} new, ${j.updated || 0} updated.`
+          : "Catalogue is already up to date.",
+      );
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [gate, setGate] = useState(false);
   const [staffOpen, setStaffOpen] = useState(false);
@@ -178,6 +208,25 @@ export function TillBar() {
               >
                 <LogOut size={16} className="text-slate-400" /> Log out
               </button>
+              {/* Pull the price list down now. The catalogue otherwise loads at
+                  startup and refreshes overnight, so this is the override for a
+                  price that has to be corrected today.
+
+                  PROCUREMENT AND THE OWNER ONLY — the people who own what the
+                  prices are. Not shown to crew at all: a control they can see is
+                  a control they will eventually try, and a cashier pulling a
+                  half-finished price list onto a live till is the thing this
+                  guards against. They sign in here to do it. */}
+              {canSyncCatalog((session?.user.role || "store_crew") as Role) && (
+                <button
+                  onClick={() => { setMenuOpen(false); syncCatalog(); }}
+                  disabled={syncing}
+                  className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <RefreshCw size={16} className={`text-slate-400 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "Syncing…" : "Sync catalogue"}
+                </button>
+              )}
               {/* Which till this device IS — OWNER ONLY, and not even shown to
                   anyone else. Every sale, drawer count and cash movement is
                   filed under this name, so changing it moves this device's money
@@ -326,7 +375,7 @@ export function TillBar() {
         />
       )}
 
-      {staffOpen && <StaffSignIn onClose={() => setStaffOpen(false)} />}
+      {staffOpen && <StaffSignIn terminal={terminal} onClose={() => setStaffOpen(false)} />}
     </>
   );
 }
@@ -335,7 +384,7 @@ export function TillBar() {
 // by the current store's Job Schedule roster (only staff with a PIN show up).
 type StaffLite = { id: string; name: string; hasPin?: boolean; active?: boolean; positionId?: string };
 
-function StaffSignIn({ onClose }: { onClose: () => void }) {
+function StaffSignIn({ terminal, onClose }: { terminal: string; onClose: () => void }) {
   const { data } = useFetch<{ employees: StaffLite[]; positions: { id: string; name: string }[] }>("/api/schedule");
   const staff = (data?.employees || []).filter((e) => e.hasPin && e.active !== false);
   const posName = (id?: string) => (data?.positions || []).find((p) => p.id === id)?.name;
@@ -353,7 +402,8 @@ function StaffSignIn({ onClose }: { onClose: () => void }) {
       const r = await fetch("/api/auth/staff-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId: sel.id, pin }),
+        // The till is sent so the server can enforce one person, one till.
+        body: JSON.stringify({ employeeId: sel.id, pin, posTerminalId: terminal }),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -362,10 +412,16 @@ function StaffSignIn({ onClose }: { onClose: () => void }) {
       // New session cookie is set. Refresh the till IN PLACE — do NOT reload the
       // whole page. A full reload re-downloads the entire catalogue and re-inits
       // everything, which is slow and unstable on the Sunmi kiosk WebView (it can
-      // hang on "Loading products…"). Instead: refetch the session everywhere
-      // (the bar shows the new staff name) and clear the POS cart for the new
-      // person. Same store, same products — nothing else needs to reload.
-      window.dispatchEvent(new Event("stookii-refetch"));
+      // hang on "Loading products…").
+      //
+      // And refetch ONLY the session. Handing the till over changes who is
+      // signed in — not the products, the customers or the store's settings.
+      // Refreshing everything meant pulling the whole catalogue down again on
+      // every hand-over, which is a visible freeze on a T3 and pointless load on
+      // the server once a shop has several tills.
+      window.dispatchEvent(
+        new CustomEvent("stookii-refetch", { detail: { urls: ["/api/auth/session"] } }),
+      );
       window.dispatchEvent(new Event("stookii-staff-changed"));
       onClose();
     } catch (e: any) {

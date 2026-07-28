@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonWithEtag } from "@/lib/httpCache";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Markdown } from "@/lib/types";
 import { getSession } from "@/lib/session";
@@ -11,11 +12,11 @@ export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-export async function GET() {
+export async function GET(req: Request) {
   const db = await readDB();
   // Newest first — the label you just made is the one you're about to print.
   const list = [...db.markdowns].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-  return NextResponse.json(list);
+  return jsonWithEtag(req, list);
 }
 
 export async function POST(req: Request) {

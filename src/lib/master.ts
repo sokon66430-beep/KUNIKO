@@ -5,6 +5,7 @@ import { repairBarcodes } from "./barcodes";
 import { writeFileAtomic } from "./atomicWrite";
 import { DATA_DIR, DEFAULT_STORE_ID, readSystem } from "./system";
 import { readDB, mutateDB } from "./db";
+import { logAudit } from "./audit";
 
 // The central product catalog shared by every store. Lives on the persistent
 // disk (DATA_DIR) so it survives deploys. Seeded from the default store's
@@ -594,4 +595,80 @@ export async function parseStoreIds(
     ids: all ? undefined : picked,
     stores: sys.stores.filter((s) => all || picked.includes(s.id)).map((s) => ({ id: s.id, name: s.name })),
   };
+}
+
+/**
+ * Copy the master catalogue into ONE store, and report what moved.
+ *
+ * Extracted so the office's "Sync to stores" and a till's "Sync catalogue"
+ * apply exactly the same rules. Two buttons with two copies of this logic would
+ * eventually disagree about what a sync does, and the shop would find out by
+ * selling at the wrong price.
+ *
+ * What it does NOT do — deliberately — is repair the master first (supplier
+ * name reconciliation, barcode splitting). Those WRITE to the master, and
+ * pulling a catalogue onto a till must never edit the company-wide file as a
+ * side effect. The office sync still runs them before it pushes.
+ */
+export async function syncMasterIntoStore(
+  storeId: string,
+  actor: string,
+): Promise<{ added: number; updated: number; removed: number; keptWithStock: number }> {
+  const master = await readMaster();
+  const masterIds = new Set(master.map((m) => m.id));
+
+  const counts = await mutateDB((db) => {
+    const byId = new Map(db.products.map((p) => [p.id, p]));
+    let added = 0;
+    let updated = 0;
+    for (const m of master) {
+      const existing = byId.get(m.id);
+      if (existing) {
+        applyMasterFields(existing, m); // shared fields only
+        updated++;
+      } else {
+        const product: Product = {
+          ...m,
+          price: Math.max(0, Number(m.price) || 0), // follows master
+          reorderLevel: Math.max(0, Number(m.reorderLevel) || 0), // per-store, seeded from master
+          stock: 0,
+        };
+        // A new store registers its own shelf location on the Price labels page.
+        delete product.gondola;
+        delete product.shelf;
+        delete product.locations;
+        db.products.push(product);
+        added++;
+      }
+    }
+    // Store-only products go, EXCEPT any still holding stock — never lose
+    // inventory silently; they're reported back instead.
+    let removed = 0;
+    let keptWithStock = 0;
+    db.products = db.products.filter((p) => {
+      if (masterIds.has(p.id)) return true;
+      if ((Number(p.stock) || 0) > 0) {
+        keptWithStock++;
+        return true;
+      }
+      removed++;
+      return false;
+    });
+    logAudit(db, {
+      actor,
+      action: "Synced",
+      entityType: "Product",
+      entity: "Master catalog",
+      detail: `${added} added · ${updated} updated · ${removed} removed`,
+    });
+    return { added, updated, removed, keptWithStock };
+  }, storeId);
+
+  // Suppliers, recipes and deals belong to the master too — a catalogue that
+  // arrives without them is half a sync.
+  await propagateSuppliersToStores([storeId]);
+  await propagateRecipesToStores([storeId]);
+  await propagatePromotionsToStores([storeId]);
+
+  return counts;
 }

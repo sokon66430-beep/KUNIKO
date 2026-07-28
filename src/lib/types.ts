@@ -948,6 +948,14 @@ export type GoodsReceipt = {
   invoice?: InvoiceReview; // supplier invoice scanned at receiving (required for new receipts)
 };
 
+// Who currently holds a till. See db.meta.tillHolders.
+export type TillHolder = {
+  posTerminalId: string; // the till — one entry per terminal
+  employeeId: string;
+  employeeName: string;
+  at: string; // ISO, when they signed in — used to expire a stale hold
+};
+
 // An approver identity — a role + a secret code (barcode/PIN) that authorises
 // changes to submitted receipts.
 export type Approver = {
@@ -1157,6 +1165,17 @@ export type DB = {
   scheduleEmployees: ScheduleEmployee[];
   rosterEntries: RosterEntry[];
   meta: {
+    // Who is signed in on each till right now — one entry per terminal.
+    //
+    // A person may hold ONE till at a time. Two tills ringing sales under the
+    // same name is not a login problem, it is an accountability problem: the
+    // drawer that comes up short can no longer be traced to a person, and a
+    // PIN that has been shared looks identical to one that has not.
+    //
+    // Keyed by terminal, so signing in on a till always releases whoever held
+    // it, and a stale hold expires on its own (see lib/tillHolders) — a device
+    // switched off without signing out must never lock someone out tomorrow.
+    tillHolders?: TillHolder[];
     nextInvoice: number;
     nextPR: number;
     nextPO: number;
