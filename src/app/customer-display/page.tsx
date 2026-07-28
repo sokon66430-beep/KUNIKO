@@ -444,15 +444,15 @@ const CSS = `
 .cd-r-head { font-size: clamp(16px, 1.5vw, 22px); font-weight: 800; letter-spacing: 0; color: #414d68; padding-bottom: 12px; }
 /* Columns in REM (not em) so the small-font header and larger-font rows share
    the exact same column widths — otherwise Price/Qty/Amount don't line up. */
-.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5.6rem 2.2rem 6rem; gap: 8px; align-items: center; }
+.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5rem 2rem 5.4rem; gap: 8px; align-items: center; }
 /* Khmer-first column headings, small English underneath. Dark enough to read
    from a customer's standing distance — the old grey was invisible on the T3. */
-.cd-r-hrow { color: #414d68; font-weight: 700; font-size: clamp(14px, 1.3vw, 18px); padding: 0 0 10px; border-bottom: 2px solid #e6eaf1; }
+.cd-r-hrow { color: #414d68; font-weight: 700; font-size: clamp(12px, 1.1vw, 15px); padding: 0 0 10px; border-bottom: 2px solid #e6eaf1; }
 .cd-r-hrow span { display: flex; flex-direction: column; line-height: 1.2; white-space: nowrap; }
 .cd-r-hrow span em { font-style: normal; font-size: 0.62em; font-weight: 600; color: #8a94ab; text-transform: uppercase; letter-spacing: 0.05em; }
 .cd-r-hrow span:not(:first-child) { text-align: right; align-items: flex-end; }
 .cd-r-rows { flex: 1; overflow-y: auto; min-height: 0; }
-.cd-r-row { padding: 14px 0; border-bottom: 1px solid #f0f2f7; font-size: clamp(17px, 1.6vw, 24px); }
+.cd-r-row { padding: 10px 0; border-bottom: 1px solid #f0f2f7; font-size: clamp(15px, 1.35vw, 19px); }
 /* Product name may wrap to three lines so it's never cut mid-word — with the
    bigger type the column is narrower, and a cut-off name reads as the wrong
    product to the customer. */
@@ -474,13 +474,16 @@ const CSS = `
 .cd-r-col { display: flex; flex-direction: column; gap: 12px; padding: 0 26px; min-width: 0; }
 .cd-r-col:first-child { padding-left: 0; }
 .cd-r-col:last-child { padding-right: 0; border-left: 1px solid #edf0f5; }
-.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(17px, 1.6vw, 22px); color: #414d68; font-variant-numeric: tabular-nums; }
+.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(14px, 1.3vw, 18px); color: #414d68; font-variant-numeric: tabular-nums; }
 .cd-r-col > div > span:last-child { white-space: nowrap; }
 .cd-r-strong span, .cd-r-grand span { color: #10182c; font-weight: 800; }
 /* ".cd-r-col > div" above outranks a bare class, so the big rows repeat the
    parent selector to actually win the font-size fight. */
-.cd-r-col > div.cd-r-grand { font-size: clamp(24px, 2.4vw, 34px); }
-.cd-r-col > div.cd-r-khr { font-size: clamp(22px, 2.2vw, 30px); }
+.cd-r-col > div.cd-r-grand { font-size: clamp(20px, 2vw, 28px); }
+.cd-r-col > div.cd-r-khr { font-size: clamp(18px, 1.8vw, 25px); }
+/* On the big rows it's the NUMBER that deserves the size — a full-size label
+   next to a full-size ៛ figure overflows a narrow panel and clips the money. */
+.cd-r-grand .cd-r-lbl, .cd-r-khr .cd-r-lbl { font-size: 0.6em; }
 .cd-r-khr span { color: #2549e8; font-weight: 800; }
 
 /* KHQR */
