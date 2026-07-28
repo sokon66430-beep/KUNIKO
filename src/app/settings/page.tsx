@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Save, Building2, PartyPopper, KeyRound, Upload, Trash2, ImageIcon, Plus, Copy } from "lucide-react";
 import { useFetch, api, useRole } from "@/lib/client";
@@ -19,6 +19,14 @@ export default function SettingsPage() {
   const welcome = params.get("welcome") === "1";
   const role = useRole();
   const { data, loading, error, reload } = useFetch<Business>("/api/business");
+  // Categories come from the catalogue rather than being typed: a condiment
+  // group attached to a mistyped category would silently never appear at the
+  // till, and nobody would know until a cook got a bowl with no spice level.
+  const { data: products } = useFetch<{ category?: string }[]>("/api/products");
+  const categories = useMemo(
+    () => [...new Set((products || []).map((x: { category?: string }) => x.category).filter(Boolean))].sort() as string[],
+    [products],
+  );
   const [form, setForm] = useState<Business | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -77,6 +85,7 @@ export default function SettingsPage() {
           poNotes: form.poNotes,
           approvers: form.approvers,
           posTerminals: form.posTerminals,
+          optionGroups: form.optionGroups,
           // bankAccount / cashFloat are deliberately NOT sent: the cash rule is
           // fixed (store keeps a $500 float, the rest goes to the bank) and the
           // till defaults to that float on its own. Sending cashFloat here would
@@ -200,6 +209,165 @@ export default function SettingsPage() {
                 <input className="input" value={form.authorizedBy} onChange={(e) => set("authorizedBy", e.target.value)} />
               </div>
             </div>
+          </Card>
+
+
+          {/* Condiments — how a made-to-order item is prepared.
+
+              Attached to CATEGORIES, not to products: a shop with thousands of
+              products would never finish ticking a box on every noodle, and the
+              categories are already how the menu is organised. The choice
+              reaches the kitchen ticket, which is the whole point. */}
+          <Card className="lg:col-span-2">
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-ink-900">Condiments</h3>
+              <button
+                type="button"
+                className="btn-ghost !py-1.5 text-xs"
+                onClick={() =>
+                  setForm((f) =>
+                    f
+                      ? {
+                          ...f,
+                          optionGroups: [
+                            ...(f.optionGroups || []),
+                            { id: `og${Date.now()}`, name: "", categories: [], required: true, choices: [] },
+                          ],
+                        }
+                      : f,
+                  )
+                }
+              >
+                <Plus size={14} /> Add group
+              </button>
+            </div>
+            <p className="mb-4 text-xs text-slate-500">
+              Ask the cashier how an item should be made — spice level, sweetness. Applies to every product in the
+              categories you pick, and prints on the kitchen ticket.
+            </p>
+
+            {(form.optionGroups || []).length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+                No condiments yet. Add a group like “Spicy level” for your noodles.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {(form.optionGroups || []).map((g, gi) => {
+                  const upd = (patch: Partial<typeof g>) =>
+                    setForm((f) =>
+                      f ? { ...f, optionGroups: (f.optionGroups || []).map((x, i) => (i === gi ? { ...x, ...patch } : x)) } : f,
+                    );
+                  return (
+                    <div key={g.id} className="rounded-xl border border-slate-200 p-3">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-[10rem] flex-1">
+                          <label className="label">Question</label>
+                          <input
+                            className="input"
+                            placeholder="Spicy level"
+                            value={g.name}
+                            onChange={(e) => upd({ name: e.target.value })}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={g.required !== false}
+                            onChange={(e) => upd({ required: e.target.checked })}
+                          />
+                          Must choose
+                        </label>
+                        <button
+                          type="button"
+                          className="pb-2 text-xs font-semibold text-rose-500 hover:text-rose-600"
+                          onClick={() =>
+                            setForm((f) => (f ? { ...f, optionGroups: (f.optionGroups || []).filter((_, i) => i !== gi) } : f))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="mt-3">
+                        <label className="label">Applies to</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {categories.map((c: string) => {
+                            const on = g.categories.includes(c);
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() =>
+                                  upd({ categories: on ? g.categories.filter((x) => x !== c) : [...g.categories, c] })
+                                }
+                                className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                                  on ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                }`}
+                              >
+                                {c}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <label className="label">Choices</label>
+                        <div className="space-y-2">
+                          {g.choices.map((c, ci) => (
+                            <div key={c.id} className="flex items-center gap-2">
+                              <input
+                                className="input flex-1"
+                                placeholder="Level 1"
+                                value={c.name}
+                                onChange={(e) =>
+                                  upd({ choices: g.choices.map((x, i) => (i === ci ? { ...x, name: e.target.value } : x)) })
+                                }
+                              />
+                              <div className="w-28">
+                                <input
+                                  className="input"
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="+$0.00"
+                                  value={c.priceDelta || ""}
+                                  onChange={(e) =>
+                                    upd({
+                                      choices: g.choices.map((x, i) =>
+                                        i === ci ? { ...x, priceDelta: Number(e.target.value) || 0 } : x,
+                                      ),
+                                    })
+                                  }
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-rose-500 hover:text-rose-600"
+                                onClick={() => upd({ choices: g.choices.filter((_, i) => i !== ci) })}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            className="btn-ghost !py-1.5 text-xs"
+                            onClick={() =>
+                              upd({ choices: [...g.choices, { id: `c${Date.now()}${g.choices.length}`, name: "", priceDelta: 0 }] })
+                            }
+                          >
+                            <Plus size={14} /> Add choice
+                          </button>
+                          <p className="text-[11px] text-slate-400">
+                            Leave the price empty for a free choice — most are.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
 
           {/* The store's tills.

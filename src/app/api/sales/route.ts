@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { groupsForCategory, optionsPrice } from "@/lib/options";
 import { readDB, mutateDB } from "@/lib/db";
-import type { Coupon, Recipe, Sale, SaleItem, StockMovement } from "@/lib/types";
+import type { Coupon, Recipe, Sale, SaleItem, StockMovement, SaleItemOption } from "@/lib/types";
 import { getSession } from "@/lib/session";
 import { canManageStaff } from "@/lib/access";
 import { profitFor } from "@/lib/caps";
@@ -44,8 +45,16 @@ export async function POST(req: Request) {
   // `qty` is in BASE units. `unitId` + `unitQty` say the line was rung up on a
   // bigger packaging; the server re-reads that packaging rather than trusting
   // the numbers, so a tampered request can't buy a case at a can's price.
-  const rawItems: { productId: string; qty: number; markdownCode?: string; unitId?: string; unitQty?: number }[] =
-    body?.items || [];
+  const rawItems: {
+    productId: string;
+    qty: number;
+    markdownCode?: string;
+    unitId?: string;
+    unitQty?: number;
+    // Condiment choices as IDs only. The names and any price come from the
+    // store's stored groups — see below.
+    options?: { groupId: string; choiceId: string }[];
+  }[] = body?.items || [];
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
   }
@@ -135,6 +144,26 @@ export async function POST(req: Request) {
         cost = recipeCosting(recipe, db.products).total;
       }
 
+      // How the customer wants it made — spice level, sweetness.
+      //
+      // Resolved from the STORE's configured groups, never from what the till
+      // sent: the name that prints on the kitchen ticket and any money the
+      // choice carries both come from the stored record. A till could otherwise
+      // invent a free "extra shot", or send a label the kitchen never agreed to.
+      const chosen: SaleItemOption[] = [];
+      if (Array.isArray(raw.options)) {
+        const groups = groupsForCategory(db.meta.business.optionGroups, product.category);
+        for (const sel of raw.options) {
+          const g = groups.find((x) => x.id === sel?.groupId);
+          const c = g?.choices.find((x) => x.id === sel?.choiceId);
+          if (!g || !c) continue; // unknown or not valid for this product's category
+          chosen.push({ group: g.name, choice: c.name, priceDelta: c.priceDelta || undefined });
+        }
+      }
+      // Added to the unit price, so VAT, discounts, promotions and every total
+      // downstream need no special case for condiments.
+      price = round2(price + optionsPrice(chosen));
+
       // Overselling is allowed: a sale always goes through even at zero/low
       // stock, and on-hand is allowed to go negative (-1, -2, …) so the count
       // reflects what's owed. Restocking/stock-count brings it back to true.
@@ -142,6 +171,7 @@ export async function POST(req: Request) {
         productId: product.id,
         sku: product.sku,
         name: product.name,
+        options: chosen.length ? chosen : undefined,
         qty,
         price,
         cost,

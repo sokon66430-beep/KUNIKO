@@ -1,5 +1,6 @@
 import type { DB, KitchenStation, QueueEvent, QueueStationJob, QueueStatus, QueueTicket, SaleItem } from "./types";
 import { storeToday } from "./storetime";
+import { optionsLabel } from "./options";
 
 // ---------------------------------------------------------------------------
 // Centralized customer pickup-number queue.
@@ -130,7 +131,9 @@ export function buildStationJobs(
       };
       byStation.set(stationId, job);
     }
-    job.items.push({ name: it.name, qty: it.qty });
+    // The condiments ride along as the line note — a cook reading "Spicy
+    // level: 5" is the entire reason this screen exists.
+    job.items.push({ name: it.name, qty: it.qty, note: optionsLabel(it.options) || undefined });
   }
   return [...byStation.values()];
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { optionsLabel } from "@/lib/options";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { formatQueueCode } from "@/lib/queue";
@@ -67,7 +68,7 @@ export async function GET(req: Request) {
           ? lane.items
           : t.jobs && t.jobs.length
             ? t.jobs.flatMap((j) => j.items)
-            : (sale?.items || []).map((it) => ({ name: it.name, qty: it.qty })),
+            : (sale?.items || []).map((it) => ({ name: it.name, qty: it.qty, note: optionsLabel(it.options) || undefined })),
         // Each station's own progress, so a screen watching everything can see
         // the Grill is done while the Fry is still going.
         jobs: (t.jobs || []).map((j) => ({

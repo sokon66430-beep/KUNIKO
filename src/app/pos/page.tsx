@@ -40,9 +40,9 @@ import {
 import { useFetch, api, useAccess } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
 import { ManagerGate } from "@/components/ManagerGate";
-import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
+import type { Product, Customer, Sale, PaymentMethod, Markdown, OptionGroup, SaleItemOption } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
-import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
+import { PageHeader, Spinner, ErrorBox, Badge, Modal } from "@/components/ui";
 import { usd, riel, rielDue, num, EXCHANGE_RATE, dateTime, invoiceDateTime } from "@/lib/format";
 import { publishCustomerDisplay } from "@/lib/customerDisplay";
 import { loadHeld, saveHeld, type HeldOrder } from "@/lib/heldOrders";
@@ -57,6 +57,7 @@ import { hasThermalPrinter, printThermalReceipt, buildReceiptPayload } from "@/l
 import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
 import { PosShiftModal, type ShiftAction } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
+import { groupsForCategory, optionsKey, optionsPrice, optionsLabel } from "@/lib/options";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
 import { baseUnitName, defaultUnitOf, findByBarcode, packagingMatches, type ResolvedUnit } from "@/lib/sellingUnits";
 
@@ -68,16 +69,22 @@ import { baseUnitName, defaultUnitOf, findByBarcode, packagingMatches, type Reso
 // `qty` here counts the UNIT the line is sold in — 2 means two cases. The base
 // quantity is only worked out when the sale is sent, which keeps the +/- buttons
 // meaning what the cashier expects: one more case, not one more can.
-type CartLine = { product: Product; qty: number; seq: number; markdown?: Markdown; unit: ResolvedUnit };
+type CartLine = { product: Product; qty: number; seq: number; markdown?: Markdown; unit: ResolvedUnit; options?: SaleItemOption[] };
 
-function lineKey(product: Product, markdown?: Markdown, unit?: ResolvedUnit): string {
+function lineKey(product: Product, markdown?: Markdown, unit?: ResolvedUnit, options?: SaleItemOption[]): string {
   const u = unit && !unit.isBase ? `::${unit.id}` : "";
-  return markdown ? `${product.id}::${markdown.code}${u}` : `${product.id}${u}`;
+  // The condiments are part of the identity of a line: a mild bowl and a
+  // level-5 bowl of the same noodle must stay apart, or the kitchen gets one
+  // ticket for a dish that has to be cooked two different ways.
+  const o = optionsKey(options);
+  const opt = o ? `::${o}` : "";
+  return markdown ? `${product.id}::${markdown.code}${u}${opt}` : `${product.id}${u}${opt}`;
 }
 /** What one of whatever this line sells costs. */
 function linePrice(l: CartLine): number {
-  if (l.markdown) return l.markdown.price * l.unit.conversion;
-  return l.unit.price;
+  const extra = optionsPrice(l.options) * l.unit.conversion;
+  if (l.markdown) return l.markdown.price * l.unit.conversion + extra;
+  return l.unit.price + extra;
 }
 /** How many base units this line takes off the shelf. */
 function lineBaseQty(l: CartLine): number {
@@ -210,6 +217,14 @@ export default function PosPage() {
   // scan it again. Scrolling back and ringing the row for a moment answers the
   // only question they have: did that go in?
   const [justAdded, setJustAdded] = useState<number | null>(null);
+  // The item waiting on a condiment choice. Held rather than added straight to
+  // the basket: a noodle with no spice level is a ticket the kitchen can't cook.
+  const [asking, setAsking] = useState<{
+    product: Product;
+    markdown?: Markdown;
+    unit: ResolvedUnit;
+    groups: OptionGroup[];
+  } | null>(null);
   useEffect(() => {
     if (justAdded == null) return;
     // Scroll the NEW LINE into view rather than a container we picked in
@@ -449,6 +464,9 @@ export default function PosPage() {
           productId: l.product.id,
           qty: lineBaseQty(l),
           markdownCode: l.markdown?.code,
+          options: l.options?.length
+            ? l.options.map((o) => ({ groupId: o.groupId, choiceId: o.choiceId }))
+            : undefined,
         })),
       }),
     })
@@ -490,8 +508,19 @@ export default function PosPage() {
   // simply lets stock go negative (-1, -2, …). No quantity cap here.
   // `unit` omitted = whatever the product's default packaging is (the base unit
   // unless someone set a pack as default), which is what tapping a tile means.
-  function addToCart(product: Product, markdown?: Markdown, unit?: ResolvedUnit) {
+  function addToCart(product: Product, markdown?: Markdown, unit?: ResolvedUnit, options?: SaleItemOption[]) {
     const u = unit || defaultUnitOf(product);
+    // Made-to-order items have to be asked about before they can go in the
+    // basket: a noodle with no spice level is a ticket the kitchen cannot cook
+    // from. Tapping the tile opens the chooser and comes back through here with
+    // the answer.
+    if (!options) {
+      const groups = groupsForCategory(business?.optionGroups, product.category);
+      if (groups.length) {
+        setAsking({ product, markdown, unit: u, groups });
+        return;
+      }
+    }
     // A product with no selling price would ring up FREE — the customer walks out
     // with stock the store paid for. Refuse it at the till; a price is a manager
     // fix in Products, not something a cashier can sort out with a queue waiting.
@@ -502,12 +531,12 @@ export default function PosPage() {
       setToast(`"${product.name}" has no price set — it can't be sold until a manager adds one.`);
       return;
     }
-    const key = lineKey(product, markdown, u);
+    const key = lineKey(product, markdown, u, options);
     setCart((prev) => {
       const existing = prev[key];
       const qty = (existing?.qty || 0) + 1;
       cartSeq.current += 1; // bump so the just-scanned line floats to the top
-      return { ...prev, [key]: { product, qty, seq: cartSeq.current, markdown, unit: u } };
+      return { ...prev, [key]: { product, qty, seq: cartSeq.current, markdown, unit: u, options } };
     });
     // Show the cashier it went in: jump the basket back to the new line and ring
     // it briefly. Without this, a scan during a long order lands above the fold
@@ -787,6 +816,12 @@ export default function PosPage() {
           markdownCode: l.markdown?.code,
           unitId: l.unit.isBase ? undefined : l.unit.id,
           unitQty: l.unit.isBase ? undefined : l.qty,
+          // How the customer wants it made. IDs only — the server re-reads the
+          // names and any price from the store's own record, so the till can't
+          // invent a label the kitchen never agreed to.
+          options: l.options?.length
+            ? l.options.map((o) => ({ groupId: o.groupId, choiceId: o.choiceId }))
+            : undefined,
         })),
         customerId: customerId || null,
         // ONLY the cashier's typed discount. The promotion part of `discountNum`
@@ -1389,7 +1424,7 @@ export default function PosPage() {
                     // line total · bin — same widths on each line regardless of the
                     // product name's length.
                     <div
-                      key={lineKey(l.product, l.markdown, l.unit)}
+                      key={lineKey(l.product, l.markdown, l.unit, l.options)}
                       data-newest={l.seq === justAdded ? "1" : undefined}
                       className={`flex items-center gap-2 rounded-xl transition-colors duration-700 ${
                         l.seq === justAdded ? "bg-brand-50 ring-2 ring-brand-200" : ""
@@ -1410,6 +1445,12 @@ export default function PosPage() {
                             </span>
                           )}
                         </p>
+                        {/* How this one is to be made. The cashier reads the
+                            basket back to the customer, so it has to be here —
+                            not only on the kitchen ticket. */}
+                        {l.options?.length ? (
+                          <p className="text-[11px] font-semibold text-amber-700">{optionsLabel(l.options)}</p>
+                        ) : null}
                         {l.markdown ? (
                           <p className="flex items-center gap-1.5 text-xs">
                             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
@@ -1432,7 +1473,7 @@ export default function PosPage() {
                           and sit in a fixed-width column on every row. */}
                       <div className="flex shrink-0 items-center rounded-lg bg-slate-100">
                         <button
-                          onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), l.qty - 1)}
+                          onClick={() => setQty(lineKey(l.product, l.markdown, l.unit, l.options), l.qty - 1)}
                           aria-label="Decrease quantity"
                           className="grid h-8 w-8 place-items-center rounded-l-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
@@ -1440,7 +1481,7 @@ export default function PosPage() {
                         </button>
                         <span className="w-7 text-center text-sm font-bold tabular-nums text-ink-900">{l.qty}</span>
                         <button
-                          onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), l.qty + 1)}
+                          onClick={() => setQty(lineKey(l.product, l.markdown, l.unit, l.options), l.qty + 1)}
                           aria-label="Increase quantity"
                           className="grid h-8 w-8 place-items-center rounded-r-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300"
                         >
@@ -1451,7 +1492,7 @@ export default function PosPage() {
                         {usd(linePrice(l) * l.qty)}
                       </span>
                       <button
-                        onClick={() => setQty(lineKey(l.product, l.markdown, l.unit), 0)}
+                        onClick={() => setQty(lineKey(l.product, l.markdown, l.unit, l.options), 0)}
                         aria-label="Remove item"
                         className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 active:bg-rose-100"
                       >
@@ -1688,6 +1729,19 @@ export default function PosPage() {
       )}
 
       {/* Receipt modal */}
+      {asking && (
+        <OptionPicker
+          product={asking.product}
+          groups={asking.groups}
+          onCancel={() => setAsking(null)}
+          onPick={(chosen) => {
+            const a = asking;
+            setAsking(null);
+            if (a) addToCart(a.product, a.markdown, a.unit, chosen);
+          }}
+        />
+      )}
+
       {receipt && <ReceiptModal sale={receipt} business={business ?? undefined} onClose={() => setReceipt(null)} />}
 
       {resumeOpen && (
@@ -2907,5 +2961,95 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Condiments — how a made-to-order item should be prepared.
+//
+// Opens when a tapped product's CATEGORY has option groups (Store Settings →
+// Condiments). The cashier answers, the choice rides on the basket line, and it
+// reaches the kitchen ticket. Big touch targets: this is asked mid-order with a
+// customer waiting, and picking "level 6" when they said 5 sends the wrong food.
+// ---------------------------------------------------------------------------
+function OptionPicker({
+  product,
+  groups,
+  onPick,
+  onCancel,
+}: {
+  product: Product;
+  groups: OptionGroup[];
+  onPick: (chosen: SaleItemOption[]) => void;
+  onCancel: () => void;
+}) {
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  // Every REQUIRED group must be answered. An unanswered one would reach the
+  // kitchen as a dish with no instruction, which is the failure this prevents.
+  const missing = groups.filter((g) => g.required !== false && !picked[g.id]);
+
+  function confirm() {
+    if (missing.length) return;
+    const chosen: SaleItemOption[] = [];
+    for (const g of groups) {
+      const cid = picked[g.id];
+      const c = g.choices.find((x) => x.id === cid);
+      if (!c) continue;
+      chosen.push({
+        group: g.name,
+        choice: c.name,
+        priceDelta: c.priceDelta || undefined,
+        groupId: g.id,
+        choiceId: c.id,
+      });
+    }
+    onPick(chosen);
+  }
+
+  return (
+    <Modal open onClose={onCancel} title={product.name} size="md">
+      <p className="mb-4 text-sm text-slate-500">How would they like it?</p>
+      <div className="space-y-5">
+        {groups.map((g) => (
+          <div key={g.id}>
+            <p className="mb-2 text-sm font-bold text-ink-900">
+              {g.name}
+              {g.required !== false && <span className="ml-1 text-rose-500">*</span>}
+            </p>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {g.choices.map((c) => {
+                const on = picked[g.id] === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setPicked((p) => ({ ...p, [g.id]: c.id }))}
+                    className={`rounded-xl px-3 py-4 text-sm font-bold transition active:scale-[0.98] ${
+                      on ? "bg-brand-600 text-white ring-2 ring-brand-300" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {c.name}
+                    {/* Only shown when it actually costs something, so a free
+                        choice isn't cluttered with "+$0.00". */}
+                    {!!c.priceDelta && (
+                      <span className={`block text-[11px] font-semibold ${on ? "text-white/80" : "text-slate-500"}`}>
+                        +{usd(c.priceDelta)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6 flex gap-2">
+        <button className="btn-ghost flex-1 py-3" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn-primary flex-1 py-3 text-base" disabled={missing.length > 0} onClick={confirm}>
+          {missing.length ? `Choose ${missing[0].name}` : "Add to sale"}
+        </button>
+      </div>
+    </Modal>
   );
 }

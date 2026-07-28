@@ -239,6 +239,34 @@ export async function PATCH(req: Request) {
       // all, and the till screen would have nothing to choose from.
       if (list.length) b.posTerminals = list;
     }
+    // Condiment groups — spice level, sweetness. Owner-only: they change what
+    // the kitchen is told to cook, and a chargeable option changes the price.
+    if (Array.isArray(body.optionGroups) && isOwner) {
+      b.optionGroups = body.optionGroups
+        .map((g: any, i: number) => ({
+          id: String(g?.id || `og${i + 1}`).slice(0, 24),
+          name: String(g?.name || "").trim().slice(0, 40),
+          categories: Array.isArray(g?.categories)
+            ? g.categories.map((c: any) => String(c || "").trim()).filter(Boolean).slice(0, 30)
+            : [],
+          required: g?.required !== false,
+          choices: Array.isArray(g?.choices)
+            ? g.choices
+                .map((c: any, j: number) => ({
+                  id: String(c?.id || `c${j + 1}`).slice(0, 24),
+                  name: String(c?.name || "").trim().slice(0, 40),
+                  // Guarded: a NaN here would poison every total on the line.
+                  priceDelta: Number.isFinite(Number(c?.priceDelta)) ? Math.round(Number(c.priceDelta) * 100) / 100 : 0,
+                }))
+                .filter((c: any) => c.name)
+                .slice(0, 30)
+            : [],
+        }))
+        // A group with no name or no choices can't be shown or chosen from, so
+        // storing it would only put an empty box in front of a cashier.
+        .filter((g: any) => g.name && g.choices.length)
+        .slice(0, 20);
+    }
     if (Array.isArray(body.approvers) && isOwner) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers

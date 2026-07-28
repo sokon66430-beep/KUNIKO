@@ -304,6 +304,18 @@ object ReceiptCanvas {
                 }
                 y += fm.descent + 3f
             }
+            // How the customer asked for it — spice level, sweetness. Indented
+            // under the item in small type: it belongs to that line, and the
+            // customer needs to see that what they asked for was taken down.
+            it.optString("options").takeIf { o -> o.isNotBlank() }?.let { note ->
+                val p = paint(SMALL)
+                for (l in wrap("· $note", p, COL_NAME_W)) {
+                    val fm2 = p.fontMetrics
+                    y -= fm2.ascent
+                    c?.drawText(l, LEFT + 14f, y, p)
+                    y += fm2.descent + 2f
+                }
+            }
             gap(4f)
         }
 

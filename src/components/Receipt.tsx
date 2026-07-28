@@ -8,10 +8,11 @@
 // columns. The owner checks the slip on screen; if the two drifted apart, that
 // check would be worthless.
 
-import type { Sale, ReceiptSettings } from "@/lib/types";
+import type { Sale, ReceiptSettings, OptionGroup } from "@/lib/types";
 import { usd, rielDue, invoiceDateTime } from "@/lib/format";
 import { formatQueue } from "@/lib/queue";
 import { localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
+import { optionsLabel } from "@/lib/options";
 
 export type ReceiptBusiness = {
   name?: string;
@@ -32,6 +33,8 @@ export type ReceiptBusiness = {
   queueSettings?: { numberStyle?: string };
   // The store's tills — read by the POS to offer them as a choice.
   posTerminals?: string[];
+  // Condiment groups, read by the POS to ask how an item should be made.
+  optionGroups?: OptionGroup[];
 };
 
 // The Khmer half of every label. Kept in one place so the screen and the printer
@@ -100,6 +103,7 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
       qtyLabel: it.unitName ? `x${it.unitQty} ${it.unitName}` : `x${it.qty}`,
       lineTotal,
       markdownPercent: it.markdownPercent,
+      options: optionsLabel(it.options),
     };
   });
   const promoTotal = round2((sale.promotions || []).reduce((n, p) => n + (p.discount || 0), 0));
@@ -177,6 +181,9 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
           <div key={l.key} className="flex gap-2 text-[11px] leading-snug">
             <span className="min-w-0 flex-1 break-words">
               {l.name}
+              {/* What the customer asked for, under the item — so the slip and
+                  the kitchen ticket say the same thing. */}
+              {l.options && <span className="block text-[10px] text-slate-500">{l.options}</span>}
               {l.markdownPercent != null && <span className="ml-1 font-bold text-amber-600">-{l.markdownPercent}%</span>}
             </span>
             <span className="w-14 shrink-0 text-right tabular-nums">{usd(l.price)}</span>

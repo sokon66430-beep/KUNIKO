@@ -130,10 +130,50 @@ export type Customer = {
   lastVisit?: string;
 };
 
+// A choice the customer makes about how an item is MADE — spice level on a
+// noodle, sweetness on a coffee. Not a discount and not a packaging: it changes
+// what the kitchen does, so it has to reach the kitchen ticket, and it has to be
+// on the receipt so the customer can see what they asked for.
+export type OptionChoice = {
+  id: string;
+  name: string; // "Level 5", "Less sweet"
+  // Optional money. Almost always 0 — a spice level costs nothing — but an
+  // "extra shot" has to be chargeable without redesigning this later. Added to
+  // the line's unit price, so VAT and every total follow with no special case.
+  priceDelta?: number;
+};
+
+export type OptionGroup = {
+  id: string;
+  name: string; // "Spicy level", "Sweetness"
+  // Which CATEGORIES this applies to. By category, not per product: a shop with
+  // thousands of products would never finish attaching a group to each noodle,
+  // and the categories are already how the menu is organised.
+  categories: string[];
+  required?: boolean; // the till won't add the item until a choice is made
+  choices: OptionChoice[];
+};
+
+// What was chosen on one sold line, frozen at the time of sale — renaming a
+// group later must not rewrite what a past order asked for.
+export type SaleItemOption = {
+  group: string; // the group's NAME, frozen at the time of sale
+  choice: string; // the choice's NAME, likewise
+  priceDelta?: number;
+  // The ids the till chose from. Kept so the basket can re-send the choice for
+  // the server to re-resolve, and so a later screen could match a line back to
+  // the group it came from. The NAMES above are what any document prints.
+  groupId?: string;
+  choiceId?: string;
+};
+
 export type SaleItem = {
   productId: string;
   sku: string;
   name: string;
+  // How the customer wanted it made. Printed on the receipt and on the kitchen
+  // ticket; also what makes two otherwise identical bowls separate lines.
+  options?: SaleItemOption[];
   // ALWAYS in base units — 2 cases of 24 is qty 48. One meaning of "quantity"
   // across stock, costing, promotions, recipes and every report; the packaging
   // it was sold in is recorded below rather than changing what qty counts.
@@ -1266,6 +1306,9 @@ export type DB = {
       // Everything in the safe ABOVE this floats to the bank on a bank day, so a
       // Bank Transfer pre-fills its amount = safe cash − this float. In dollars.
       cashFloat?: number;
+      // How made-to-order items may be customised — spice level, sweetness.
+      // Defined once and attached to CATEGORIES (see OptionGroup).
+      optionGroups?: OptionGroup[];
       // The tills this store runs — "POS 1", "POS 2", "POS 3".
       //
       // The till name used to be free text typed on each device and kept only in

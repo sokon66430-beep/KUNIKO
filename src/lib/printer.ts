@@ -11,10 +11,12 @@
 
 import type { Sale } from "./types";
 import { rielShelfPrice } from "./format";
+import { optionsLabel } from "./options";
 
 export type ReceiptLine = {
   name: string;
   qtyLabel: string; // "2 × Case" or "3"
+  options?: string; // "Spicy level: 5" — printed under the line for the customer
   price: number; // USD, per unit sold — the "Price" column
   lineTotal: number; // USD
   lineRiel: number; // KHR, rounded up to the nearest 100 (shelf-price rounding)
@@ -141,6 +143,9 @@ export function buildReceiptPayload(
     const lineTotal = round2(it.price * it.qty);
     return {
       name: it.name,
+      // What the customer asked for — printed under the line, so the paper and
+      // the kitchen ticket say the same thing.
+      options: optionsLabel(it.options) || undefined,
       // The Price column shows what ONE of the thing sold costs, so a case line
       // prices the case — the qty column already says how many.
       price: round2(it.unitName && it.unitQty ? lineTotal / it.unitQty : it.price),
