@@ -98,7 +98,14 @@ type GeneratedKhqr = {
 
 // Payment buttons shown on the till. KHQR and Wing are intentionally omitted —
 // the store takes Cash, ABA (which shows its own KHQR to scan) and Card.
-const PAYMENTS: PaymentMethod[] = ["Cash", "ABA", "Card"];
+// What the till can be paid with. "Card" is deliberately absent — this shop
+// takes cash and ABA, and a third button only invited a mis-tap that files the
+// money under a method the store doesn't have.
+//
+// The TYPE still allows Card, and the shift report still totals it: sales
+// already recorded that way must keep reading correctly. This removes the
+// choice going forward, not the history.
+const PAYMENTS: PaymentMethod[] = ["Cash", "ABA"];
 const VAT_RATE = 0.1;
 
 export default function PosPage() {
@@ -1458,12 +1465,14 @@ export default function PosPage() {
                     counter, and picking the wrong one takes the money the wrong
                     way. Sized to be hit without looking, and the chosen one is
                     ringed so it reads at a glance from standing height. */}
-                <div className="grid grid-cols-3 gap-2">
+                {/* Columns follow the number of methods, so removing one makes
+                    the rest wider rather than leaving a hole. */}
+                <div className={`grid gap-2 ${PAYMENTS.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
                   {PAYMENTS.map((p) => (
                     <button
                       key={p}
                       onClick={() => setPayment(p)}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl py-5 text-base font-bold transition active:scale-[0.98] ${
+                      className={`flex items-center justify-center gap-1.5 rounded-xl py-8 text-lg font-bold transition active:scale-[0.98] ${
                         payment === p
                           ? "bg-brand-600 text-white ring-2 ring-brand-300"
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
