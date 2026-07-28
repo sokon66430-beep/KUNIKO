@@ -139,9 +139,9 @@ export async function POST(req: Request) {
     let created = 0;
     let updated = 0;
     const errors: string[] = [];
-    // Suppliers that appeared in the sheet but weren't in the system — we create
-    // them automatically (code → name) so their products still import.
-    const createdSuppliers = new Map<string, string>();
+    // Supplier values in the sheet that match nothing in the system. Collected
+    // and reported back; never turned into suppliers. See the loop below.
+    const unmatchedSuppliers = new Map<string, string>();
 
     for (const row of rows) {
       // A human-readable tag for this row so skipped messages say WHICH product:
@@ -167,17 +167,24 @@ export async function POST(req: Request) {
         supplierCode = s.code;
         supplierName = s.name;
       } else if (rawSupCode || rawSupName) {
-        // Supplier isn't in the system yet — create it automatically (from the
-        // sheet's code + name) so the product still imports. Deduped via the maps.
-        const code = rawSupCode || rawSupName;
-        const name = rawSupName || rawSupCode;
-        const newSup = { code, name };
-        db.suppliers.push(newSup);
-        supByCode.set(code, newSup);
-        supByName.set(name.toLowerCase(), newSup);
-        supplierCode = code;
-        supplierName = name;
-        createdSuppliers.set(code, name);
+        // The sheet named a supplier the system doesn't have.
+        //
+        // This used to CREATE one from whatever was in the cell, which is how
+        // "113" and "431 / SUPO153, SUPO153" ended up in the supplier list: a
+        // shifted column or a merged cell is indistinguishable from a real
+        // supplier name once you decide to trust the sheet. And a junk supplier
+        // is not cosmetic — it can be picked in a purchase order and it hides
+        // the fact that those products have no real supplier at all.
+        //
+        // So: import the product, leave its supplier UNSET, and report the
+        // value. The owner adds the genuine ones under Suppliers and re-imports;
+        // the typos simply never become records. This is also the rule the rest
+        // of the app already states — see lib/supplierLink.
+        const key = `${rawSupCode}|${rawSupName}`;
+        unmatchedSuppliers.set(
+          key,
+          rawSupCode && rawSupName ? `${rawSupName} (${rawSupCode})` : rawSupName || rawSupCode,
+        );
       }
 
       // Match an existing product: barcode first (only if unambiguous), then SKU.
@@ -269,21 +276,20 @@ export async function POST(req: Request) {
       }
     }
 
-    const newSuppliers = [...createdSuppliers.entries()].map(([code, name]) => (name === code ? code : `${name} (${code})`));
+    const unknownSuppliers = [...unmatchedSuppliers.values()];
     logAudit(db, {
       actor,
       action: "Imported",
       entityType: "Product",
       entity: file.name || "Excel file",
-      detail: `${created} new · ${updated} updated · ${newSuppliers.length} suppliers created · ${errors.length} skipped`,
+      detail: `${created} new · ${updated} updated · ${unknownSuppliers.length} unknown suppliers · ${errors.length} skipped`,
     });
     return {
       created,
       updated,
       skipped: errors.length,
       errors: errors.slice(0, 10),
-      suppliersCreated: newSuppliers.length,
-      newSuppliers,
+      unknownSuppliers,
       totalRows: rows.length,
     };
   });

@@ -928,6 +928,19 @@ export type GoodsReceipt = {
   supplier: string;
   items: GRNItem[];
   note?: string;
+  // What the supplier's invoice actually said, keyed in by the receiving team.
+  //
+  // The app can only ever COMPUTE a VAT figure — cost × the supplier's rate,
+  // rounded per unit. A real invoice rounds differently, bills a delivery
+  // charge, or applies a trade discount off the whole order, so the computed
+  // figure and the paper disagree by a few cents to a few dollars. Whoever is
+  // holding the invoice is the one who knows; these are their numbers, and the
+  // grand total is built from them.
+  //
+  // Absent on older receipts, which fall back to the computed VAT and no
+  // discount — exactly what they were posted with.
+  discount?: number; // trade discount off the ex-VAT total, in US$
+  vatAmount?: number; // VAT as billed, in US$ — overrides the computed figure
   receivedBy: string;
   createdAt: string;
   status?: GRNStatus; // undefined = "Posted" (legacy receipts)

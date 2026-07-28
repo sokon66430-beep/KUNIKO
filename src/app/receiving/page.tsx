@@ -324,6 +324,12 @@ function ReceiveModal({
   const [flash, setFlash] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [ambiguous, setAmbiguous] = useState<typeof po.items | null>(null);
   const [busy, setBusy] = useState(false);
+  // What the supplier's invoice actually charges. Both start EMPTY, not zero:
+  // empty means "not touched", so the receipt falls back to the computed VAT
+  // and no discount and behaves exactly as it always did. Held as strings so a
+  // half-typed "1." doesn't get mangled into a number mid-keystroke.
+  const [discount, setDiscount] = useState("");
+  const [vatInput, setVatInput] = useState("");
   // The live camera can be turned off — closing it stops the camera and gives
   // the whole screen to the list (staff who scan with a handheld gun or type
   // don't need it). It starts on, the way most people receive.
@@ -468,7 +474,15 @@ function ReceiveModal({
     try {
       await api(`/api/purchase-orders/${po.id}/receive`, {
         method: "POST",
-        body: JSON.stringify({ items, receivedBy, invoices: invoicePages }),
+        body: JSON.stringify({
+          items,
+          receivedBy,
+          invoices: invoicePages,
+          // Sent only when actually keyed in — an untouched field must not be
+          // recorded as a figure the team confirmed off the invoice.
+          discount: discount.trim() === "" ? undefined : discountAmt,
+          vatAmount: vatInput.trim() === "" ? undefined : totalVat,
+        }),
       });
       // Submitted — the draft has served its purpose; clear it so the PO
       // doesn't reopen onto a count that's already been posted.
@@ -492,8 +506,18 @@ function ReceiveModal({
   // VAT and the grand total including VAT — per-unit VAT (rounded) × quantity,
   // summed, the same way the goods-receipt document computes it.
   const round2 = (n: number) => Math.round(n * 100) / 100;
-  const totalVat = po.items.reduce((s, it) => s + round2(costOf(it) * vatRate) * (now[it.productId] || 0), 0);
-  const totalInclVat = round2(totalAmount + totalVat);
+  const computedVat = round2(po.items.reduce((s, it) => s + round2(costOf(it) * vatRate) * (now[it.productId] || 0), 0));
+  // The team's figures win over the computed ones. Blank = "I didn't change
+  // it", which falls back to the computed VAT and no discount — so a receipt
+  // nobody edits behaves exactly as it did before.
+  const discountAmt = discount.trim() === "" ? 0 : Math.max(0, Number(discount) || 0);
+  const totalVat = vatInput.trim() === "" ? computedVat : Math.max(0, Number(vatInput) || 0);
+  const netAmount = round2(totalAmount - discountAmt);
+  const totalInclVat = round2(netAmount + totalVat);
+  // Worth flagging rather than silently accepting: a discount bigger than the
+  // goods is almost always a mis-key (a total typed into a discount box).
+  const discountTooBig = discountAmt > totalAmount + 0.005;
+  const vatOverridden = vatInput.trim() !== "" && Math.abs(totalVat - computedVat) > 0.005;
 
   return (
     <Modal
@@ -865,11 +889,56 @@ function ReceiveModal({
                           <td />
                           <td className="px-3 py-2.5 text-right font-bold tabular-nums text-ink-900">{usd(totalAmount)}</td>
                         </tr>
+                        {/* Discount and VAT are TYPED IN, because only the
+                            person holding the invoice knows what it says. The
+                            app can compute a VAT figure, but a real invoice
+                            rounds its own way and may carry a trade discount,
+                            so a computed number that can't be corrected just
+                            makes the receipt disagree with the paper. */}
                         <tr className="bg-slate-50">
-                          <td className="px-3 py-1.5 text-xs font-medium text-slate-500" colSpan={3}>
-                            VAT {Math.round(vatRate * 100)}%
+                          <td className="px-3 py-1.5 text-xs font-medium text-slate-500" colSpan={2}>
+                            Discount
                           </td>
-                          <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-slate-600">{usd(totalVat)}</td>
+                          <td className="px-3 py-1.5" colSpan={2}>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-xs text-slate-400">US$</span>
+                              <input
+                                className="input h-8 w-24 py-1 text-right text-sm font-semibold tabular-nums"
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                step="0.01"
+                                placeholder="0.00"
+                                value={discount}
+                                onChange={(e) => setDiscount(e.target.value)}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                        <tr className="bg-slate-50">
+                          <td className="px-3 py-1.5 text-xs font-medium text-slate-500" colSpan={2}>
+                            VAT {Math.round(vatRate * 100)}%
+                            {vatOverridden && (
+                              <span className="ml-1.5 text-[11px] font-normal text-amber-600">
+                                (was {usd(computedVat)})
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5" colSpan={2}>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-xs text-slate-400">US$</span>
+                              <input
+                                className="input h-8 w-24 py-1 text-right text-sm font-semibold tabular-nums"
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                step="0.01"
+                                placeholder={computedVat.toFixed(2)}
+                                value={vatInput}
+                                onChange={(e) => setVatInput(e.target.value)}
+                              />
+                            </div>
+                          </td>
                         </tr>
                         <tr className="border-t border-slate-200 bg-brand-50">
                           <td className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-800" colSpan={3}>
@@ -922,13 +991,24 @@ function ReceiveModal({
                     : "No invoice yet — the receipt will be incomplete and the PO stays open until the invoice is scanned."}
                 </span>
               </div>
+              {/* A discount larger than the goods is nearly always a mis-key —
+                  an invoice total typed into the discount box. Blocked rather
+                  than warned: it would post a negative payable. */}
+              {discountTooBig && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                  <span>
+                    The discount ({usd(discountAmt)}) is more than the goods ({usd(totalAmount)}). Check the invoice —
+                    this looks like a total typed into the discount box.
+                  </span>
+                </div>
+              )}
               <p className="mt-3 text-xs text-slate-400">Received by {receivedBy} · recorded automatically.</p>
             </div>
             <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4">
               <button className="btn-ghost" disabled={busy} onClick={() => setReviewing(false)}>
                 Back
               </button>
-              <button className="btn-primary" disabled={busy} onClick={confirm}>
+              <button className="btn-primary" disabled={busy || discountTooBig} onClick={confirm}>
                 <CheckCircle2 size={16} /> {busy ? "Submitting…" : `Submit receipt (+${totalNow})`}
               </button>
             </div>

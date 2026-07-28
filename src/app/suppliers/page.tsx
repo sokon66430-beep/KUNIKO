@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Truck, Search, Package, Phone, ShoppingCart, Users, CalendarClock, Boxes } from "lucide-react";
-import { useFetch, useRole } from "@/lib/client";
+import { Truck, Search, Package, Phone, ShoppingCart, Users, CalendarClock, Boxes, Trash2 } from "lucide-react";
+import { useFetch, useRole, api } from "@/lib/client";
 import type { Product, Supplier } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, Badge, EmptyState } from "@/components/ui";
 import { num } from "@/lib/format";
@@ -12,11 +12,31 @@ import { num } from "@/lib/format";
 // Master Data (owner-only) and mirrored to every store — so there's no add /
 // edit / delete here; this page just lists them for ordering and reference.
 export default function SuppliersPage() {
-  const { data: suppliers, loading, error } = useFetch<Supplier[]>("/api/suppliers");
+  const { data: suppliers, loading, error, reload } = useFetch<Supplier[]>("/api/suppliers");
   const { data: products } = useFetch<Product[]>("/api/products");
+  // Master Data's own list, so a row can be told apart from a stray one left in
+  // this store's list by an old import.
+  const { data: masterSuppliers } = useFetch<Supplier[]>("/api/master/suppliers");
   const role = useRole();
   const isOwner = role === "owner";
   const [query, setQuery] = useState("");
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  const masterCodes = useMemo(() => new Set((masterSuppliers || []).map((s) => s.code)), [masterSuppliers]);
+
+  async function removeStray(code: string, name: string) {
+    const label = name === code ? code : `${name} (${code})`;
+    if (!confirm(`Remove "${label}"?\n\nIt isn't in Master Data and no products are linked to it.`)) return;
+    setRemoving(code);
+    try {
+      await api(`/api/suppliers/${encodeURIComponent(code)}`, { method: "DELETE" });
+      reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setRemoving(null);
+    }
+  }
 
   const productCountByCode = useMemo(() => {
     const m = new Map<string, number>();
@@ -127,6 +147,19 @@ export default function SuppliersPage() {
                     >
                       <ShoppingCart size={16} />
                     </Link>
+                    {/* Only ever shown for a STRAY row: not in Master Data and
+                        nothing linked to it. Real suppliers are deleted in
+                        Master Data, where it propagates to every store. */}
+                    {isOwner && count === 0 && !masterCodes.has(s.code) && (
+                      <button
+                        onClick={() => removeStray(s.code, s.name)}
+                        disabled={removing === s.code}
+                        title="Remove — not in Master Data and nothing linked to it"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

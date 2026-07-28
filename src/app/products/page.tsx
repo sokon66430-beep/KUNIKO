@@ -39,8 +39,7 @@ type ImportResult = {
   skipped: number;
   totalRows: number;
   errors: string[];
-  suppliersCreated?: number;
-  newSuppliers?: string[];
+  unknownSuppliers?: string[];
 };
 
 const PAGE_SIZE = 100;
@@ -331,14 +330,18 @@ export default function ProductsPage() {
           <div>
             <p className="font-semibold">
               Import complete — {num(importResult.created)} new, {num(importResult.updated)} updated
-              {importResult.suppliersCreated ? `, ${num(importResult.suppliersCreated)} suppliers created` : ""}
               {importResult.skipped > 0 ? `, ${num(importResult.skipped)} skipped` : ""} (
               {num(importResult.totalRows)} rows read)
             </p>
-            {importResult.newSuppliers && importResult.newSuppliers.length > 0 && (
-              <p className="mt-1 text-xs text-emerald-700">
-                New suppliers created (rename them anytime in Suppliers): {importResult.newSuppliers.slice(0, 20).join(", ")}
-                {importResult.newSuppliers.length > 20 ? ` +${importResult.newSuppliers.length - 20} more` : ""}
+            {importResult.unknownSuppliers && importResult.unknownSuppliers.length > 0 && (
+              /* Named in the sheet but not in the system. Those products imported
+                 WITHOUT a supplier rather than the sheet inventing one — a
+                 shifted column would otherwise become a real supplier record. */
+              <p className="mt-1 text-xs text-amber-700">
+                {importResult.unknownSuppliers.length} supplier name(s) in the sheet are not in the system, so those
+                products imported with no supplier. Add the genuine ones under Suppliers, then import again:{" "}
+                {importResult.unknownSuppliers.slice(0, 20).join(", ")}
+                {importResult.unknownSuppliers.length > 20 ? ` +${importResult.unknownSuppliers.length - 20} more` : ""}
               </p>
             )}
             {importResult.errors.length > 0 && (

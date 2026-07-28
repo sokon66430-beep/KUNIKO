@@ -15,6 +15,21 @@ export const dynamic = "force-dynamic";
 const INVOICE_DIR = path.join(DATA_DIR, "invoices");
 
 // Receive goods against a PO: bump stock, update received qty, record a GRN.
+/**
+ * A money amount the client sent, or undefined if it sent nothing usable.
+ *
+ * Returns undefined rather than 0 for a missing value: 0 is a meaningful
+ * answer ("no discount, I checked") and must not be indistinguishable from
+ * "the field was never filled in". Negatives are rejected — a negative
+ * discount is a surcharge, which is not what this field means.
+ */
+function money(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.round(n * 100) / 100;
+}
+
 // The supplier invoice scan is attached here when available; without it the
 // receipt is saved but stays INCOMPLETE until the invoice is scanned in.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -128,6 +143,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       supplier: po.supplier,
       items: grnItems,
       note: body.note?.trim() || undefined,
+      // The invoice figures the receiving team keyed in. Kept only when they
+      // actually entered something: a 0 discount and an untouched VAT are the
+      // computed defaults, and storing those would claim the team confirmed
+      // figures they never looked at.
+      discount: money(body.discount),
+      vatAmount: money(body.vatAmount),
       receivedBy,
       createdAt: new Date().toISOString(),
       // Attached only when the invoice was scanned; otherwise the receipt is
