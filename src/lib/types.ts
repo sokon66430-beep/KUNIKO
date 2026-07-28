@@ -539,6 +539,11 @@ export type Sale = {
   coupon?: { code: string; name: string; discount: number };
   paymentMethod: PaymentMethod;
   paymentRef?: string; // e.g. KHQR md5 of the confirmed Bakong transaction
+  // The till's own reference for one checkout attempt. Makes a retry safe: if
+  // the network dropped the reply after the sale was committed, sending the
+  // same reference returns that sale rather than recording a second one. See
+  // the sales route.
+  clientRef?: string;
   // Cash sales only: what the customer handed over and what went back to them.
   // Both in USD — riel tendered is converted at the till's rate before it lands
   // here, so the books stay in one currency.

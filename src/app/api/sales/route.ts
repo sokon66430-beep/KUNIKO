@@ -64,6 +64,21 @@ export async function POST(req: Request) {
       const existing = db.sales.find((s) => s.paymentRef === body.paymentRef);
       if (existing) return { sale: existing };
     }
+    // The same protection for CASH, which had none — and cash is most sales.
+    //
+    // The till sends a reference it keeps for one checkout attempt. If the shop
+    // wifi stalls, the request times out on the device while the server has
+    // already committed: the cashier sees an error and no receipt, presses
+    // Charge again, and the shop ends up with two sales, stock off by a basket
+    // and a drawer that cannot be reconciled — for one customer who paid once.
+    //
+    // With a reference, the retry finds the sale it already made and returns
+    // it, so the cashier gets their receipt and the books stay right. Inside
+    // the write-lock, so two racing retries cannot both pass.
+    if (body.clientRef) {
+      const existing = db.sales.find((s) => s.clientRef === body.clientRef);
+      if (existing) return { sale: existing };
+    }
     const items: SaleItem[] = [];
     // Which recipe (if any) each item is made from, kept alongside `items` so
     // the stock pass below doesn't have to resolve the link a second time.
@@ -394,6 +409,9 @@ export async function POST(req: Request) {
       // From the session, not the request body — the receipt's "who served you"
       // has to be an audit fact, not something a till could claim.
       cashier: actor,
+      // The till's reference for this checkout attempt, so a retry after a
+      // timeout returns this sale instead of making a second one.
+      clientRef: typeof body.clientRef === "string" ? body.clientRef.slice(0, 64) : undefined,
     };
 
     // Money management: attribute the sale to the till and its OPEN shift, so a

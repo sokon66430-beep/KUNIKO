@@ -198,6 +198,10 @@ export default function PosPage() {
   productsRef.current = products ?? [];
   const markdownsRef = useRef<Markdown[]>([]);
   markdownsRef.current = markdowns ?? [];
+  // The reference for the checkout attempt in flight (see commitSale). Held
+  // across a failed attempt so a retry dedupes, and released once the sale has
+  // landed so the NEXT customer is a new sale.
+  const chargeRef = useRef<string>("");
   const blockScanRef = useRef(false);
   blockScanRef.current = khqrOpen || cashOpen || !!receipt || reportOpen || invoicesOpen || cameraOpen || shiftOpen;
 
@@ -738,6 +742,14 @@ export default function PosPage() {
       setTillGate(true);
       return;
     }
+    // One reference per checkout attempt, kept until the sale actually lands.
+    //
+    // If the reply is lost — shop wifi stalling, the request timing out on the
+    // device while the server has already committed — the cashier sees an error
+    // and no receipt, and presses Charge again. Sending the SAME reference makes
+    // the server hand back the sale it already made, instead of recording a
+    // second one and deducting the stock twice for a customer who paid once.
+    if (!chargeRef.current) chargeRef.current = `${terminal}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const sale = await api<Sale>("/api/sales", {
       method: "POST",
       body: JSON.stringify({
@@ -768,6 +780,7 @@ export default function PosPage() {
         // Ask the server for a pickup number only when the cashier turned it on.
         queue: wantQueue,
         posTerminalId: terminal,
+        clientRef: chargeRef.current,
       }),
     });
     // Second screen: show the customer "thank you" + their change, and hold that
@@ -784,6 +797,7 @@ export default function PosPage() {
       method: payment,
     });
     suppressIdleRef.current = true;
+    chargeRef.current = ""; // this sale is on record — the next one is new
     setReceipt(sale);
     setKhqrOpen(false);
     setCashOpen(false);
