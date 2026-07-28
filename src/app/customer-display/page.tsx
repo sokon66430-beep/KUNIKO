@@ -258,12 +258,13 @@ function SaleScreen({
           })}
         </div>
 
+        {/* ONE column: every figure hangs off the same right edge, the way the
+            numbers above it do — two side-by-side columns put the money on two
+            different edges and the block stopped reading as a receipt. */}
         <div className="cd-r-foot">
           <div className="cd-r-col">
             <div><span className="cd-r-lbl">សរុបរង <em>Subtotal</em></span><span>{usd(subtotal)}</span></div>
             <div><span className="cd-r-lbl">បញ្ចុះតម្លៃ <em>Discount</em></span><span>{usd(state.discount)}</span></div>
-          </div>
-          <div className="cd-r-col">
             <div className="cd-r-grand"><span className="cd-r-lbl">សរុប <em>Total</em></span><span>{usd(state.total)}</span></div>
             {/* Riel rounded UP to the nearest 100 — Cambodia has no coins below
                 100៛, so the customer-facing riel is always a whole hundred. The
@@ -470,10 +471,10 @@ const CSS = `
    deliberately, so a narrow panel never wraps them into a jumble. */
 .cd-r-lbl { display: flex; flex-direction: column; line-height: 1.2; white-space: nowrap; }
 .cd-r-lbl em { font-style: normal; font-size: 0.62em; font-weight: 600; color: #8a94ab; }
-.cd-r-foot { display: grid; grid-template-columns: 1fr 1.2fr; border-top: 2px solid #e0e5ee; padding-top: 20px; margin-top: 8px; }
-.cd-r-col { display: flex; flex-direction: column; gap: 12px; padding: 0 26px; min-width: 0; }
-.cd-r-col:first-child { padding-left: 0; }
-.cd-r-col:last-child { padding-right: 0; border-left: 1px solid #edf0f5; }
+.cd-r-foot { display: block; border-top: 2px solid #e0e5ee; padding-top: 16px; margin-top: 8px; }
+.cd-r-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* The big rows sit under a thin rule, separating "the maths" from "what to pay". */
+.cd-r-col > div.cd-r-grand { border-top: 1px solid #edf0f5; padding-top: 12px; margin-top: 2px; }
 .cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(14px, 1.3vw, 18px); color: #414d68; font-variant-numeric: tabular-nums; }
 .cd-r-col > div > span:last-child { white-space: nowrap; }
 .cd-r-strong span, .cd-r-grand span { color: #10182c; font-weight: 800; }
