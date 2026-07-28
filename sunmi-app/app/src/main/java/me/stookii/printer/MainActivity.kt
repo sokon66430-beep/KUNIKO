@@ -51,6 +51,25 @@ class MainActivity : Activity() {
         fun version(): String = "11"
     }
 
+    // Backing off between attempts so a shop with the wifi genuinely down isn't
+    // hammering the router — but never giving up, because nobody is going to
+    // come and press a button on a till that looks dead.
+    private var retryAttempt = 0
+    private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun retryLoad(view: WebView?) {
+        val w = view ?: return
+        retryAttempt++
+        val delay = minOf(30_000L, 2_000L * retryAttempt)
+        retryHandler.removeCallbacksAndMessages(null)
+        retryHandler.postDelayed({
+            // Cache cleared first: the commonest reason the main page fails is a
+            // stale copy pointing at files the server no longer has.
+            w.clearCache(true)
+            w.loadUrl(WEB_URL)
+        }, delay)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +92,23 @@ class MainActivity : Activity() {
             loadWithOverviewMode = true
             mediaPlaybackRequiresUserGesture = false
         }
+
+        // Start every session on the CURRENT build of the web app.
+        //
+        // A page's HTML names its JavaScript by content hash, and a deploy
+        // replaces those files. A till holding yesterday's HTML asks for chunks
+        // that no longer exist, gets 404s, and never starts React — so it sits
+        // on the loading screen for good, surviving restarts because the cache
+        // is on disk. That was the "always loading" at the counter.
+        //
+        // The server now says no-store on HTML, which prevents it happening
+        // again; this clears the caches already poisoned on devices in the shop,
+        // and costs one re-download of a few hundred KB at app start.
+        //
+        // Deliberately clearCache, NOT clearing cookies or localStorage — the
+        // till must stay signed in and keep which POS it is.
+        web.clearCache(true)
+
         web.addJavascriptInterface(Bridge(), "StookiiPrinter")
         web.webChromeClient = WebChromeClient()
         web.webViewClient = object : WebViewClient() {
@@ -80,6 +116,35 @@ class MainActivity : Activity() {
                 // Belt-and-suspenders kiosk flag in case the URL param is lost on
                 // an internal redirect — Stookii also persists it to localStorage.
                 view?.evaluateJavascript("window.__stookiiKiosk = true;", null)
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                // Back to zero on a good load, so a blip this morning doesn't
+                // leave the till waiting 30 seconds before retrying tonight.
+                retryAttempt = 0
+                retryHandler.removeCallbacksAndMessages(null)
+            }
+
+            // A till that fails to load must say so and keep trying — not sit on
+            // a blank or half-drawn screen while a customer waits. Only the MAIN
+            // page is retried: a single failed image or a background API call
+            // must not restart the whole app underneath a half-typed sale.
+            override fun onReceivedError(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?,
+                error: android.webkit.WebResourceError?,
+            ) {
+                if (request?.isForMainFrame != true) return
+                retryLoad(view)
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?,
+                errorResponse: android.webkit.WebResourceResponse?,
+            ) {
+                if (request?.isForMainFrame != true) return
+                retryLoad(view)
             }
         }
         web.loadUrl(WEB_URL)
