@@ -9,6 +9,7 @@ import {
   subscribeCustomerDisplay,
 } from "@/lib/customerDisplay";
 import type { CustomerDisplaySettings } from "@/lib/types";
+import { useNoDarkMode } from "@/lib/noDarkMode";
 
 // The second screen on the Sunmi T3 — the one CUSTOMERS look at. Warm, rounded
 // and friendly (soft cards, pastel accent tints, big type), not a dense operator
@@ -42,6 +43,9 @@ function rgba(hex: string, a: number): string {
 }
 
 export default function CustomerDisplayPage() {
+  // This screen has its OWN light/dark setting (Customer Screen). The app's
+  // night theme must not reach across and repaint it.
+  useNoDarkMode();
   const [state, setState] = useState<CDState | null>(null);
   const [cfg, setCfg] = useState<Cfg | null>(null);
   const listRef = useRef<HTMLDivElement>(null);

@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon, MonitorCog } from "lucide-react";
+import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon, MonitorCog, Store } from "lucide-react";
 import { useFetch } from "@/lib/client";
 import { useTheme } from "@/components/theme";
 import { useTillMode } from "@/lib/tillmode";
@@ -16,7 +16,13 @@ import { Modal } from "@/components/ui";
 import { PosShiftModal } from "@/components/PosShiftModal";
 import { nextShiftName } from "@/components/shift";
 
-type SessionInfo = { user: { name: string; storeName: string; role?: string } };
+type SessionInfo = {
+  user: { name: string; storeName: string; storeId?: string; role?: string };
+  // Every store this user may work in. On a till this is how the owner points
+  // the device at the right shop — the sidebar's store switcher doesn't exist
+  // here, because Till Mode has no sidebar.
+  stores?: { id: string; name: string }[];
+};
 type BusinessInfo = { posTerminals?: string[] };
 type ShiftsData = { shifts: { posTerminalId: string; status: string; shift: string; openedAt: string }[] };
 
@@ -49,6 +55,32 @@ export function TillBar() {
   const [shiftOpen, setShiftOpen] = useState(false);
   const [tillGate, setTillGate] = useState(false);
   const [tillPick, setTillPick] = useState(false);
+  const [storeGate, setStoreGate] = useState(false);
+  const [storePick, setStorePick] = useState(false);
+  const [storeBusy, setStoreBusy] = useState(false);
+  const stores = session?.stores || [];
+
+  // Point this device at a shop. The store lives on the SESSION, so it carries
+  // through every staff PIN hand-over afterwards (staff sign-in inherits the
+  // device's store) — which is the whole working day. A full sign-out and a
+  // fresh username login lands in that user's own store again.
+  async function chooseStore(storeId: string) {
+    setStoreBusy(true);
+    try {
+      const r = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeId }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Could not switch store");
+      // Products, prices, shifts and the drawer all belong to the store, so
+      // reload rather than leave half the till on the old one.
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message);
+      setStoreBusy(false);
+    }
+  }
 
   // Live wall clock for the till header — refreshes every second.
   const [now, setNow] = useState<Date | null>(null);
@@ -161,6 +193,21 @@ export function TillBar() {
                   <span className="ml-auto text-xs font-bold text-slate-400">{terminal}</span>
                 </button>
               )}
+              {/* Which SHOP this device sells for. Same owner-only gate as the
+                  till, and for the same reason: it decides whose stock moves and
+                  whose books the money lands in. Only offered when the owner
+                  actually has more than one store to choose between. */}
+              {session?.user.role === "owner" && stores.length > 1 && (
+                <button
+                  onClick={() => { setMenuOpen(false); setStoreGate(true); }}
+                  className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Store size={16} className="text-slate-400" /> Set this store
+                  <span className="ml-auto max-w-[7rem] truncate text-xs font-bold text-slate-400">
+                    {session.user.storeName}
+                  </span>
+                </button>
+              )}
               {/* A kiosk device is permanently a till — no exit, even for the
                   owner. And on any till, ONLY the owner even sees the exit:
                   staff signed into the POS can't leave Till Mode at all. */}
@@ -224,6 +271,45 @@ export function TillBar() {
                 {t === terminal && <span className="text-xs font-semibold text-brand-600">This device</span>}
               </button>
             ))}
+          </div>
+        </Modal>
+      )}
+
+      {storeGate && (
+        <ManagerGate
+          title="Set this store"
+          hint="Which shop does this device sell for? Stock, prices and the money all belong to it, so only the owner can change it."
+          actionLabel="Continue"
+          ownerOnly
+          codeLabel="Owner password"
+          onClose={() => setStoreGate(false)}
+          onOk={() => { setStoreGate(false); setStorePick(true); }}
+        />
+      )}
+      {storePick && (
+        <Modal open onClose={() => setStorePick(false)} title="Which shop is this device in?">
+          <p className="mb-3 text-[13px] text-slate-500">
+            Set this once when the device is installed. It stays put as staff hand the till over to each other.
+          </p>
+          <div className="grid gap-2">
+            {stores.map((st) => {
+              const current = st.id === session?.user.storeId;
+              return (
+                <button
+                  key={st.id}
+                  disabled={storeBusy}
+                  onClick={() => (current ? setStorePick(false) : chooseStore(st.id))}
+                  className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm font-bold transition disabled:opacity-50 ${
+                    current
+                      ? "border-brand-300 bg-brand-50 text-brand-700"
+                      : "border-slate-200 text-ink-900 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{st.name}</span>
+                  {current && <span className="shrink-0 text-xs font-semibold text-brand-600">This device</span>}
+                </button>
+              );
+            })}
           </div>
         </Modal>
       )}

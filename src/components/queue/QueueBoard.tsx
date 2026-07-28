@@ -3,6 +3,7 @@
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { CheckCircle, Megaphone } from "lucide-react";
 import type { ReactNode } from "react";
+import { useNoDarkMode } from "@/lib/noDarkMode";
 
 // ---------------------------------------------------------------------------
 // The customer queue board.
@@ -456,6 +457,8 @@ export function Footer({ storeName, live, logo }: { storeName: string; live: boo
  * which is the point — it stops a static screen looking like a frozen one.
  */
 export function BoardShell({ children, font }: { children: ReactNode; font?: string }) {
+  // A TV a customer is reading — never the till operator's night theme.
+  useNoDarkMode();
   return (
     // `fixed inset-0` so the board owns the whole screen and can never scroll —
     // nobody is there to scroll a TV.
