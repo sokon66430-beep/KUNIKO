@@ -58,7 +58,27 @@ export async function api<T = any>(url: string, options?: RequestInit & { timeou
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.error || `Request failed (${res.status})`);
   }
-  return res.json();
+  return readJson<T>(res);
+}
+
+/**
+ * Read a JSON body, and say something useful when it isn't JSON.
+ *
+ * While the server restarts — a deploy, a crash, a cold start — the host answers
+ * with its own HTML error page. `res.json()` then throws
+ * `Unexpected token '<', "<!DOCTYPE"... is not valid JSON`, which is what a
+ * cashier was shown on the sign-in screen. It is the truth and it is useless.
+ */
+async function readJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (/^\s*</.test(text)) {
+      throw new Error("The store is restarting — wait a moment and try again.");
+    }
+    throw new Error("The store sent something unreadable. Try again.");
+  }
 }
 
 /** A poll's answer: fresh data, or "you already have it". */
@@ -82,7 +102,7 @@ async function apiConditional<T>(url: string, etag: string | null): Promise<Fetc
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.error || `Request failed (${res.status})`);
   }
-  return { changed: true, data: (await res.json()) as T, etag: res.headers.get("etag") };
+  return { changed: true, data: await readJson<T>(res), etag: res.headers.get("etag") };
 }
 
 /** The bare GET behind apiConditional — same timeout/abort handling as api(). */

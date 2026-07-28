@@ -663,7 +663,44 @@ export default function PosPage() {
     let last = 0;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (blockScanRef.current) return; // a dialog (KHQR / receipt / report / camera) is open
+
+      // A dialog owns the screen — but IGNORING the scan is not enough, because
+      // the scanner is a keyboard: its digits still land in whatever field has
+      // focus. With the cash dialog open and "Received US$" focused, scanning
+      // the customer's next item typed a 13-digit barcode straight into the
+      // amount. One real receipt read "Received (USD) $88,460,000,187,400" —
+      // and the till then jammed on a sale that could never balance.
+      //
+      // So: watch the burst here too, and when it ends in Enter and is long
+      // enough to be a barcode, swallow it and wipe what it typed.
+      if (blockScanRef.current) {
+        const t = Date.now();
+        if (t - last > 120) buf = "";
+        last = t;
+        if (e.key === "Enter") {
+          const looksScanned = buf.length >= 8; // barcodes are 8–14 digits
+          buf = "";
+          if (looksScanned) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            // Undo the damage: the digits already reached the focused box.
+            const el = document.activeElement as HTMLInputElement | null;
+            if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+              const setter = Object.getOwnPropertyDescriptor(
+                el.tagName === "INPUT" ? window.HTMLInputElement.prototype : window.HTMLTextAreaElement.prototype,
+                "value",
+              )?.set;
+              setter?.call(el, "");
+              el.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            setToast("Finish this payment first — scan ignored");
+          }
+          return;
+        }
+        if (e.key.length === 1) buf += e.key;
+        return;
+      }
+
       const now = Date.now();
       if (now - last > 120) buf = ""; // gap too long → human, not a scan; restart
       last = now;
@@ -2101,8 +2138,16 @@ function CashModal({
   const enough = tendered >= total - 0.005; // a cent of float tolerance
   const touched = usdIn !== "" || rielIn !== "";
 
+  // Nobody hands over a hundred times the bill. An amount that large is a
+  // mistake — most often a barcode scanned into this box, which is how one sale
+  // recorded a $88,460,000,187,400 tender. Blocking it stops the bad figure
+  // reaching the books AND tells the cashier what to do, instead of leaving the
+  // till stuck on a sale that can never balance.
+  const absurd = tendered > Math.max(1000, total * 100 + 100);
+  const canConfirm = enough && !absurd;
+
   function confirm() {
-    if (!enough || busy) return;
+    if (!canConfirm || busy) return;
     onConfirm(tendered, { usd: usdNum, riel: rielNum });
   }
 
@@ -2244,8 +2289,16 @@ function CashModal({
           )}
         </div>
 
-        <button onClick={confirm} disabled={!enough || busy} className="btn-primary mt-5 w-full py-5 text-xl">
-          {busy ? "Processing…" : enough ? `Confirm · change ${usd(change)}` : "Confirm"}
+        {absurd && (
+          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm font-semibold text-rose-700">
+            That amount is far more than the bill — clear it and type what the customer gave you.
+            <span className="mt-1 block text-xs font-medium text-rose-500">
+              A scanned barcode lands here if the scanner is used while this box is open.
+            </span>
+          </p>
+        )}
+        <button onClick={confirm} disabled={!canConfirm || busy} className="btn-primary mt-5 w-full py-5 text-xl">
+          {busy ? "Processing…" : canConfirm ? `Confirm · change ${usd(change)}` : "Confirm"}
         </button>
       </div>
     </div>

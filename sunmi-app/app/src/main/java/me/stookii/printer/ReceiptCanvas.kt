@@ -57,7 +57,18 @@ object ReceiptCanvas {
     private const val COL_TOTAL = RIGHT
     private const val COL_QTY = 468f
     private const val COL_PRICE = 388f
-    private const val COL_NAME_W = COL_PRICE - LEFT - 12f
+    // How wide the Price figure itself can be. The name has to stop before the
+    // price STARTS, not before its right edge.
+    //
+    // This was `COL_PRICE - LEFT - 12f`, which let the name run to 12 dots short
+    // of 388 — while "$1.72", drawn right-aligned AT 388, begins around 333. The
+    // two overlapped by roughly 45 dots and printed on top of each other:
+    // "Misota Chocolate-Coated Ma$0.72". Reserving the figure's own width fixes
+    // it for every line, whatever the price.
+    // Wide enough for "$8888.88" at the body size, so a case price can never
+    // reach back into the name either.
+    private const val PRICE_W = 96f
+    private const val COL_NAME_W = COL_PRICE - PRICE_W - LEFT - 10f
 
     // ---- Khmer labels -------------------------------------------------------
     // A Cambodian commercial invoice is read in Khmer first, English second.
