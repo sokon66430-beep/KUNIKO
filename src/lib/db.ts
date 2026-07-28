@@ -63,6 +63,11 @@ function backfill(db: DB): DB {
   if (db.meta.nextCashMovement == null) db.meta.nextCashMovement = 1;
   if (db.meta.nextSurvey == null) db.meta.nextSurvey = 1;
   if (db.meta.business && db.meta.business.cashDrawerLimit == null) db.meta.business.cashDrawerLimit = 500;
+  // The store's tills. Stores that predate the setting get the three the
+  // shop floor already calls them, so nothing has to be configured to sell.
+  if (db.meta.business && !db.meta.business.posTerminals?.length) {
+    db.meta.business.posTerminals = ["POS 1", "POS 2", "POS 3"];
+  }
   if (db.meta.nextPromotion == null) db.meta.nextPromotion = 100001;
   if (db.meta.nextPromotionUsage == null) db.meta.nextPromotionUsage = 1;
   // Coupons — the voucher a customer hands over. Stores that existed before

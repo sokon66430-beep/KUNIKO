@@ -1212,6 +1212,14 @@ export type DB = {
       // Everything in the safe ABOVE this floats to the bank on a bank day, so a
       // Bank Transfer pre-fills its amount = safe cash − this float. In dollars.
       cashFloat?: number;
+      // The tills this store runs — "POS 1", "POS 2", "POS 3".
+      //
+      // The till name used to be free text typed on each device and kept only in
+      // that browser's storage, so a typo ("POS1" vs "POS 1") silently created a
+      // second terminal: its own shift, its own drawer, and money reconciling
+      // against nothing. Naming them once here makes the till a CHOICE from a
+      // list instead of something to spell correctly.
+      posTerminals?: string[];
     };
   };
 };

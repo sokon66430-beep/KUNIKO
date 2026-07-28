@@ -76,6 +76,7 @@ export default function SettingsPage() {
           invoiceTo: form.invoiceTo,
           poNotes: form.poNotes,
           approvers: form.approvers,
+          posTerminals: form.posTerminals,
           // bankAccount / cashFloat are deliberately NOT sent: the cash rule is
           // fixed (store keeps a $500 float, the rest goes to the bank) and the
           // till defaults to that float on its own. Sending cashFloat here would
@@ -199,6 +200,71 @@ export default function SettingsPage() {
                 <input className="input" value={form.authorizedBy} onChange={(e) => set("authorizedBy", e.target.value)} />
               </div>
             </div>
+          </Card>
+
+          {/* The store's tills.
+              Named here rather than typed on each device: the till name is what
+              every shift, drawer and cash movement is filed under, so "POS1" and
+              "POS 1" used to become two separate terminals whose money never
+              reconciled. */}
+          <Card className="lg:col-span-2">
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-ink-900">Tills (POS terminals)</h3>
+              {(form?.posTerminals || []).length < 12 && (
+                <button
+                  type="button"
+                  className="btn-ghost !py-1.5 text-xs"
+                  onClick={() =>
+                    setForm((f) =>
+                      f ? { ...f, posTerminals: [...(f.posTerminals || []), `POS ${(f.posTerminals || []).length + 1}`] } : f,
+                    )
+                  }
+                >
+                  <Plus size={14} /> Add till
+                </button>
+              )}
+            </div>
+            <p className="mb-3 text-[12px] text-slate-500">
+              Each till picks its name from this list on the sale screen. Every shift, drawer count and cash movement is
+              filed under it.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(form?.posTerminals || []).map((t, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <input
+                    className="input"
+                    value={t}
+                    placeholder={`POS ${i + 1}`}
+                    onChange={(e) =>
+                      setForm((f) =>
+                        f
+                          ? { ...f, posTerminals: (f.posTerminals || []).map((x, j) => (j === i ? e.target.value : x)) }
+                          : f,
+                      )
+                    }
+                  />
+                  {/* The last till can't be removed — a shop with none can't open
+                      a shift at all, and the sale screen would have nothing to
+                      choose from. */}
+                  {(form?.posTerminals || []).length > 1 && (
+                    <button
+                      type="button"
+                      title="Remove this till"
+                      className="btn-ghost shrink-0 !px-2"
+                      onClick={() =>
+                        setForm((f) => (f ? { ...f, posTerminals: (f.posTerminals || []).filter((_, j) => j !== i) } : f))
+                      }
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] leading-snug text-slate-400">
+              Renaming a till does not move the shifts already recorded against the old name — rename before a shop
+              opens, not during a shift.
+            </p>
           </Card>
 
           {/* No "Bank deposit account" card: the cash rule is fixed — the store

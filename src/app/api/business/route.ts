@@ -203,6 +203,21 @@ export async function PATCH(req: Request) {
     if (body.cashFloat != null) {
       b.cashFloat = Math.max(0, Math.round((Number(body.cashFloat) || 0) * 100) / 100);
     }
+    // The store's tills. Owner-only: a till name is what shifts, drawers and
+    // every cash movement are filed under, so renaming one re-files money.
+    //
+    // Duplicates are dropped rather than merged — two tills answering to one
+    // name would share a drawer and neither would balance.
+    if (Array.isArray(body.posTerminals) && isOwner) {
+      const seen = new Set<string>();
+      const list = body.posTerminals
+        .map((t: any) => String(t || "").trim().slice(0, 24))
+        .filter((t: string) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()))
+        .slice(0, 12);
+      // Never store an empty list: a shop with no tills can't open a shift at
+      // all, and the till screen would have nothing to choose from.
+      if (list.length) b.posTerminals = list;
+    }
     if (Array.isArray(body.approvers) && isOwner) {
       // Role/name/code are all required per row — at most 3 approvers.
       b.approvers = body.approvers

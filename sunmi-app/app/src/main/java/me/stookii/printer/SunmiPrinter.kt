@@ -75,6 +75,12 @@ class SunmiPrinter(private val context: Context) {
     // by raw ESC/POS bytes, the same way Sunmi's own helpers do it.
     private val CUT = byteArrayOf(0x1D, 0x56, 0x42, 0x00) // GS V B 0 — feed + full cut
     private val KICK = byteArrayOf(0x10, 0x14, 0x00, 0x00, 0x00) // DLE DC4 — drawer pulse
+    // ESC E n — emphasised (bold) on/off. Used for the total instead of a bigger
+    // font: enlarging changes the character width, so a padded line stops lining
+    // up with the columns above it. Bold is the same width and still reads as
+    // "this is the figure that matters".
+    private val BOLD_ON = byteArrayOf(0x1B, 0x45, 0x01)
+    private val BOLD_OFF = byteArrayOf(0x1B, 0x45, 0x00)
 
     private fun cut(s: IWoyouService) = s.sendRAWData(CUT, cb)
     private fun kick(s: IWoyouService) = s.sendRAWData(KICK, cb)
@@ -119,7 +125,16 @@ class SunmiPrinter(private val context: Context) {
         // space-padded single strings and printed with printText — NOT
         // printColumnsString, whose AIDL slot silently drops every two-column
         // line on this T3 (items + totals vanished from the printed slip).
+        // Column headings ABOVE the rule, so the rule separates the headings from
+        // the items the way a table does. Printed in the SAME fields the rows use,
+        // so "USD" sits over the dollar column and "Riel" over the riel one —
+        // without them a customer reading two money columns has to work out which
+        // is which.
         val items = r.optJSONArray("items")
+        if (items != null && items.length() > 0) {
+            s.printText(col3("QTY  Product", "USD", "Riel"), cb)
+            s.printText(divider(), cb)
+        }
         if (items != null) for (i in 0 until items.length()) {
             val it = items.getJSONObject(i)
             val name = it.optString("name")
@@ -151,19 +166,40 @@ class SunmiPrinter(private val context: Context) {
             row(s, "Subtotal (ex VAT)", usd(r.optDouble("subtotal")))
             row(s, "VAT", usd(r.optDouble("vat")))
         }
-        // TOTAL — centred and enlarged: the dollar AND the riel together on one
-        // line, then the "Includes VAT" note beneath it.
-        s.setAlignment(1, cb)
-        s.printTextWithFont(
-            "TOTAL   " + usd(r.optDouble("total")) + "   " + khrCol(r.optLong("totalRiel")) + "\n",
-            null, 32f, cb,
+        // TOTAL — the word on the LEFT, the dollar figure hard against the RIGHT
+        // edge of the paper, with the riel total beneath it:
+        //
+        //   Total                                      $5.40
+        //   Prices include VAT 10%                   22,300R
+        //
+        // It used to be one centred line carrying both currencies, which lined
+        // up with nothing above it and left the customer matching figures by eye.
+        //
+        // col2, not col3: col2 pushes the value to the paper edge, which is
+        // where the total belongs — it is a summary, not another row in the
+        // items table, and hard right is where an eye scanning down a receipt
+        // expects the number it has to pay.
+        //
+        // Bold rather than enlarged: see BOLD_ON.
+        val pct = r.optInt("vatPct", 10)
+        s.sendRAWData(BOLD_ON, cb)
+        s.printText(col2("Total", usd(r.optDouble("total"))), cb)
+        s.sendRAWData(BOLD_OFF, cb)
+        // The riel total rides on the VAT note rather than taking a line of its
+        // own, and both are printed SMALL — a quiet footnote under the total,
+        // not a second headline.
+        //
+        // A smaller font fits more characters per line, so the 48-column helpers
+        // would leave the riel stranded mid-paper. SMALLW is that width scaled
+        // by the font ratio; it is an estimate of the head's character pitch
+        // rather than something the API reports, so treat it as "close to the
+        // right edge", not to-the-pixel flush.
+        s.setFontSize(SMALL, cb)
+        s.printText(
+            pad2(if (showVat) "" else "Include VAT $pct%", khrCol(r.optLong("totalRiel")), SMALLW),
+            cb,
         )
         s.setFontSize(BODY, cb)
-        if (!showVat) {
-            val pct = r.optInt("vatPct", 10)
-            s.printText("Includes VAT $pct%\n", cb)
-        }
-        s.setAlignment(0, cb)
 
         s.printText(divider(), cb)
         row(s, "Paid by", r.optString("payment"))
@@ -266,10 +302,19 @@ class SunmiPrinter(private val context: Context) {
     // reliable printText, no printColumnsString.
     private val BODY = 22f
     private val WIDTH = 48
-    private fun col2(left: String, right: String): String {
-        val maxLeft = (WIDTH - right.length - 1).coerceAtLeast(0)
+    // The footnote size, and how many of ITS characters fit on the same paper.
+    // Derived from the font ratio (48 × 22 ÷ 17 ≈ 62) because the service does
+    // not report a character pitch — so it is an estimate, good enough to park a
+    // figure near the right edge, not a guarantee of flush alignment.
+    private val SMALL = 17f
+    private val SMALLW = 62
+    private fun col2(left: String, right: String): String = pad2(left, right, WIDTH)
+
+    /** Left text, right text, padded apart to fill `width` characters. */
+    private fun pad2(left: String, right: String, width: Int): String {
+        val maxLeft = (width - right.length - 1).coerceAtLeast(0)
         val l = if (left.length > maxLeft) left.substring(0, maxLeft) else left
-        val gap = (WIDTH - l.length - right.length).coerceAtLeast(1)
+        val gap = (width - l.length - right.length).coerceAtLeast(1)
         return l + " ".repeat(gap) + right + "\n"
     }
 
@@ -289,7 +334,16 @@ class SunmiPrinter(private val context: Context) {
         return l.padEnd(leftMax) + mid.padStart(midW) + right.padStart(rightW) + "\n"
     }
 
-    private fun divider() = "-".repeat(WIDTH) + "\n"
+    // A CONTINUOUS rule, not a row of dashes. U+2500 (─) is a box-drawing
+    // character whose glyph spans the full character cell, so repeating it
+    // prints one unbroken line at mid-height; "-" leaves a visible gap between
+    // every dash and reads as a dotted line on paper.
+    //
+    // The T3 is a CJK-market device with the box-drawing range in its font, so
+    // this renders. If a future printer ever prints boxes instead, "_" is the
+    // safe ASCII fallback — it also joins into a solid line, just at the
+    // baseline rather than mid-height.
+    private fun divider() = "─".repeat(WIDTH) + "\n"
     private fun usd(v: Double) = "$" + String.format("%.2f", v)
     // Compact riel for the printed columns (e.g. "27,900R").
     private fun khrCol(v: Long) = String.format("%,d", v) + "R"

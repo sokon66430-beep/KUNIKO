@@ -14,11 +14,13 @@ export type ReceiptBusiness = {
   address?: string;
   phone?: string;
   logo?: string;
-  vatRate?: number; // e.g. 0.10 — shown as "Includes VAT 10%" under the total
+  vatRate?: number; // e.g. 0.10 — shown as "Include VAT 10%" under the total
   receipt?: ReceiptSettings;
   // Only the number style is needed here: the printed pickup number must be
   // drawn in the same script as the board the customer will be watching.
   queueSettings?: { numberStyle?: string };
+  // The store's tills — read by the POS to offer them as a choice.
+  posTerminals?: string[];
 };
 
 const ACCENT: Record<string, string> = {
@@ -42,7 +44,7 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ros
 export function ReceiptCard({ sale, business }: { sale: Sale; business?: ReceiptBusiness }) {
   const r = business?.receipt || {};
   const accent = ACCENT[r.accent || "ink"] || ACCENT.ink;
-  const showVat = !!r.showVat; // default OFF — the total just notes "Includes VAT x%"
+  const showVat = !!r.showVat; // default OFF — the total just notes "Include VAT x%"
   const showPickup = r.showPickup !== false; // default on
   const name = business?.name || "Store";
   const contact = [business?.address, business?.phone].filter(Boolean).join(" · ");
@@ -103,9 +105,12 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
           <span>Total</span>
           <span>{usd(sale.total)}</span>
         </div>
-        {/* No separate VAT line — the total already includes it, so just say so. */}
+        {/* No separate VAT line — the total already includes it, so just say so,
+            and let the riel figure ride on the same line. Worded to match the
+            printed slip exactly: a customer comparing screen to paper should
+            never have to wonder whether they say the same thing. */}
         <div className="flex items-center justify-between text-[11px] text-slate-400">
-          <span>{!showVat ? `Includes VAT ${vatPct}%` : ""}</span>
+          <span>{!showVat ? `Include VAT ${vatPct}%` : ""}</span>
           <span>{rielDue(sale.total)}</span>
         </div>
         {sale.tendered != null && (

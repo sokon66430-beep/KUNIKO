@@ -131,17 +131,14 @@ export default function PosPage() {
   // Pickup number: the cashier turns this on for orders the customer waits for
   // (coffee, noodles, warmed food). The server issues the number centrally.
   const [wantQueue, setWantQueue] = useState(false);
-  // This till's identifier, saved per device so the queue record shows which POS
-  // issued a number. Set once in the checkout box; persists in localStorage.
+  // This till's identifier, saved per device so every sale, drawer count and
+  // queue number is filed under the right till. READ ONLY here — it is assigned
+  // once by the owner from the till menu (see components/TillBar).
   const [terminal, setTerminal] = useState("POS 1");
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem("stookii_pos_terminal") : null;
     if (saved) setTerminal(saved);
   }, []);
-  const saveTerminal = (v: string) => {
-    setTerminal(v);
-    if (typeof window !== "undefined") window.localStorage.setItem("stookii_pos_terminal", v);
-  };
   // Held (parked) orders — per till, kept on the device so Hold/Resume works
   // offline. Loaded once the till id is known; refreshed whenever it changes.
   const [held, setHeld] = useState<HeldOrder<Record<string, CartLine>>[]>([]);
@@ -1368,33 +1365,34 @@ export default function PosPage() {
               {/* Pickup number — the cashier flips this on for orders the
                   customer waits for. The number is issued by the server on
                   payment, shared across every till. */}
-              <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setWantQueue((v) => !v)}
-                  className="flex items-center gap-2"
-                  aria-pressed={wantQueue}
+              {/* Label left, switch RIGHT — the usual shape for a setting row,
+                  and it puts the switch where the till badge used to sit rather
+                  than leaving the row lopsided with everything bunched left.
+                  The whole row is the tap target, which matters on a touch till.
+
+                  (No till name here any more: it used to be an editable box that
+                  let a cashier move this device onto another till's books
+                  mid-shift. That control is now owner-only in the till menu, and
+                  the header already says which till this is.) */}
+              <button
+                type="button"
+                onClick={() => setWantQueue((v) => !v)}
+                aria-pressed={wantQueue}
+                className="flex w-full items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition hover:bg-slate-100"
+              >
+                <span className="text-[13px] font-semibold text-ink-800">Pickup number</span>
+                <span
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
+                    wantQueue ? "bg-brand-600" : "bg-slate-300"
+                  }`}
                 >
                   <span
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                      wantQueue ? "bg-brand-600" : "bg-slate-300"
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                      wantQueue ? "translate-x-4" : "translate-x-0.5"
                     }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                        wantQueue ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </span>
-                  <span className="text-[13px] font-semibold text-ink-800">Pickup number</span>
-                </button>
-                <input
-                  value={terminal}
-                  onChange={(e) => saveTerminal(e.target.value)}
-                  title="This till's name — saved on this device"
-                  className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-xs font-semibold text-ink-800 outline-none focus:border-brand-400"
-                />
-              </div>
+                  />
+                </span>
+              </button>
 
               <div>
                 <label className="label">Payment</label>
@@ -2093,11 +2091,15 @@ function CashModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm" onClick={busy ? undefined : onCancel} />
-      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-6 shadow-soft">
+      {/* Wide, not tall. A cash dialog on a touch till is read at arm's length
+          while the cashier is looking at the customer's hand, so the figures and
+          the note chips get real size — and the two currencies sit side by side
+          rather than stacking into a column that pushes Confirm off the screen. */}
+      <div className="relative z-10 max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-8 shadow-soft">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-ink-900">Cash payment</h3>
-            <p className="text-sm text-slate-500">Count what the customer gives you</p>
+            <h3 className="text-2xl font-bold text-ink-900">Cash payment</h3>
+            <p className="text-base text-slate-500">Count what the customer gives you</p>
           </div>
           <button
             onClick={onCancel}
@@ -2109,17 +2111,17 @@ function CashModal({
           </button>
         </div>
 
-        <div className="mb-4 rounded-xl bg-slate-50 px-4 py-3">
+        <div className="mb-5 rounded-2xl bg-slate-50 px-5 py-4">
           <div className="flex items-baseline justify-between">
-            <span className="text-sm font-semibold text-slate-500">Amount due</span>
+            <span className="text-base font-semibold text-slate-500">Amount due</span>
             <span className="text-right">
-              <span className="block text-xl font-extrabold text-ink-900">{usd(total)}</span>
-              <span className="block text-[11px] text-slate-400">{rielDue(total)}</span>
+              <span className="block text-4xl font-extrabold text-ink-900">{usd(total)}</span>
+              <span className="block text-sm text-slate-400">{rielDue(total)}</span>
             </span>
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="grid gap-6 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="cash-usd">
               Received — US$
@@ -2127,7 +2129,7 @@ function CashModal({
             <input
               id="cash-usd"
               ref={inputRef}
-              className="input text-lg font-bold"
+              className="input h-16 text-3xl font-bold"
               type="number"
               inputMode="decimal"
               min={0}
@@ -2137,13 +2139,13 @@ function CashModal({
               onChange={(e) => setUsdIn(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && confirm()}
             />
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={() => {
                   setUsdIn(total.toFixed(2));
                   setRielIn("");
                 }}
-                className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                className="rounded-xl bg-slate-100 px-5 py-3 text-base font-bold text-slate-600 hover:bg-slate-200"
               >
                 Exact
               </button>
@@ -2151,7 +2153,7 @@ function CashModal({
                 <button
                   key={n}
                   onClick={() => setUsdIn(String(n))}
-                  className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                  className="rounded-xl bg-slate-100 px-5 py-3 text-base font-bold text-slate-600 hover:bg-slate-200"
                 >
                   ${n}
                 </button>
@@ -2165,7 +2167,7 @@ function CashModal({
             </label>
             <input
               id="cash-riel"
-              className="input text-lg font-bold"
+              className="input h-16 text-3xl font-bold"
               type="number"
               inputMode="numeric"
               min={0}
@@ -2180,7 +2182,7 @@ function CashModal({
                 <button
                   key={n}
                   onClick={() => setRielIn(String((Number(rielIn) || 0) + n))}
-                  className="rounded-lg bg-slate-100 px-2.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200"
+                  className="rounded-xl bg-slate-100 px-4 py-3 text-base font-bold text-slate-600 hover:bg-slate-200"
                 >
                   +{num(n)}
                 </button>
@@ -2191,26 +2193,26 @@ function CashModal({
 
         {/* Change / shortfall — the whole reason this screen exists */}
         <div
-          className={`mt-4 rounded-xl px-4 py-3 ${
+          className={`mt-5 rounded-2xl px-5 py-4 ${
             !touched ? "bg-slate-50" : enough ? "bg-emerald-50" : "bg-amber-50"
           }`}
         >
           {!touched ? (
-            <p className="text-center text-sm text-slate-400">Enter the cash received</p>
+            <p className="text-center text-base text-slate-400">Enter the cash received</p>
           ) : enough ? (
             <div className="flex items-baseline justify-between">
-              <span className="text-sm font-bold text-emerald-700">Change</span>
+              <span className="text-base font-bold text-emerald-700">Change</span>
               <span className="text-right">
-                <span className="block text-2xl font-extrabold text-emerald-700">{usd(change)}</span>
-                <span className="block text-[11px] font-semibold text-emerald-600">{riel(change)}</span>
+                <span className="block text-5xl font-extrabold text-emerald-700">{usd(change)}</span>
+                <span className="block text-sm font-semibold text-emerald-600">{riel(change)}</span>
               </span>
             </div>
           ) : (
             <div className="flex items-baseline justify-between">
-              <span className="text-sm font-bold text-amber-700">Still short</span>
+              <span className="text-base font-bold text-amber-700">Still short</span>
               <span className="text-right">
-                <span className="block text-xl font-extrabold text-amber-700">{usd(short)}</span>
-                <span className="block text-[11px] font-semibold text-amber-600">{riel(short)}</span>
+                <span className="block text-4xl font-extrabold text-amber-700">{usd(short)}</span>
+                <span className="block text-sm font-semibold text-amber-600">{riel(short)}</span>
               </span>
             </div>
           )}
@@ -2222,7 +2224,7 @@ function CashModal({
           )}
         </div>
 
-        <button onClick={confirm} disabled={!enough || busy} className="btn-primary mt-4 w-full py-3 text-base">
+        <button onClick={confirm} disabled={!enough || busy} className="btn-primary mt-5 w-full py-5 text-xl">
           {busy ? "Processing…" : enough ? `Confirm · change ${usd(change)}` : "Confirm"}
         </button>
       </div>

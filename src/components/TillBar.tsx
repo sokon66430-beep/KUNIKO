@@ -7,15 +7,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon } from "lucide-react";
+import { Lock, LogOut, Unlock, ChevronDown, CircleDot, UserRound, Delete, KeyRound, Sun, Moon, MonitorCog } from "lucide-react";
 import { useFetch } from "@/lib/client";
 import { useTheme } from "@/components/theme";
 import { useTillMode } from "@/lib/tillmode";
 import { ManagerGate } from "@/components/ManagerGate";
 import { Modal } from "@/components/ui";
+import { PosShiftModal } from "@/components/PosShiftModal";
+import { nextShiftName } from "@/components/shift";
 
 type SessionInfo = { user: { name: string; storeName: string; role?: string } };
-type ShiftsData = { shifts: { posTerminalId: string; status: string; shift: string }[] };
+type BusinessInfo = { posTerminals?: string[] };
+type ShiftsData = { shifts: { posTerminalId: string; status: string; shift: string; openedAt: string }[] };
 
 export function TillBar() {
   const router = useRouter();
@@ -23,6 +26,9 @@ export function TillBar() {
   const { theme, toggle } = useTheme();
   const { data: session } = useFetch<SessionInfo>("/api/auth/session");
   const { data: shiftData } = useFetch<ShiftsData>("/api/shifts");
+  const { data: biz } = useFetch<BusinessInfo>("/api/business");
+  // The tills this store runs, named once in Store Settings.
+  const terminals = biz?.posTerminals?.length ? biz.posTerminals : ["POS 1", "POS 2", "POS 3"];
 
   const [terminal, setTerminal] = useState("POS 1");
   useEffect(() => {
@@ -30,7 +36,19 @@ export function TillBar() {
     if (saved) setTerminal(saved);
   }, []);
 
-  const openShift = (shiftData?.shifts || []).find((s) => s.posTerminalId === terminal && s.status === "open");
+  const allShifts = shiftData?.shifts || [];
+  const openShift = allShifts.find((s) => s.posTerminalId === terminal && s.status === "open");
+  // Which shift comes next on THIS till (A→B→C→A).
+  //
+  // Closing A does NOT open B by itself, and shouldn't: a shift starts by
+  // counting its opening float, and starting one on an uncounted drawer would
+  // make every over/short figure on that shift wrong. So the bar names the next
+  // shift and opens the count in one tap — instead of saying "No shift" and
+  // leaving the cashier to go looking for where to start it.
+  const upNext = nextShiftName(allShifts as any, terminal);
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [tillGate, setTillGate] = useState(false);
+  const [tillPick, setTillPick] = useState(false);
 
   // Live wall clock for the till header — refreshes every second.
   const [now, setNow] = useState<Date | null>(null);
@@ -79,9 +97,12 @@ export function TillBar() {
               <CircleDot size={12} /> Shift {openShift.shift}
             </span>
           ) : (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-              No shift
-            </span>
+            <button
+              onClick={() => setShiftOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800 transition hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-300"
+            >
+              Open Shift {upNext}
+            </button>
           )}
         </div>
 
@@ -125,6 +146,21 @@ export function TillBar() {
               >
                 <LogOut size={16} className="text-slate-400" /> Log out
               </button>
+              {/* Which till this device IS — OWNER ONLY, and not even shown to
+                  anyone else. Every sale, drawer count and cash movement is
+                  filed under this name, so changing it moves this device's money
+                  onto another till's books. It is set once when the device is
+                  installed; a cashier or a manager on shift never needs it, and
+                  a control they can see is a control they will eventually try. */}
+              {session?.user.role === "owner" && (
+                <button
+                  onClick={() => { setMenuOpen(false); setTillGate(true); }}
+                  className="flex w-full items-center gap-2.5 border-t border-slate-100 px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <MonitorCog size={16} className="text-slate-400" /> Set this till
+                  <span className="ml-auto text-xs font-bold text-slate-400">{terminal}</span>
+                </button>
+              )}
               {/* A kiosk device is permanently a till — no exit, even for the
                   owner. And on any till, ONLY the owner even sees the exit:
                   staff signed into the POS can't leave Till Mode at all. */}
@@ -141,6 +177,56 @@ export function TillBar() {
           </div>
         </div>
       </header>
+      {shiftOpen && <PosShiftModal terminal={terminal} onClose={() => setShiftOpen(false)} />}
+
+      {/* Manager code first, then the picker. Two steps on purpose: the code is
+          what stops a cashier reassigning the till, and the picker is what stops
+          them mistyping a name that doesn't exist. */}
+      {tillGate && (
+        <ManagerGate
+          title="Set this till"
+          hint="Which till is this device? Every sale and drawer count is filed under it, so only the owner can change it."
+          actionLabel="Continue"
+          // ownerOnly, to match who can even see the menu item. A manager code
+          // must NOT open this: hiding the button from managers while still
+          // accepting their code would be a lock with the key left in it.
+          ownerOnly
+          codeLabel="Owner password"
+          onClose={() => setTillGate(false)}
+          onOk={() => { setTillGate(false); setTillPick(true); }}
+        />
+      )}
+      {tillPick && (
+        <Modal open onClose={() => setTillPick(false)} title="Which till is this device?">
+          <p className="mb-3 text-[13px] text-slate-500">
+            Set this once when the device is installed. The list comes from Store Settings.
+          </p>
+          <div className="grid gap-2">
+            {(terminals.includes(terminal) ? terminals : [terminal, ...terminals]).map((t) => (
+              <button
+                key={t}
+                onClick={() => {
+                  window.localStorage.setItem("stookii_pos_terminal", t);
+                  setTerminal(t);
+                  setTillPick(false);
+                  // Held orders, the open shift and the drawer are all keyed to
+                  // the till, so reload rather than leave half the screen on the
+                  // old one.
+                  window.location.reload();
+                }}
+                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${
+                  t === terminal
+                    ? "border-brand-300 bg-brand-50 text-brand-700"
+                    : "border-slate-200 text-ink-900 hover:bg-slate-50"
+                }`}
+              >
+                {t}
+                {t === terminal && <span className="text-xs font-semibold text-brand-600">This device</span>}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {gate && (
         <ManagerGate
