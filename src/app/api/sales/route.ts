@@ -391,6 +391,9 @@ export async function POST(req: Request) {
       cashUsd,
       cashRiel,
       createdAt: now,
+      // From the session, not the request body — the receipt's "who served you"
+      // has to be an audit fact, not something a till could claim.
+      cashier: actor,
     };
 
     // Money management: attribute the sale to the till and its OPEN shift, so a

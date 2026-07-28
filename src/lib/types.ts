@@ -485,6 +485,11 @@ export type PromotionSettings = {
 // optional; sensible defaults apply when unset.
 export type ReceiptAccent = "brand" | "emerald" | "violet" | "amber" | "rose" | "ink";
 export type ReceiptSettings = {
+  // The document title under the store's address, e.g.
+  // "វិក្កយបត្រ / COMMERCIAL INVOICE". Owner-editable because what a slip must
+  // be CALLED is a tax question, not a design one — and the answer differs by
+  // what the store is registered as.
+  invoiceTitle?: string;
   headerNote?: string; // a welcome line under the store name
   footerNote?: string; // a thank-you line at the very bottom
   showLogo?: boolean; // print the store logo on top
@@ -559,6 +564,10 @@ export type Sale = {
   // route. Cash sales for a shift's drawer are the ones carrying its shiftId.
   posTerminalId?: string;
   shiftId?: string;
+  // Who rang it up. Stamped server-side from the session (never trusted from the
+  // client) so the printed slip — and a reprint months later — says who served
+  // the customer, not whoever happens to be logged in when it is reprinted.
+  cashier?: string;
   // A voided invoice. The sale row is KEPT for the audit trail but excluded from
   // revenue, the drawer and reports; the stock it moved is put back and any
   // loyalty it earned is reversed. See /api/sales/[id]/cancel.
@@ -1184,6 +1193,14 @@ export type DB = {
       vatRate: number; // e.g. 0.10
       address: string;
       phone: string;
+      // The Khmer identity printed on the customer receipt. A Cambodian tax
+      // invoice is expected to carry the trading name, the VAT registration
+      // number and the address in Khmer — an English-only slip is not a valid
+      // commercial invoice here. Kept separate from the English fields (which
+      // the POs and back-office use) rather than replacing them.
+      nameKhmer?: string;
+      vatTin?: string; // VAT registration number, e.g. "L001-901503056"
+      addressKhmer?: string[]; // address lines in Khmer, printed under the name
       logo?: string; // data-URL logo printed top-left on the PO
       // Purchase-order header defaults (match the ON Mart PO format)
       branch: string;

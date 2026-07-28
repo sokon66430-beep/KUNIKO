@@ -15,15 +15,27 @@ import { rielShelfPrice } from "./format";
 export type ReceiptLine = {
   name: string;
   qtyLabel: string; // "2 × Case" or "3"
+  price: number; // USD, per unit sold — the "Price" column
   lineTotal: number; // USD
   lineRiel: number; // KHR, rounded up to the nearest 100 (shelf-price rounding)
 };
 
 export type ReceiptPayload = {
-  store: { name: string; address?: string; phone?: string };
+  // The store's identity, in both scripts. A Cambodian commercial invoice is
+  // headed in Khmer — the trading name, the VAT registration number and the
+  // address — so those travel alongside the English ones the back office uses.
+  store: {
+    name: string;
+    nameKhmer?: string;
+    vatTin?: string;
+    addressKhmer?: string[];
+    address?: string;
+    phone?: string;
+  };
   invoiceNo: string;
   dateTime: string; // already formatted for the shop
-  cashier?: string;
+  cashier?: string; // who served the customer
+  till?: string; // which till rang it up ("POS 1")
   items: ReceiptLine[];
   // Promotion lines, mirrored from the on-screen receipt (name + amount off).
   promotions?: { name: string; detail?: string; discount: number }[];
@@ -35,12 +47,25 @@ export type ReceiptPayload = {
   payment: string;
   tendered?: number;
   change?: number;
+  // Cash split by currency, so the slip can say what the customer actually
+  // handed over ("Received (KHR) ៛2,000") rather than a converted figure.
+  receivedUsd?: number;
+  receivedRiel?: number;
+  changeRiel?: number;
+  exchangeRate?: number; // KHR per US$1, printed in the footer note
   customer?: string;
   queueNumber?: number | null;
+  // The full pickup code ("A001") — what the TV calls the customer by. The paper
+  // must say the same thing as the board, so send the code and let the bare
+  // number stay only as a fallback for a sale rung up before codes existed.
+  queueCode?: string;
   // Invoice Customization — the printed receipt follows the same design the
   // owner set on the Invoice Customization screen, exactly like the on-screen
   // receipt does.
   logo?: string; // data-URL image, printed at the top (when Show logo is on)
+  // Sent only when the owner has set one. Absent = the printer uses its
+  // standard title; present-but-empty = print no title at all.
+  invoiceTitle?: string;
   headerNote?: string;
   footerNote?: string;
   showVat?: boolean; // false (the screen default) = just the total + "Includes VAT x%"
@@ -92,11 +117,16 @@ export function buildReceiptPayload(
   business:
     | {
         name?: string;
+        nameKhmer?: string;
+        vatTin?: string;
+        addressKhmer?: string[];
         address?: string;
         phone?: string;
         logo?: string;
         vatRate?: number;
+        exchangeRate?: number;
         receipt?: {
+          invoiceTitle?: string;
           headerNote?: string;
           footerNote?: string;
           showLogo?: boolean;
@@ -111,7 +141,10 @@ export function buildReceiptPayload(
     const lineTotal = round2(it.price * it.qty);
     return {
       name: it.name,
-      qtyLabel: it.unitName ? `${it.unitQty} × ${it.unitName}` : `${it.qty}`,
+      // The Price column shows what ONE of the thing sold costs, so a case line
+      // prices the case — the qty column already says how many.
+      price: round2(it.unitName && it.unitQty ? lineTotal / it.unitQty : it.price),
+      qtyLabel: it.unitName ? `x${it.unitQty} ${it.unitName}` : `x${it.qty}`,
       lineTotal,
       lineRiel: rielShelfPrice(lineTotal),
     };
@@ -124,10 +157,28 @@ export function buildReceiptPayload(
     detail: p.detail || undefined,
     discount: round2(p.discount || 0),
   }));
+  const rate = business?.exchangeRate || 4100;
+  const change = sale.change != null ? round2(sale.change) : undefined;
+  // What the customer physically handed over, per currency. The sale records the
+  // riel notes it took (cashRiel) and the NET dollars after change (cashUsd), so
+  // the dollars received are the net plus whatever went back.
+  const receivedRiel = sale.cashRiel != null ? Math.max(0, Math.round(sale.cashRiel)) : undefined;
+  const receivedUsd = sale.cashUsd != null ? round2(sale.cashUsd + (change || 0)) : undefined;
   return {
-    store: { name: business?.name || "Stookii", address: business?.address, phone: business?.phone },
+    store: {
+      name: business?.name || "Stookii",
+      nameKhmer: business?.nameKhmer || undefined,
+      vatTin: business?.vatTin || undefined,
+      addressKhmer: business?.addressKhmer?.filter(Boolean),
+      address: business?.address,
+      phone: business?.phone,
+    },
     invoiceNo: sale.invoiceNo || sale.id,
     dateTime: opts.dateTime,
+    // Both stamped on the sale itself, so a reprint names the till and the
+    // person who actually served the customer — not today's device and operator.
+    cashier: sale.cashier || undefined,
+    till: sale.posTerminalId || undefined,
     items,
     promotions: promotions.length ? promotions : undefined,
     discount: round2(sale.discount || 0),
@@ -138,10 +189,20 @@ export function buildReceiptPayload(
     totalRiel: rielShelfPrice(round2(sale.total || 0)),
     payment: sale.paymentMethod,
     tendered: sale.tendered != null ? round2(sale.tendered) : undefined,
-    change: sale.change != null ? round2(sale.change) : undefined,
+    change,
+    receivedUsd,
+    receivedRiel,
+    // Change always goes back in dollars at this till, so the riel change line
+    // only appears if that ever changes.
+    changeRiel: undefined,
+    exchangeRate: rate,
     customer: sale.customerName || undefined,
     queueNumber: sale.queueNumber ?? null,
+    queueCode: sale.queueCode || undefined,
     logo: r.showLogo && business?.logo ? business.logo : undefined,
+    // Sent only when the owner has actually set one, so the printer can tell
+    // "never configured" (use the standard title) from "deliberately blank".
+    invoiceTitle: r.invoiceTitle,
     headerNote: r.headerNote || undefined,
     footerNote: r.footerNote || opts.footerNote,
     showVat: !!r.showVat, // screen default: off

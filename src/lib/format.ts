@@ -81,6 +81,19 @@ export function dateTime(iso: string): string {
   });
 }
 
+// The date printed on a commercial invoice: "28 Jul 2026, 08:25 AM".
+//
+// Short enough to sit on ONE line of the slip. Spelling out the weekday and the
+// month wrapped onto a second line and pushed the rest of the header down for no
+// gain — nobody checks a receipt by its day of the week. The year stays: it is a
+// tax document that may be read a long time from now.
+export function invoiceDateTime(iso: string): string {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return `${day}, ${time}`;
+}
+
 export function timeOnly(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", {
     hour: "2-digit",

@@ -35,6 +35,7 @@ import {
   PauseCircle,
   PlayCircle,
   Clock,
+  WifiOff,
 } from "lucide-react";
 import { useFetch, api, useAccess } from "@/lib/client";
 import { useTillMode } from "@/lib/tillmode";
@@ -42,7 +43,7 @@ import { ManagerGate } from "@/components/ManagerGate";
 import type { Product, Customer, Sale, PaymentMethod, Markdown } from "@/lib/types";
 import { isMarkdownCode, isSellable, markdownStatus, storeToday } from "@/lib/markdowns";
 import { PageHeader, Spinner, ErrorBox, Badge } from "@/components/ui";
-import { usd, riel, rielDue, num, EXCHANGE_RATE, dateTime } from "@/lib/format";
+import { usd, riel, rielDue, num, EXCHANGE_RATE, dateTime, invoiceDateTime } from "@/lib/format";
 import { publishCustomerDisplay } from "@/lib/customerDisplay";
 import { loadHeld, saveHeld, type HeldOrder } from "@/lib/heldOrders";
 import { SearchSelect } from "@/components/SearchSelect";
@@ -1041,6 +1042,18 @@ export default function PosPage() {
             )
           ) : loading ? (
             <Spinner label="Loading products…" />
+          ) : error && !products ? (
+            /* The catalogue could not be fetched. Say so plainly, with a way back:
+               an empty grid here reads as "this store has no products", which
+               sends the cashier hunting for a problem that is not there. */
+            <div className="py-16 text-center">
+              <WifiOff className="mx-auto mb-2 text-rose-300" size={26} />
+              <p className="text-sm font-semibold text-slate-600">Could not load the products</p>
+              <p className="mx-auto mt-1 max-w-xs text-xs text-slate-400">{error}</p>
+              <button onClick={reload} className="btn-primary mt-4 px-5 py-2.5 text-sm">
+                Try again
+              </button>
+            </div>
           ) : directSaleCount === 0 ? (
             <div className="py-16 text-center">
               <ScanLine className="mx-auto mb-2 text-slate-300" size={26} />
@@ -1784,7 +1797,7 @@ function ReceiptModal({ sale, business, onClose }: { sale: Sale; business?: Rece
   const thermal = hasThermalPrinter();
   function printReceipt() {
     const payload = buildReceiptPayload(sale, business, {
-      dateTime: dateTime(sale.createdAt),
+      dateTime: invoiceDateTime(sale.createdAt),
       rielTotal: Math.round((sale.total || 0) * EXCHANGE_RATE),
       footerNote: (business as any)?.receipt?.footerNote,
     });

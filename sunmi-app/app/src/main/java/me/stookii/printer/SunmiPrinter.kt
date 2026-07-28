@@ -75,12 +75,6 @@ class SunmiPrinter(private val context: Context) {
     // by raw ESC/POS bytes, the same way Sunmi's own helpers do it.
     private val CUT = byteArrayOf(0x1D, 0x56, 0x42, 0x00) // GS V B 0 — feed + full cut
     private val KICK = byteArrayOf(0x10, 0x14, 0x00, 0x00, 0x00) // DLE DC4 — drawer pulse
-    // ESC E n — emphasised (bold) on/off. Used for the total instead of a bigger
-    // font: enlarging changes the character width, so a padded line stops lining
-    // up with the columns above it. Bold is the same width and still reads as
-    // "this is the figure that matters".
-    private val BOLD_ON = byteArrayOf(0x1B, 0x45, 0x01)
-    private val BOLD_OFF = byteArrayOf(0x1B, 0x45, 0x00)
 
     private fun cut(s: IWoyouService) = s.sendRAWData(CUT, cb)
     private fun kick(s: IWoyouService) = s.sendRAWData(KICK, cb)
@@ -88,135 +82,31 @@ class SunmiPrinter(private val context: Context) {
     fun openDrawer() = run { kick(it) }
 
     /**
-     * Render + print the receipt described by the JSON payload from Stookii.
-     * Follows the store's Invoice Customization: logo, header note, whether the
-     * VAT breakdown and pickup number print, and the footer note — the same
-     * design rules as the on-screen receipt.
+     * Print the customer receipt described by the JSON payload from Stookii.
+     * The layout lives in ReceiptCanvas; this only decodes the logo, hands the
+     * rendered image to the head, cuts, and pops the drawer on a cash sale.
+     *
+     * A render failure prints nothing rather than half a receipt — the sale is
+     * already recorded, and a torn-off fragment is worse than no slip.
      */
     fun printReceipt(json: String) = run { s ->
         val r = JSONObject(json)
-        val store = r.optJSONObject("store") ?: JSONObject()
-
-        s.setAlignment(1, cb) // centre
-        // Store logo (a data-URL image) at the top, when the owner turned it on.
-        r.optString("logo").takeIf { it.isNotBlank() }?.let { dataUrl ->
-            decodeLogo(dataUrl)?.let { bmp ->
-                try {
-                    s.printBitmap(bmp, cb)
-                    s.printText("\n", cb)
-                } catch (_: Exception) {
-                }
-            }
+        // The whole slip is drawn as one image and sent in a single call — see
+        // ReceiptCanvas for why (Khmer needs real text shaping, which a thermal
+        // head's built-in font cannot do).
+        val logo = r.optString("logo").takeIf { it.isNotBlank() }?.let { decodeLogo(it) }
+        val bmp = try {
+            ReceiptCanvas.render(r, logo)
+        } catch (_: Exception) {
+            null
         }
-        s.printTextWithFont((store.optString("name", "Stookii") + "\n"), null, 32f, cb)
-        s.setFontSize(BODY, cb)
-        store.optString("address").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
-        store.optString("phone").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
-        r.optString("headerNote").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
-
-        s.setAlignment(0, cb) // left
-        s.printText(divider(), cb)
-        s.printText("Invoice: " + r.optString("invoiceNo") + "\n", cb)
-        s.printText(r.optString("dateTime") + "\n", cb)
-        r.optString("cashier").takeIf { it.isNotBlank() }?.let { s.printText("Cashier: $it\n", cb) }
-        s.printText(divider(), cb)
-
-        // Items — name on the left, line total on the right. Built as manually
-        // space-padded single strings and printed with printText — NOT
-        // printColumnsString, whose AIDL slot silently drops every two-column
-        // line on this T3 (items + totals vanished from the printed slip).
-        // Column headings ABOVE the rule, so the rule separates the headings from
-        // the items the way a table does. Printed in the SAME fields the rows use,
-        // so "USD" sits over the dollar column and "Riel" over the riel one —
-        // without them a customer reading two money columns has to work out which
-        // is which.
-        val items = r.optJSONArray("items")
-        if (items != null && items.length() > 0) {
-            s.printText(col3("QTY  Product", "USD", "Riel"), cb)
-            s.printText(divider(), cb)
-        }
-        if (items != null) for (i in 0 until items.length()) {
-            val it = items.getJSONObject(i)
-            val name = it.optString("name")
-            val qty = it.optString("qtyLabel")
-            val amt = usd(it.optDouble("lineTotal"))
-            val amtR = khrCol(it.optLong("lineRiel"))
-            // Three columns: qty+name (left), USD, then riel — both right-aligned
-            // in fixed fields so every row's $ and R line up.
-            s.printText(col3("$qty  $name", amt, amtR), cb)
-        }
-
-        // Promotion lines — name on the left, amount off on the right.
-        val promos = r.optJSONArray("promotions")
-        if (promos != null && promos.length() > 0) {
-            s.printText(divider(), cb)
-            for (i in 0 until promos.length()) {
-                val p = promos.getJSONObject(i)
-                s.printText(col2(p.optString("name"), "-" + usd(p.optDouble("discount"))), cb)
-            }
-        }
-        s.printText(divider(), cb)
-
-        val discount = r.optDouble("discount", 0.0)
-        if (discount > 0) row(s, "Discount", "-" + usd(discount))
-        // The VAT breakdown only prints when Invoice Customization says so; the
-        // default design is just the total with an "Includes VAT x%" note.
-        val showVat = r.optBoolean("showVat", false)
-        if (showVat) {
-            row(s, "Subtotal (ex VAT)", usd(r.optDouble("subtotal")))
-            row(s, "VAT", usd(r.optDouble("vat")))
-        }
-        // TOTAL — the word on the LEFT, the dollar figure hard against the RIGHT
-        // edge of the paper, with the riel total beneath it:
-        //
-        //   Total                                      $5.40
-        //   Prices include VAT 10%                   22,300R
-        //
-        // It used to be one centred line carrying both currencies, which lined
-        // up with nothing above it and left the customer matching figures by eye.
-        //
-        // col2, not col3: col2 pushes the value to the paper edge, which is
-        // where the total belongs — it is a summary, not another row in the
-        // items table, and hard right is where an eye scanning down a receipt
-        // expects the number it has to pay.
-        //
-        // Bold rather than enlarged: see BOLD_ON.
-        val pct = r.optInt("vatPct", 10)
-        s.sendRAWData(BOLD_ON, cb)
-        s.printText(col2("Total", usd(r.optDouble("total"))), cb)
-        s.sendRAWData(BOLD_OFF, cb)
-        // The riel total rides on the VAT note rather than taking a line of its
-        // own, and both are printed SMALL — a quiet footnote under the total,
-        // not a second headline.
-        //
-        // A smaller font fits more characters per line, so the 48-column helpers
-        // would leave the riel stranded mid-paper. SMALLW is that width scaled
-        // by the font ratio; it is an estimate of the head's character pitch
-        // rather than something the API reports, so treat it as "close to the
-        // right edge", not to-the-pixel flush.
-        s.setFontSize(SMALL, cb)
-        s.printText(
-            pad2(if (showVat) "" else "Include VAT $pct%", khrCol(r.optLong("totalRiel")), SMALLW),
-            cb,
-        )
-        s.setFontSize(BODY, cb)
-
-        s.printText(divider(), cb)
-        row(s, "Paid by", r.optString("payment"))
-        if (!r.isNull("tendered")) row(s, "Cash received", usd(r.optDouble("tendered")))
-        if (!r.isNull("change")) row(s, "Change", usd(r.optDouble("change")))
-        r.optString("customer").takeIf { it.isNotBlank() }?.let { row(s, "Customer", it) }
-
-        if (!r.isNull("queueNumber") && r.optBoolean("showPickup", true)) {
-            s.printText("\n", cb)
-            s.setAlignment(1, cb)
-            s.printText("PICKUP NUMBER\n", cb)
-            s.printTextWithFont(pad3(r.optInt("queueNumber")) + "\n", null, 48f, cb)
-        }
-
         s.setAlignment(1, cb)
-        r.optString("footerNote").takeIf { it.isNotBlank() }?.let { s.printText(it + "\n", cb) }
-        s.printText("Thank you!\n", cb)
+        if (bmp != null) {
+            try {
+                s.printBitmap(bmp, cb)
+            } catch (_: Exception) {
+            }
+        }
         s.lineWrap(2, cb)
         cut(s)
 
@@ -234,8 +124,12 @@ class SunmiPrinter(private val context: Context) {
             if (b64.isBlank()) return null
             val bytes = Base64.decode(b64, Base64.DEFAULT)
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            // 384 dots is the classic 58mm head; scale down only, never up.
-            val maxW = 360
+            // The head is 576 dots wide (80mm). A logo printed anywhere near that
+            // dominates the slip — the ON MART mark was taller than the whole
+            // items table. 200 dots is roughly a third of the paper: a mark, not
+            // a poster. Scale down only, never up (blowing a small logo up just
+            // prints its pixels).
+            val maxW = 200
             if (bmp.width <= maxW) bmp
             else Bitmap.createScaledBitmap(bmp, maxW, (bmp.height.toLong() * maxW / bmp.width).toInt().coerceAtLeast(1), true)
         } catch (_: Exception) {
@@ -269,7 +163,7 @@ class SunmiPrinter(private val context: Context) {
                 "hr" -> s.printText(divider(), cb)
                 // Section heading — no blank line before it (the divider above
                 // already separates sections) to save paper.
-                "sec" -> s.printText(ln.optString("a") + "\n", cb)
+                "sec" -> s.printText(line(ln.optString("a")), cb)
                 // Every data row prints at the one BODY font so the value column
                 // lines up on every row. (The old `big` rows jumped to a larger
                 // font, which pushed their values out of the column.)
@@ -279,10 +173,10 @@ class SunmiPrinter(private val context: Context) {
                     s.printText(ln.optString("a") + "\n", cb)
                     s.setAlignment(0, cb)
                 }
-                "left" -> s.printText(ln.optString("a") + "\n", cb)
+                "left" -> s.printText(line(ln.optString("a")), cb)
                 // Signature line — no blank line before it; the label + underscores
                 // are one line you sign on, so consecutive lines are fine.
-                "sig" -> s.printText(ln.optString("a") + ": ______________\n", cb)
+                "sig" -> s.printText(line(ln.optString("a") + ": ______________"), cb)
             }
         }
 
@@ -296,19 +190,22 @@ class SunmiPrinter(private val context: Context) {
         s.printText(col2(label, value), cb)
     }
 
-    // This 80mm head prints ~48 monospace chars per line at the body font size
-    // (the store's full address fills one line). Build a two-column line by
-    // padding the gap between label and value so the value sits flush right —
-    // reliable printText, no printColumnsString.
-    private val BODY = 22f
-    private val WIDTH = 48
-    // The footnote size, and how many of ITS characters fit on the same paper.
-    // Derived from the font ratio (48 × 22 ÷ 17 ≈ 62) because the service does
-    // not report a character pitch — so it is an estimate, good enough to park a
-    // figure near the right edge, not a guarantee of flush alignment.
-    private val SMALL = 17f
-    private val SMALLW = 62
-    private fun col2(left: String, right: String): String = pad2(left, right, WIDTH)
+    // Cash/till SLIPS still print as printer text: they are internal documents in
+    // English only, so they don't need the bitmap treatment the customer receipt
+    // gets, and text prints faster.
+    //
+    // This 80mm head prints ~48 monospace chars per line at the body font size.
+    // Build a two-column line by padding the gap between label and value so the
+    // value sits flush right — reliable printText, no printColumnsString.
+    private val PAPER = 48
+    // Content is inset from BOTH paper edges instead of running into them: the
+    // slip reads as a page with margins rather than text bleeding off the sides,
+    // and a slightly-off cut or a worn head never clips a figure. Everything —
+    // rules included — is built at WIDTH and printed behind MARGIN, so the whole
+    // body shares one left edge and one right edge.
+    private val MARGIN = "  "
+    private val WIDTH = PAPER - MARGIN.length * 2
+    private fun col2(left: String, right: String): String = MARGIN + pad2(left, right, WIDTH)
 
     /** Left text, right text, padded apart to fill `width` characters. */
     private fun pad2(left: String, right: String, width: Int): String {
@@ -318,21 +215,8 @@ class SunmiPrinter(private val context: Context) {
         return l + " ".repeat(gap) + right + "\n"
     }
 
-    // Three columns: left (name) fills the remainder, then a USD field and a riel
-    // field, each right-aligned to a fixed width so the $ and R columns line up
-    // on every row.
-    private val USDW = 7
-    private val RIELW = 9
-    private fun col3(left: String, mid: String, right: String): String {
-        // The USD and riel columns keep a minimum width for alignment, but grow
-        // to fit an unusually large amount — the NAME gives up space (truncates)
-        // so the line can never exceed WIDTH and wrap onto a second row.
-        val midW = maxOf(USDW, mid.length)
-        val rightW = maxOf(RIELW, right.length)
-        val leftMax = (WIDTH - midW - rightW).coerceAtLeast(6)
-        val l = if (left.length > leftMax) left.substring(0, leftMax) else left
-        return l.padEnd(leftMax) + mid.padStart(midW) + right.padStart(rightW) + "\n"
-    }
+    /** A plain left-aligned body line, sharing the margin with everything else. */
+    private fun line(text: String) = MARGIN + text + "\n"
 
     // A CONTINUOUS rule, not a row of dashes. U+2500 (─) is a box-drawing
     // character whose glyph spans the full character cell, so repeating it
@@ -343,9 +227,5 @@ class SunmiPrinter(private val context: Context) {
     // this renders. If a future printer ever prints boxes instead, "_" is the
     // safe ASCII fallback — it also joins into a solid line, just at the
     // baseline rather than mid-height.
-    private fun divider() = "─".repeat(WIDTH) + "\n"
-    private fun usd(v: Double) = "$" + String.format("%.2f", v)
-    // Compact riel for the printed columns (e.g. "27,900R").
-    private fun khrCol(v: Long) = String.format("%,d", v) + "R"
-    private fun pad3(n: Int) = n.toString().padStart(3, '0')
+    private fun divider() = MARGIN + "─".repeat(WIDTH) + "\n"
 }

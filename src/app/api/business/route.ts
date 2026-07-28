@@ -8,8 +8,19 @@ import { BOARD_FONT_IDS, DEFAULT_BOARD_FONT } from "@/lib/boardFonts";
 export const dynamic = "force-dynamic";
 
 // Store profile = the current store's business meta.
-const TEXT_FIELDS = ["name", "address", "phone", "branch", "shipTo", "receivedBy", "authorizedBy"] as const;
-const LIST_FIELDS = ["invoiceTo", "poNotes"] as const;
+const TEXT_FIELDS = [
+  "name",
+  "address",
+  "phone",
+  "branch",
+  "shipTo",
+  "receivedBy",
+  "authorizedBy",
+  // The Khmer identity the customer receipt is headed with.
+  "nameKhmer",
+  "vatTin",
+] as const;
+const LIST_FIELDS = ["invoiceTo", "poNotes", "addressKhmer"] as const;
 
 export async function GET() {
   const s = await getSession();
@@ -67,6 +78,7 @@ export async function PATCH(req: Request) {
       const r = body.receipt;
       const ACCENTS = ["brand", "emerald", "violet", "amber", "rose", "ink"];
       b.receipt = {
+        invoiceTitle: String(r.invoiceTitle ?? "").slice(0, 80),
         headerNote: String(r.headerNote || "").slice(0, 120),
         footerNote: String(r.footerNote || "").slice(0, 120),
         showLogo: !!r.showLogo,

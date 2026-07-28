@@ -16,6 +16,9 @@ const ACCENTS: { key: ReceiptAccent; label: string; dot: string }[] = [
   { key: "rose", label: "Rose", dot: "bg-rose-600" },
 ];
 
+// What the document is called, when the owner hasn't said otherwise.
+const DEFAULT_INVOICE_TITLE = "វិក្កយបត្រ / COMMERCIAL INVOICE";
+
 // A fake sale so the owner sees a realistic receipt while they design it.
 const SAMPLE_SALE: Sale = {
   id: "preview",
@@ -25,7 +28,6 @@ const SAMPLE_SALE: Sale = {
     { productId: "b", sku: "", name: "Chocolate Cinnamon Roll", qty: 1, price: 0.65, cost: 0 } as any,
     { productId: "c", sku: "", name: "Iced Coffee", qty: 1, price: 1.5, cost: 0 } as any,
   ],
-  customerName: "Walk-in",
   subtotal: 6.86,
   discount: 0.5,
   tax: 0.69,
@@ -36,7 +38,12 @@ const SAMPLE_SALE: Sale = {
   paymentMethod: "Cash",
   tendered: 10,
   change: 2.95,
-  createdAt: new Date(0).toISOString(),
+  cashUsd: 7.05,
+  cashRiel: 0,
+  // A fixed, plausible date — NOT new Date(), which would differ between the
+  // server render and the browser, and not epoch 0, which prints "01 Jan 1970"
+  // and reads as a bug to the owner designing their slip.
+  createdAt: "2026-08-01T08:25:00",
   queueNumber: 7,
 } as Sale;
 
@@ -45,6 +52,11 @@ export default function InvoiceSettingsPage() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
+  const [nameKhmer, setNameKhmer] = useState("");
+  const [vatTin, setVatTin] = useState("");
+  // Held as ONE textarea string; split into lines only when saving/previewing.
+  const [addressKhmer, setAddressKhmer] = useState("");
+  const [invoiceTitle, setInvoiceTitle] = useState("");
   const [headerNote, setHeaderNote] = useState("");
   const [footerNote, setFooterNote] = useState("");
   const [accent, setAccent] = useState<ReceiptAccent>("ink");
@@ -61,7 +73,11 @@ export default function InvoiceSettingsPage() {
     setName(data.name || "");
     setAddress(data.address || "");
     setPhone(data.phone || "");
+    setNameKhmer(data.nameKhmer || "");
+    setVatTin(data.vatTin || "");
+    setAddressKhmer((data.addressKhmer || []).join("\n"));
     const r = data.receipt || {};
+    setInvoiceTitle(r.invoiceTitle ?? DEFAULT_INVOICE_TITLE);
     setHeaderNote(r.headerNote || "");
     setFooterNote(r.footerNote || "");
     setAccent(r.accent || "ink");
@@ -73,16 +89,41 @@ export default function InvoiceSettingsPage() {
   }, [data, seeded]);
 
   // The business object the preview renders from — the DRAFT, so it updates live.
+  const khmerLines = useMemo(
+    () => addressKhmer.split("\n").map((l) => l.trim()).filter(Boolean),
+    [addressKhmer],
+  );
+
   const preview: ReceiptBusiness = useMemo(
     () => ({
       name,
       address,
       phone,
       logo,
+      nameKhmer,
+      vatTin,
+      addressKhmer: khmerLines,
       vatRate: data?.vatRate,
-      receipt: { headerNote, footerNote, accent, showLogo, showVat, showPickup },
+      exchangeRate: (data as any)?.exchangeRate,
+      receipt: { invoiceTitle, headerNote, footerNote, accent, showLogo, showVat, showPickup },
     }),
-    [name, address, phone, logo, data?.vatRate, headerNote, footerNote, accent, showLogo, showVat, showPickup],
+    [
+      name,
+      address,
+      phone,
+      logo,
+      nameKhmer,
+      vatTin,
+      khmerLines,
+      data,
+      invoiceTitle,
+      headerNote,
+      footerNote,
+      accent,
+      showLogo,
+      showVat,
+      showPickup,
+    ],
   );
 
   async function save() {
@@ -96,7 +137,10 @@ export default function InvoiceSettingsPage() {
           address,
           phone,
           logo, // "" clears it
-          receipt: { headerNote, footerNote, accent, showLogo, showVat, showPickup },
+          nameKhmer,
+          vatTin,
+          addressKhmer: khmerLines,
+          receipt: { invoiceTitle, headerNote, footerNote, accent, showLogo, showVat, showPickup },
         }),
       });
       setSaved(true);
@@ -138,8 +182,45 @@ export default function InvoiceSettingsPage() {
               <Field label="Address" full>
                 <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="St. 271, Phnom Penh" />
               </Field>
+              {/* The Khmer identity. A Cambodian commercial invoice is read in
+                  Khmer and carries the VAT registration number — and it is
+                  edited HERE, next to the live preview, rather than buried in
+                  Store Settings where you would be typing Khmer blind. */}
+              <Field label="Store name in Khmer" full>
+                <input
+                  className="input"
+                  value={nameKhmer}
+                  onChange={(e) => setNameKhmer(e.target.value)}
+                  placeholder="អង្គរ ប្រូតូតាយ"
+                />
+              </Field>
+              <Field label="VAT registration number (VATTIN)" full>
+                <input
+                  className="input"
+                  value={vatTin}
+                  onChange={(e) => setVatTin(e.target.value)}
+                  placeholder="L001-901503056"
+                />
+              </Field>
+              <Field label="Address in Khmer (one line each)" full>
+                <textarea
+                  className="input min-h-[64px]"
+                  value={addressKhmer}
+                  onChange={(e) => setAddressKhmer(e.target.value)}
+                  placeholder={"ផ្ទះលេខ០១ ផ្លូវ៥៩២ កែងផ្លូវ១០៦\nបឹងកក់ទី២ ទួលគោក រាជធានីភ្នំពេញ"}
+                />
+              </Field>
               <Field label="Welcome line (optional)" full>
                 <input className="input" value={headerNote} onChange={(e) => setHeaderNote(e.target.value)} placeholder="Welcome to ON Mart!" maxLength={120} />
+              </Field>
+              <Field label="Document title" full>
+                <input
+                  className="input"
+                  value={invoiceTitle}
+                  onChange={(e) => setInvoiceTitle(e.target.value)}
+                  placeholder="វិក្កយបត្រ / COMMERCIAL INVOICE"
+                  maxLength={80}
+                />
               </Field>
             </div>
           </Card>
