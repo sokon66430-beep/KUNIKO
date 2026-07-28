@@ -253,7 +253,7 @@ object ReceiptCanvas {
         formRow("$KH_STORE / Store", store.optString("name"))
         formRow("$KH_DATE / Date", r.optString("dateTime"))
         r.optString("cashier").takeIf { it.isNotBlank() }?.let { formRow("$KH_CASHIER / Cashier", it) }
-        formRow("$KH_INVOICE / Invoice Number", r.optString("invoiceNo"))
+        formRow("$KH_INVOICE / Invoice No", r.optString("invoiceNo"))
         r.optString("till").takeIf { it.isNotBlank() }?.let { formRow("$KH_TILL / Till", it) }
 
         // A named customer prints; an unnamed one prints nothing. A "WALK-IN"

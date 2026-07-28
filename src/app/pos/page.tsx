@@ -57,7 +57,7 @@ import { hasThermalPrinter, printThermalReceipt, buildReceiptPayload } from "@/l
 import { ReceiptCard, type ReceiptBusiness } from "@/components/Receipt";
 import { PosShiftModal, type ShiftAction } from "@/components/PosShiftModal";
 import { isShownOnPos } from "@/lib/pos";
-import { groupsForCategory, optionsKey, optionsPrice, optionsLabel } from "@/lib/options";
+import { groupsForProduct, optionsKey, optionsPrice, optionsLabel } from "@/lib/options";
 import type { PromotionApplication as PromoApplication } from "@/lib/promotions";
 import { baseUnitName, defaultUnitOf, findByBarcode, packagingMatches, type ResolvedUnit } from "@/lib/sellingUnits";
 
@@ -515,7 +515,7 @@ export default function PosPage() {
     // from. Tapping the tile opens the chooser and comes back through here with
     // the answer.
     if (!options) {
-      const groups = groupsForCategory(business?.optionGroups, product.category);
+      const groups = groupsForProduct(business?.optionGroups, product);
       if (groups.length) {
         setAsking({ product, markdown, unit: u, groups });
         return;

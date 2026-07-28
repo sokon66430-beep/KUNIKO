@@ -97,6 +97,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       delete body.sellingUnits;
     }
 
+    // Which condiment questions this product asks at the till. An ARRAY, so the
+    // typed loop below (numbers/booleans/strings) would silently drop it —
+    // handled here instead, and checked against the store's configured groups
+    // so a stale id can't leave a product asking a question that no longer
+    // exists. An empty array clears them.
+    if (Array.isArray(body.optionGroupIds)) {
+      const known = new Set((db.meta.business.optionGroups || []).map((g) => g.id));
+      const ids = body.optionGroupIds.map((x: any) => String(x)).filter((x: string) => known.has(x));
+      product.optionGroupIds = ids.length ? ids : undefined;
+    }
+
     const prevStock = product.stock;
     for (const [key, value] of Object.entries(body)) {
       if (key === "id") continue;

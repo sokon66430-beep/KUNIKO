@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { groupsForCategory, optionsPrice } from "@/lib/options";
+import { groupsForProduct, optionsPrice } from "@/lib/options";
 import { readDB, mutateDB } from "@/lib/db";
 import type { Coupon, Recipe, Sale, SaleItem, StockMovement, SaleItemOption } from "@/lib/types";
 import { getSession } from "@/lib/session";
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
       // invent a free "extra shot", or send a label the kitchen never agreed to.
       const chosen: SaleItemOption[] = [];
       if (Array.isArray(raw.options)) {
-        const groups = groupsForCategory(db.meta.business.optionGroups, product.category);
+        const groups = groupsForProduct(db.meta.business.optionGroups, product);
         for (const sel of raw.options) {
           const g = groups.find((x) => x.id === sel?.groupId);
           const c = g?.choices.find((x) => x.id === sel?.choiceId);

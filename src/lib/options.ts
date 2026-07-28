@@ -10,10 +10,26 @@ import type { OptionGroup, SaleItemOption } from "./types";
  * handed food that doesn't match their receipt.
  */
 
-/** The groups that apply to a product, by its category. */
-export function groupsForCategory(groups: OptionGroup[] | undefined, category?: string): OptionGroup[] {
-  if (!groups?.length || !category) return [];
-  return groups.filter((g) => g.choices.length > 0 && g.categories.includes(category));
+/**
+ * The condiment questions to ask for a product.
+ *
+ * Chosen PER PRODUCT: only dishes that are actually made to order should stop
+ * the cashier with a question, and a category is too blunt for that — a menu
+ * category holds bottled drinks next to made-to-order bowls.
+ *
+ * A group may still name categories as a shortcut for bulk setup; a product's
+ * own list wins where both exist. Order follows the store's group list, so the
+ * till always asks the questions in the same sequence.
+ */
+export function groupsForProduct(
+  groups: OptionGroup[] | undefined,
+  product: { category?: string; optionGroupIds?: string[] } | undefined,
+): OptionGroup[] {
+  if (!groups?.length || !product) return [];
+  const ids = new Set(product.optionGroupIds || []);
+  return groups.filter(
+    (g) => g.choices.length > 0 && (ids.has(g.id) || (!ids.size && !!product.category && g.categories.includes(product.category))),
+  );
 }
 
 /** True when the till must ask before this item can go in the basket. */

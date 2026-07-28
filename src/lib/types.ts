@@ -53,6 +53,10 @@ export type Product = {
   // is sent to that station's lane on the Kitchen Display at payment. Unset
   // means it needs no preparation — a packet of crisps never reaches a kitchen.
   stationId?: string;
+  // Which condiment questions the till asks when this product is rung up —
+  // spice level, sweetness. Set per PRODUCT, so only the dishes that are made
+  // to order stop the cashier to ask. See lib/options and business.optionGroups.
+  optionGroupIds?: string[];
   // Set on an INGREDIENT bought in one unit and consumed in another. `unit`
   // stays what stock is counted in (the purchase unit, e.g. kg); this is what
   // recipes are written in (e.g. g). Display only — conversion works off the

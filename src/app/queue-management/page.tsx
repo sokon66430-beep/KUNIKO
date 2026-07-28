@@ -168,14 +168,15 @@ export default function QueueManagementPage() {
           {t.items.map((it, i) => (
             <li key={i} className="flex gap-2 text-sm text-ink-900">
               <span className="min-w-[2rem] font-bold tabular-nums text-brand-700">{it.qty}×</span>
+              {/* Dish and how it's made on ONE line. A cook scanning a rack of
+                  tickets reads a line at a time; splitting the instruction onto
+                  its own row doubles the height of every order and invites the
+                  eye to skip it. Highlighted, because missing it means remaking
+                  the dish. */}
               <span className="flex-1">
                 {it.name}
-                {/* How the customer asked for it — spice level, sweetness.
-                    Given real weight rather than tucked away as grey small
-                    print: a cook who misses this makes the dish wrong, and the
-                    whole order comes back. */}
                 {it.note && (
-                  <span className="mt-0.5 block rounded-md bg-amber-100 px-2 py-0.5 text-[13px] font-bold text-amber-900">
+                  <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-[13px] font-bold text-amber-900">
                     {it.note}
                   </span>
                 )}

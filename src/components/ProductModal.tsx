@@ -2,8 +2,9 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Check, Truck, Tag, Sparkles, Upload, Image as ImageIcon, X } from "lucide-react";
-import type { Product, Supplier, SellingUnit } from "@/lib/types";
+import type { Product, Supplier, SellingUnit, OptionGroup } from "@/lib/types";
 import { Modal } from "@/components/ui";
+import { useFetch } from "@/lib/client";
 import { Select } from "@/components/Select";
 import { itemIdPrefix, packagingPrefix } from "@/lib/itemId";
 import { defaultShowOnPos } from "@/lib/pos";
@@ -376,6 +377,9 @@ export function ProductModal({
   onClose: () => void;
   onSave: (p: Partial<Product>) => void;
 }) {
+  // The store's condiment groups, so this product can be attached to them.
+  const { data: biz } = useFetch<{ optionGroups?: OptionGroup[] }>("/api/business");
+  const optionGroups = biz?.optionGroups || [];
   const [form, setForm] = useState<Partial<Product>>(initial);
   const set = (k: keyof Product, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const photoRef = useRef<HTMLInputElement>(null);
@@ -687,6 +691,47 @@ export function ProductModal({
                 placeholder="e.g. 24"
               />
             </div>
+
+          {/* Condiments — the questions the till asks when this product is rung
+              up. Per PRODUCT rather than per category, because a menu category
+              holds bottled drinks next to made-to-order bowls, and only the
+              bowls should stop the cashier to ask. The answer prints on the
+              kitchen ticket. */}
+          {optionGroups.length > 0 && (
+            <div className="lg:col-span-2">
+              <label className="label">Condiments (asked at the till)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {optionGroups.map((g: OptionGroup) => {
+                  const on = (form.optionGroupIds || []).includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() =>
+                        set(
+                          "optionGroupIds",
+                          on
+                            ? (form.optionGroupIds || []).filter((x) => x !== g.id)
+                            : [...(form.optionGroupIds || []), g.id],
+                        )
+                      }
+                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                        on ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {g.name}
+                      <span className={`ml-1.5 ${on ? "text-white/70" : "text-slate-400"}`}>
+                        {g.choices.length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Leave all off for anything sold as-is. Groups are created in Store Settings → Condiments.
+              </p>
+            </div>
+          )}
             {/* The count↔weight bridge: what ONE piece holds (a 1000 g beef
                 pack). With it set, a recipe written in g/kg/ml/L comes off this
                 count-stocked product correctly. */}

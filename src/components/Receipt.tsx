@@ -151,7 +151,7 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
         <FormRow kh={KH.store} en="Store" value={business?.name || ""} />
         <FormRow kh={KH.date} en="Date" value={invoiceDateTime(sale.createdAt)} />
         {sale.cashier && <FormRow kh={KH.cashier} en="Cashier" value={sale.cashier} />}
-        <FormRow kh={KH.invoice} en="Invoice Number" value={sale.invoiceNo || sale.id} />
+        <FormRow kh={KH.invoice} en="Invoice No" value={sale.invoiceNo || sale.id} />
         {sale.posTerminalId && <FormRow kh={KH.till} en="Till" value={sale.posTerminalId} />}
       </div>
       {/* A named customer prints; an unnamed one prints nothing. A "WALK-IN"
