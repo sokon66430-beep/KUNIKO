@@ -2554,10 +2554,15 @@ function KhqrModal({
 // -------------------------------------------------------------------------
 type ItemRow = { sku: string; name: string; category: string; qty: number; revenue: number; cost: number; profit: number };
 type CatRow = { category: string; qty: number; revenue: number; cost: number; profit: number };
+type BasketRow = { sales: number; qty: number; revenue: number; cost: number; profit: number; avgSale: number };
+type TillRow = BasketRow & { terminal: string };
+type BuyerRow = BasketRow & { customerId: string; name: string };
 type SalesReportData = {
   byItem: ItemRow[];
   byCategory: CatRow[];
-  totals: { qty: number; revenue: number; cost: number; profit: number; sales: number };
+  byTerminal: TillRow[];
+  byCustomer: BuyerRow[];
+  totals: { qty: number; revenue: number; cost: number; profit: number; sales: number; avgSale: number };
 };
 
 function SalesReportModal({ onClose }: { onClose: () => void }) {
@@ -2740,12 +2745,87 @@ function SalesReportModal({ onClose }: { onClose: () => void }) {
                   { label: "Items", value: num(items.length) },
                   { label: "Units sold", value: num(shown.qty) },
                   { label: "Revenue", value: usd(shown.revenue) },
+                  { label: "Sales", value: num(data.totals.sales) },
+                  // What one customer spends per visit — the number an owner
+                  // watches to know whether the basket is growing.
+                  { label: "Average basket", value: usd(data.totals.avgSale) },
                   ...(showProfit ? [{ label: "Cost", value: usd(shown.cost) }] : []),
                   ...(showProfit ? [{ label: "Profit", value: usd(shown.profit) }] : []),
                 ].map((s) => (
                   <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
                     <p className="mt-1 text-lg font-bold text-ink-900">{s.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* By till and by customer.
+
+                  Both count whole SALES, so "average" means what one customer
+                  spent on one visit — not the average price of a line. These
+                  deliberately ignore the item/category filter above: a till's
+                  takings are its takings, and filtering them by product would
+                  produce a figure that reconciles against nothing. */}
+              <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                {[
+                  {
+                    title: "By till",
+                    rows: data.byTerminal.map((t) => ({
+                      key: t.terminal,
+                      label: t.terminal,
+                      sub: "",
+                      sales: t.sales,
+                      revenue: t.revenue,
+                      avgSale: t.avgSale,
+                    })),
+                  },
+                  {
+                    title: "By customer",
+                    rows: data.byCustomer.map((c) => ({
+                      key: c.customerId || "walkin",
+                      label: c.name,
+                      sub: c.customerId ? "" : "no account",
+                      sales: c.sales,
+                      revenue: c.revenue,
+                      avgSale: c.avgSale,
+                    })),
+                  },
+                ].map((tbl) => (
+                  <div key={tbl.title} className="overflow-hidden rounded-xl border border-slate-200">
+                    <div className="border-b border-slate-100 bg-slate-50 px-3.5 py-2.5">
+                      <p className="text-sm font-bold text-ink-900">{tbl.title}</p>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          <th className="px-3.5 py-1.5 text-left">Name</th>
+                          <th className="px-3 py-1.5 text-right">Sales</th>
+                          <th className="px-3 py-1.5 text-right">Revenue</th>
+                          <th className="px-3.5 py-1.5 text-right">Average</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tbl.rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-3.5 py-6 text-center text-xs text-slate-400">
+                              Nothing in this period
+                            </td>
+                          </tr>
+                        ) : (
+                          tbl.rows.map((r) => (
+                            <tr key={r.key} className="border-b border-slate-50 last:border-0">
+                              <td className="px-3.5 py-2">
+                                <p className="font-medium text-ink-800">{r.label}</p>
+                                {r.sub && <p className="text-[11px] text-slate-400">{r.sub}</p>}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-ink-800">{num(r.sales)}</td>
+                              <td className="px-3 py-2 text-right text-slate-600">{usd(r.revenue)}</td>
+                              <td className="px-3.5 py-2 text-right font-semibold text-brand-700">{usd(r.avgSale)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 ))}
               </div>
