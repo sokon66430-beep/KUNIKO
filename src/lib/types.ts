@@ -314,6 +314,10 @@ export type LedgerEntry = {
   qty: number; // signed: +in / −out
   balance: number; // product.stock AFTER this entry
   ref?: string; // the document behind it: GRN no, count no, file name, invoice…
+  // The sale's own id, on SALE entries. Invoice NUMBERS can repeat after a
+  // backup restore (the counter rolls back); the sale id is what a cancellation
+  // replays by, so it only ever puts back what THIS sale took.
+  saleId?: string;
   by: string; // who caused it
   note?: string;
 };

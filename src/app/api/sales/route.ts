@@ -268,7 +268,7 @@ export async function POST(req: Request) {
       const product = db.products.find((p) => p.id === it.productId)!;
       const recipe = recipeByItem.get(index);
       if (!recipe) {
-        postLedger(db, product, { type: "SALE", qty: -it.qty, by: actor, ref: invoiceNo });
+        postLedger(db, product, { type: "SALE", qty: -it.qty, by: actor, ref: invoiceNo, saleId });
         continue;
       }
 
@@ -280,7 +280,7 @@ export async function POST(req: Request) {
         // negative is what makes the shortage visible instead of hiding it.
         // (Also in stockMovements below with the full recipe context — that is
         // the recipe ledger; this is the stock ledger.)
-        postLedger(db, ingredient, { type: "SALE", qty: -d.qtyDeducted, by: actor, ref: invoiceNo, note: `recipe: ${recipe.name}` });
+        postLedger(db, ingredient, { type: "SALE", qty: -d.qtyDeducted, by: actor, ref: invoiceNo, saleId, note: `recipe: ${recipe.name}` });
 
         const seq = db.meta.nextMovement++;
         const movement: StockMovement = {

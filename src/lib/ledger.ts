@@ -24,6 +24,7 @@ export function postLedger(
     qty: number; // signed delta
     by: string;
     ref?: string;
+    saleId?: string; // SALE entries: the sale's own id (refs can repeat, ids can't)
     note?: string;
     at?: string;
     // Floor the resulting stock at zero (write-offs and counts already work
@@ -48,6 +49,7 @@ export function postLedger(
     qty: applied,
     balance,
     ref: entry.ref,
+    saleId: entry.saleId,
     by: entry.by,
     note: entry.note,
   };

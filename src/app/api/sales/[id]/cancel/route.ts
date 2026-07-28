@@ -79,8 +79,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // Put stock back by replaying this sale's own ledger entries with the
     // opposite sign. Covers plain and recipe-ingredient lines alike.
+    //
+    // Matched by the sale's ID, not its invoice NUMBER: after a backup restore
+    // the invoice counter rolls back and numbers repeat, and a number-based
+    // replay would put back stock that other sales took. Sales rung up before
+    // entries carried a saleId fall back to the number match.
     if (!sale.imported) {
-      const entries = db.ledger.filter((l) => l.ref === sale.invoiceNo && l.type === "SALE");
+      const entries = db.ledger.filter(
+        (l) => l.type === "SALE" && (l.saleId ? l.saleId === sale.id : l.ref === sale.invoiceNo),
+      );
       for (const e of entries) {
         const product = db.products.find((p) => p.id === e.productId);
         if (!product) continue;

@@ -67,3 +67,25 @@ export function optionsLabel(options?: SaleItemOption[]): string {
   if (!options?.length) return "";
   return options.map((o) => `${o.group}: ${o.choice}`).join(" · ");
 }
+
+/**
+ * The kitchen ticket's note for one line — the chosen condiments, PLUS a loud
+ * flag for any required question that was never answered.
+ *
+ * The till always asks, but sales also arrive from paths that don't (a delivery
+ * order posted by another system). Blocking those sales would stop revenue; the
+ * safe behaviour is to cook with a flag the cook can act on — "ASK" beats a
+ * silent guess at how spicy the customer wanted it.
+ */
+export function kitchenNote(
+  groups: OptionGroup[] | undefined,
+  product: { category?: string; optionGroupIds?: string[] } | undefined,
+  options?: SaleItemOption[],
+): string | undefined {
+  const chosen = optionsLabel(options);
+  const missing = groupsForProduct(groups, product)
+    .filter((g) => g.required !== false && !(options || []).some((o) => o.group === g.name))
+    .map((g) => `${g.name}: ⚠ NOT CHOSEN — ask`);
+  const note = [chosen, ...missing].filter(Boolean).join(" · ");
+  return note || undefined;
+}

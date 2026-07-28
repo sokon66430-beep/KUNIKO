@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { optionsLabel } from "@/lib/options";
+import { kitchenNote } from "@/lib/options";
 import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { formatQueueCode } from "@/lib/queue";
@@ -30,6 +30,8 @@ export async function GET(req: Request) {
   const style = (db.meta.business.queueSettings?.numberStyle as QueueNumberStyle) || "latin";
 
   const saleById = new Map<string, Sale>(db.sales.map((s) => [s.id, s]));
+  const productById = new Map(db.products.map((p) => [p.id, p]));
+  const optionGroups = db.meta.business.optionGroups;
   const dayOf = (t: { day?: string; createdAt: string }) => t.day ?? storeToday(new Date(t.createdAt));
 
   const tickets = db.queue
@@ -68,7 +70,11 @@ export async function GET(req: Request) {
           ? lane.items
           : t.jobs && t.jobs.length
             ? t.jobs.flatMap((j) => j.items)
-            : (sale?.items || []).map((it) => ({ name: it.name, qty: it.qty, note: optionsLabel(it.options) || undefined })),
+            : (sale?.items || []).map((it) => ({
+                name: it.name,
+                qty: it.qty,
+                note: kitchenNote(optionGroups, productById.get(it.productId), it.options),
+              })),
         // Each station's own progress, so a screen watching everything can see
         // the Grill is done while the Fry is still going.
         jobs: (t.jobs || []).map((j) => ({

@@ -1,6 +1,6 @@
 import type { DB, KitchenStation, QueueEvent, QueueStationJob, QueueStatus, QueueTicket, SaleItem } from "./types";
 import { storeToday } from "./storetime";
-import { optionsLabel } from "./options";
+import { kitchenNote } from "./options";
 
 // ---------------------------------------------------------------------------
 // Centralized customer pickup-number queue.
@@ -110,7 +110,10 @@ export function buildStationJobs(
   items: SaleItem[],
   productStation: Map<string, string>,
   stations: KitchenStation[],
+  db?: DB, // for the condiment note — which groups apply to which product
 ): QueueStationJob[] {
+  const productById = db ? new Map(db.products.map((p) => [p.id, p])) : undefined;
+  const groups = db?.meta.business.optionGroups;
   const byStation = new Map<string, QueueStationJob>();
   for (const it of items) {
     const stationId = productStation.get(it.productId);
@@ -132,8 +135,10 @@ export function buildStationJobs(
       byStation.set(stationId, job);
     }
     // The condiments ride along as the line note — a cook reading "Spicy
-    // level: 5" is the entire reason this screen exists.
-    job.items.push({ name: it.name, qty: it.qty, note: optionsLabel(it.options) || undefined });
+    // level: 5" is the entire reason this screen exists. A required condiment
+    // that was never chosen (an order from outside the till) is flagged so the
+    // cook asks instead of guessing.
+    job.items.push({ name: it.name, qty: it.qty, note: kitchenNote(groups, productById?.get(it.productId), it.options) });
   }
   return [...byStation.values()];
 }
@@ -163,7 +168,7 @@ export function issueQueueTicket(
   const stations = db.kitchenStations || [];
   const productStation = new Map<string, string>();
   for (const p of db.products) if (p.stationId) productStation.set(p.id, p.stationId);
-  const jobs = input.items ? buildStationJobs(input.items, productStation, stations) : [];
+  const jobs = input.items ? buildStationJobs(input.items, productStation, stations, db) : [];
 
   const firstEvent: QueueEvent = {
     at: input.at,
