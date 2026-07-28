@@ -124,7 +124,19 @@ function RosterPrint() {
             </tr>
           </thead>
           <tbody>
-            {employees.map((emp) => {
+            {/* Grouped BY POSITION, same as the screen roster — the wall copy
+                must read the way the store thinks: a section per role. */}
+            {[...positions.map((p) => ({ key: p.id, label: p.name, staff: employees.filter((e) => e.positionId === p.id) })),
+              { key: "none", label: "No position yet", staff: employees.filter((e) => !e.positionId || !positions.some((p) => p.id === e.positionId)) },
+            ]
+              .filter((g) => g.staff.length > 0)
+              .flatMap((group) => [
+                <tr key={"h-" + group.key} style={{ height: 16 }}>
+                  <td colSpan={columns.length + 4} style={{ border: cellBorder, padding: "1px 4px", textAlign: "left", fontWeight: 800, fontSize: 8, background: "#e2e8f0", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    {group.label} · {group.staff.length}
+                  </td>
+                </tr>,
+                ...group.staff.map((emp) => {
               let work = 0;
               const cells = columns.map((c) => {
                 const entry = byKey.get(`${emp.id}|${c.date}`);
@@ -154,7 +166,8 @@ function RosterPrint() {
                   <td style={{ border: cellBorder, padding: 0, textAlign: "center", fontWeight: 700 }}>{work}</td>
                 </tr>
               );
-            })}
+                }),
+              ])}
           </tbody>
           {/* Daily manpower — how many staff are on each shift, per day.
               Two blank rows separate it from the roster so it reads clearly. */}

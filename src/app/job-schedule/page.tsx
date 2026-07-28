@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
   CalendarDays,
@@ -109,7 +109,7 @@ export default function JobSchedulePage() {
             <DashboardTab shifts={shifts} stations={stations} positions={positions} employees={activeStaff} />
           )}
           {tab === "roster" && (
-            <RosterTab shifts={shifts} employees={activeStaff} roster={roster} canAssign={canAssign} reload={reload} />
+            <RosterTab shifts={shifts} employees={activeStaff} positions={positions} roster={roster} canAssign={canAssign} reload={reload} />
           )}
           {tab === "employees" && (
             <EmployeesTab employees={employees} shifts={shifts} stations={stations} positions={positions} reload={reload} />
@@ -207,12 +207,14 @@ type CellEdit = { shiftId?: string; off?: boolean; clear?: boolean };
 function RosterTab({
   shifts,
   employees,
+  positions,
   roster,
   canAssign,
   reload,
 }: {
   shifts: ShiftTemplate[];
   employees: ScheduleEmployee[];
+  positions: Position[];
   roster: RosterEntry[];
   canAssign: boolean;
   reload: () => void;
@@ -431,7 +433,22 @@ function RosterTab({
             </tr>
           </thead>
           <tbody>
-            {employees.map((emp) => {
+            {/* BY POSITION, not by name: the roster reads like a duty chart —
+                "who covers Cashier this week" — in the order the store listed
+                its positions on Setup. Staff without a position close the list
+                so nobody silently disappears from the schedule. */}
+            {[...positions.map((p) => ({ key: p.id, label: p.name, staff: employees.filter((e) => e.positionId === p.id) })),
+              { key: "none", label: "No position yet", staff: employees.filter((e) => !e.positionId || !positions.some((p) => p.id === e.positionId)) },
+            ]
+              .filter((g) => g.staff.length > 0)
+              .map((group) => (
+                <Fragment key={group.key}>
+                  <tr>
+                    <td colSpan={columns.length + 2} className="border-b border-slate-200 bg-brand-50/60 px-3 py-1 text-left text-[10px] font-extrabold uppercase tracking-wider text-brand-700">
+                      {group.label} · {group.staff.length}
+                    </td>
+                  </tr>
+                  {group.staff.map((emp) => {
               let work = 0;
               const row = columns.map((c) => {
                 const key = `${emp.id}|${c.date}`;
@@ -474,7 +491,9 @@ function RosterTab({
                   <td className="border-b border-l border-slate-200 px-2 py-1 font-bold tabular-nums text-slate-600">{work}</td>
                 </tr>
               );
-            })}
+                  })}
+                </Fragment>
+              ))}
           </tbody>
         </table>
       </div>
