@@ -219,15 +219,17 @@ function SaleScreen({
         )}
       </div>
 
-      {/* RIGHT — the order receipt. */}
+      {/* RIGHT — the order receipt. Labels are Khmer-first with English under,
+          the SAME wording as the printed slip, so the screen a customer reads
+          while waiting matches the paper they walk away with. */}
       <div className="cd-receipt">
         <div className="cd-r-head">{storeName}</div>
 
         <div className="cd-r-hrow">
-          <span>Product</span>
-          <span>Price</span>
-          <span>Qty</span>
-          <span>Amount</span>
+          <span>មុខទំនិញ<em>Product</em></span>
+          <span>តម្លៃ<em>Price</em></span>
+          <span>ចំនួន<em>Qty</em></span>
+          <span>សរុប<em>Amount</em></span>
         </div>
         <div className="cd-r-rows" ref={listRef}>
           {/* Product rows only when there's something scanned; otherwise the
@@ -258,17 +260,16 @@ function SaleScreen({
 
         <div className="cd-r-foot">
           <div className="cd-r-col">
-            <div><span>Payment</span><span>—</span></div>
-            <div><span>Received</span><span>{usd(0)}</span></div>
-            <div className="cd-r-strong"><span>Remain</span><span>{usd(state.total)}</span></div>
+            <div><span className="cd-r-lbl">សរុបរង <em>Subtotal</em></span><span>{usd(subtotal)}</span></div>
+            <div><span className="cd-r-lbl">បញ្ចុះតម្លៃ <em>Discount</em></span><span>{usd(state.discount)}</span></div>
           </div>
           <div className="cd-r-col">
-            <div><span>Subtotal</span><span>{usd(subtotal)}</span></div>
-            <div><span>Discount</span><span>{usd(state.discount)}</span></div>
-            <div className="cd-r-grand"><span>Total</span><span>{usd(state.total)}</span></div>
+            <div className="cd-r-grand"><span className="cd-r-lbl">សរុប <em>Total</em></span><span>{usd(state.total)}</span></div>
             {/* Riel rounded UP to the nearest 100 — Cambodia has no coins below
-                100៛, so the customer-facing riel is always a whole hundred. */}
-            {showRiel && <div className="cd-r-khr"><span>KHR</span><span>៛{num(rielShelfPrice(state.total))}</span></div>}
+                100៛, so the customer-facing riel is always a whole hundred. The
+                riel figure is what most customers actually pay with, so it's as
+                big as the dollar total. */}
+            {showRiel && <div className="cd-r-khr"><span className="cd-r-lbl">ជាប្រាក់រៀល <em>KHR</em></span><span>៛{num(rielShelfPrice(state.total))}</span></div>}
           </div>
         </div>
       </div>
@@ -423,41 +424,63 @@ const CSS = `
 .cd-riel { font-size: clamp(22px, 2.6vw, 36px); font-weight: 800; color: var(--cd-accent); font-variant-numeric: tabular-nums; background: var(--cd-soft); padding: 5px 16px; border-radius: 999px; }
 .cd-vat { font-size: 14px; color: var(--cd-muted); margin-top: 10px; }
 
-/* ── Scanning screen: advertisement LEFT | order receipt RIGHT ──────────── */
-.cd-screen { position: fixed; inset: 0; display: grid; grid-template-columns: 1.8fr 1fr; background: var(--cd-bg); }
+/* ── Scanning screen: advertisement LEFT | order receipt RIGHT ────────────
+   The receipt keeps a floor of 400px so the ad can never starve the numbers
+   the customer is actually checking. */
+.cd-screen { position: fixed; inset: 0; display: grid; grid-template-columns: 1.8fr minmax(400px, 1fr); background: var(--cd-bg); }
+/* Portrait / narrow customer screens: the ad moves ON TOP and the receipt
+   takes the full width below — a half-width receipt there is unreadable. */
+@media (max-width: 860px) {
+  .cd-screen { grid-template-columns: 1fr; grid-template-rows: minmax(0, 2fr) minmax(0, 3fr); }
+}
 .cd-adcol { position: relative; display: flex; overflow: hidden; background: #000; }
 .cd-adcol .cd-adpane { flex: 1; }
 .cd-adcol .cd-adpane-img { border-radius: 0; box-shadow: none; }
 .cd-brandad { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--cd-bg); color: var(--cd-fg); }
 /* The receipt reads like a paper slip — light panel, dark ink — matching the store's display. */
-.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #1a2338; padding: 30px 26px 28px; min-height: 0; }
-.cd-r-head { font-size: clamp(20px, 2.1vw, 30px); font-weight: 800; letter-spacing: 0; color: #1a2338; padding-bottom: 18px; }
+.cd-receipt { display: flex; flex-direction: column; background: #ffffff; color: #10182c; padding: 30px 26px 28px; min-height: 0; }
+/* The store name is a small caption, not a billboard — the customer already
+   knows which shop they're standing in; the numbers are what they're reading. */
+.cd-r-head { font-size: clamp(16px, 1.5vw, 22px); font-weight: 800; letter-spacing: 0; color: #414d68; padding-bottom: 12px; }
 /* Columns in REM (not em) so the small-font header and larger-font rows share
    the exact same column widths — otherwise Price/Qty/Amount don't line up. */
-.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5rem 2rem 5.4rem; gap: 8px; align-items: center; }
-.cd-r-hrow { color: #9aa5bd; font-weight: 600; font-size: clamp(11px, 1vw, 13px); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0 12px; border-bottom: 1px solid #edf0f5; }
-.cd-r-hrow span:not(:first-child) { text-align: right; }
+.cd-r-hrow, .cd-r-row { display: grid; grid-template-columns: 1fr 5.6rem 2.2rem 6rem; gap: 8px; align-items: center; }
+/* Khmer-first column headings, small English underneath. Dark enough to read
+   from a customer's standing distance — the old grey was invisible on the T3. */
+.cd-r-hrow { color: #414d68; font-weight: 700; font-size: clamp(14px, 1.3vw, 18px); padding: 0 0 10px; border-bottom: 2px solid #e6eaf1; }
+.cd-r-hrow span { display: flex; flex-direction: column; line-height: 1.2; white-space: nowrap; }
+.cd-r-hrow span em { font-style: normal; font-size: 0.62em; font-weight: 600; color: #8a94ab; text-transform: uppercase; letter-spacing: 0.05em; }
+.cd-r-hrow span:not(:first-child) { text-align: right; align-items: flex-end; }
 .cd-r-rows { flex: 1; overflow-y: auto; min-height: 0; }
-.cd-r-row { padding: 14px 0; border-bottom: 1px solid #f4f6f9; font-size: clamp(13px, 1.15vw, 17px); }
-/* Product name may wrap to two lines so it's never cut mid-word. */
-.cd-r-name { font-weight: 600; color: #1a2338; overflow: hidden; line-height: 1.25;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
-.cd-r-num { text-align: right; font-variant-numeric: tabular-nums; color: #55617b; }
-.cd-r-amt { font-weight: 700; color: #1a2338; }
+.cd-r-row { padding: 14px 0; border-bottom: 1px solid #f0f2f7; font-size: clamp(17px, 1.6vw, 24px); }
+/* Product name may wrap to three lines so it's never cut mid-word — with the
+   bigger type the column is narrower, and a cut-off name reads as the wrong
+   product to the customer. */
+.cd-r-name { font-weight: 700; color: #10182c; overflow: hidden; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; word-break: break-word; }
+.cd-r-num { text-align: right; font-variant-numeric: tabular-nums; color: #333f5c; }
+.cd-r-amt { font-weight: 700; color: #10182c; }
 /* Riel as the main figure, the dollar small underneath (right-aligned). */
 .cd-r-money { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; gap: 1px; }
-.cd-r-money b { font-weight: 700; color: #1a2338; }
-.cd-r-money em { font-style: normal; font-size: 0.72em; font-weight: 500; color: #949db2; }
-.cd-r-num.cd-r-money { color: #1a2338; }
+.cd-r-money b { font-weight: 700; color: #10182c; }
+.cd-r-money em { font-style: normal; font-size: 0.72em; font-weight: 500; color: #7d8699; }
+.cd-r-num.cd-r-money { color: #10182c; }
 .cd-r-empty { color: #aab3c6; font-size: 20px; padding: 26px 0; }
-.cd-r-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #e4e8ef; padding-top: 20px; margin-top: 8px; }
-.cd-r-col { display: flex; flex-direction: column; gap: 10px; padding: 0 26px; min-width: 0; }
+/* Khmer label with the small English name on its own line beneath — stacked
+   deliberately, so a narrow panel never wraps them into a jumble. */
+.cd-r-lbl { display: flex; flex-direction: column; line-height: 1.2; white-space: nowrap; }
+.cd-r-lbl em { font-style: normal; font-size: 0.62em; font-weight: 600; color: #8a94ab; }
+.cd-r-foot { display: grid; grid-template-columns: 1fr 1.2fr; border-top: 2px solid #e0e5ee; padding-top: 20px; margin-top: 8px; }
+.cd-r-col { display: flex; flex-direction: column; gap: 12px; padding: 0 26px; min-width: 0; }
 .cd-r-col:first-child { padding-left: 0; }
 .cd-r-col:last-child { padding-right: 0; border-left: 1px solid #edf0f5; }
-.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(13px, 1.2vw, 16px); color: #7a869e; font-variant-numeric: tabular-nums; }
+.cd-r-col > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: clamp(17px, 1.6vw, 22px); color: #414d68; font-variant-numeric: tabular-nums; }
 .cd-r-col > div > span:last-child { white-space: nowrap; }
-.cd-r-strong span, .cd-r-grand span { color: #1a2338; font-weight: 800; }
-.cd-r-grand { font-size: clamp(19px, 1.9vw, 25px); border-top: 1px solid #edf0f5; margin-top: 5px; padding-top: 11px; }
+.cd-r-strong span, .cd-r-grand span { color: #10182c; font-weight: 800; }
+/* ".cd-r-col > div" above outranks a bare class, so the big rows repeat the
+   parent selector to actually win the font-size fight. */
+.cd-r-col > div.cd-r-grand { font-size: clamp(24px, 2.4vw, 34px); }
+.cd-r-col > div.cd-r-khr { font-size: clamp(22px, 2.2vw, 30px); }
 .cd-r-khr span { color: #2549e8; font-weight: 800; }
 
 /* KHQR */
