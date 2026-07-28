@@ -2031,6 +2031,9 @@ const CANCEL_REASONS = [
 
 function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
   const { data, loading, reload } = useFetch<Sale[]>("/api/sales?limit=200");
+  // The store header the cancellation slip prints with — same source the sale
+  // receipt uses, so a void looks like it came from the same shop.
+  const { data: business } = useFetch<ReceiptBusiness>("/api/business");
   const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState("");
   // The invoice being cancelled — opens the confirm dialog (reason dropdown +
@@ -2057,10 +2060,29 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
     setBusy(cancelling.id);
     setCancelError(null);
     try {
-      await api(`/api/sales/${cancelling.id}/cancel`, {
+      const voided = await api<Sale>(`/api/sales/${cancelling.id}/cancel`, {
         method: "POST",
         body: JSON.stringify({ reason, managerCode: mgrPass }),
       });
+      // Print the cancellation slip.
+      //
+      // A void that leaves no paper is a void nobody can prove: the customer
+      // has a receipt for a sale that no longer exists, and the drawer count at
+      // close has nothing explaining the gap. The slip carries the original
+      // invoice number, who approved it and why.
+      //
+      // Never blocks the cancellation — that has already happened on the server,
+      // and a printer out of paper must not make it look like it failed.
+      try {
+        const payload = buildReceiptPayload(voided, business ?? undefined, {
+          dateTime: invoiceDateTime(voided.createdAt),
+          rielTotal: Math.round((voided.total || 0) * EXCHANGE_RATE),
+          cancelledAt: voided.cancelledAt ? invoiceDateTime(voided.cancelledAt) : undefined,
+        });
+        printThermalReceipt(payload);
+      } catch {
+        /* no printer on this device, or it refused — the void still stands */
+      }
       setCancelling(null);
       reload();
       onChanged();

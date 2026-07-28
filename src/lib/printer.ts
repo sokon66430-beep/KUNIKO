@@ -72,6 +72,13 @@ export type ReceiptPayload = {
   footerNote?: string;
   showVat?: boolean; // false (the screen default) = just the total + "Includes VAT x%"
   showPickup?: boolean;
+  // A CANCELLED invoice. Present = print the void format instead of a receipt:
+  // a boxed CANCELLED title, the money shown as refunded, who approved it and
+  // why, and no pickup number — there is nothing left to collect.
+  cancelled?: boolean;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
   vatPct?: number; // e.g. 10 — for the "Includes VAT 10%" note
   openDrawer: boolean; // pop the cash drawer (cash sales)
 };
@@ -119,6 +126,8 @@ export function buildReceiptPayload(
   business:
     | {
         name?: string;
+        // The store's own name (the branch), served by /api/business.
+        storeName?: string;
         nameKhmer?: string;
         vatTin?: string;
         addressKhmer?: string[];
@@ -137,7 +146,7 @@ export function buildReceiptPayload(
         };
       }
     | undefined,
-  opts: { dateTime: string; rielTotal: number; footerNote?: string },
+  opts: { dateTime: string; rielTotal: number; footerNote?: string; cancelledAt?: string },
 ): ReceiptPayload {
   const items: ReceiptLine[] = sale.items.map((it) => {
     const lineTotal = round2(it.price * it.qty);
@@ -171,7 +180,8 @@ export function buildReceiptPayload(
   const receivedUsd = sale.cashUsd != null ? round2(sale.cashUsd + (change || 0)) : undefined;
   return {
     store: {
-      name: business?.name || "Stookii",
+      // The BRANCH — same source the screen receipt and customer screen use.
+      name: business?.storeName || business?.name || "Stookii",
       nameKhmer: business?.nameKhmer || undefined,
       vatTin: business?.vatTin || undefined,
       addressKhmer: business?.addressKhmer?.filter(Boolean),
@@ -212,6 +222,10 @@ export function buildReceiptPayload(
     footerNote: r.footerNote || opts.footerNote,
     showVat: !!r.showVat, // screen default: off
     showPickup: r.showPickup !== false, // screen default: on
+    cancelled: sale.cancelled || undefined,
+    cancelledAt: sale.cancelledAt ? opts.cancelledAt || sale.cancelledAt : undefined,
+    cancelledBy: sale.cancelledBy || undefined,
+    cancelReason: sale.cancelReason || undefined,
     vatPct: Math.round((business?.vatRate ?? 0.1) * 100),
     openDrawer: sale.paymentMethod === "Cash",
   };

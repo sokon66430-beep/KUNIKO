@@ -55,6 +55,11 @@ const KH = {
   vat: "តម្លៃរួមបញ្ចូលទាំងអាករ",
   rate: "អត្រាប្តូរប្រាក់",
   ticket: "លេខផ្ទាំងហៅ",
+  cancelled: "វិក្កយបត្រលុបចោល",
+  cancelledBy: "អនុម័តដោយ",
+  cancelledAt: "កាលបរិច្ឆេទលុបចោល",
+  reason: "មូលហេតុ",
+  refund: "សងប្រាក់វិញ",
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -93,6 +98,10 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
   const showPickup = r.showPickup !== false; // default on
   const vatPct = Math.round((business?.vatRate ?? 0.1) * 100);
   const rate = business?.exchangeRate || 4100;
+  // A cancelled invoice is a DIFFERENT document from the sale it reverses. It
+  // has to be impossible to mistake for a receipt — someone holding both should
+  // never have to read the small print to tell which is which.
+  const voided = !!sale.cancelled;
 
   const lines = sale.items.map((it) => {
     const lineTotal = round2(it.price * it.qty);
@@ -141,18 +150,37 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
         {/* The owner's wording, or the standard title if they never changed it.
             An explicitly BLANK title prints nothing — some stores don't want a
             document heading at all. */}
-        {(r.invoiceTitle ?? `${KH.invoice} / COMMERCIAL INVOICE`) && (
-          <p className="mt-2 text-[12px]">{r.invoiceTitle ?? `${KH.invoice} / COMMERCIAL INVOICE`}</p>
+        {voided ? (
+          <div className="mt-2 rounded-md border-2 border-rose-600 py-1.5">
+            <p className="text-[13px] font-black tracking-wide text-rose-700">{KH.cancelled}</p>
+            <p className="text-[13px] font-black tracking-widest text-rose-700">CANCELLED INVOICE</p>
+          </div>
+        ) : (
+          (r.invoiceTitle ?? `${KH.invoice} / COMMERCIAL INVOICE`) && (
+            <p className="mt-2 text-[12px]">{r.invoiceTitle ?? `${KH.invoice} / COMMERCIAL INVOICE`}</p>
+          )
         )}
       </div>
 
       {/* ---- Who / when / where ---- */}
       <div className="mt-2 space-y-0.5">
-        <FormRow kh={KH.store} en="Store" value={business?.name || ""} />
+        {/* សាខា means BRANCH, so this row is the shop — the name the store was
+            created with, the same source the customer screen uses. It was
+            reading the business-PROFILE name, a third field nothing kept in step
+            with the Khmer name in the header, so one slip could show two
+            different identities for the same shop. */}
+        <FormRow kh={KH.store} en="Store" value={business?.storeName || business?.name || ""} />
         <FormRow kh={KH.date} en="Date" value={invoiceDateTime(sale.createdAt)} />
         {sale.cashier && <FormRow kh={KH.cashier} en="Cashier" value={sale.cashier} />}
         <FormRow kh={KH.invoice} en="Invoice No" value={sale.invoiceNo || sale.id} />
         {sale.posTerminalId && <FormRow kh={KH.till} en="Till" value={sale.posTerminalId} />}
+        {/* A void slip is only worth printing if it says who authorised it and
+            why — that is what an owner or an auditor comes looking for. */}
+        {voided && sale.cancelledAt && (
+          <FormRow kh={KH.cancelledAt} en="Cancelled" value={invoiceDateTime(sale.cancelledAt)} />
+        )}
+        {voided && sale.cancelledBy && <FormRow kh={KH.cancelledBy} en="Approved by" value={sale.cancelledBy} />}
+        {voided && sale.cancelReason && <FormRow kh={KH.reason} en="Reason" value={sale.cancelReason} />}
       </div>
       {/* A named customer prints; an unnamed one prints nothing. A "WALK-IN"
           banner on nearly every slip is a line of paper that tells no one
@@ -207,8 +235,17 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
         {showVat && <MoneyRow label="VAT" value={usd(sale.tax)} />}
       </div>
       <div className="mt-2 space-y-1">
-        <MoneyRow label={`${KH.total} / TOTAL (USD)`} value={usd(sale.total)} bold />
-        <MoneyRow label={`${KH.total} / TOTAL (KHR)`} value={rielDue(sale.total)} bold />
+        {voided ? (
+          <>
+            <MoneyRow label={`${KH.refund} / REFUNDED (USD)`} value={`- ${usd(sale.total)}`} bold />
+            <MoneyRow label={`${KH.refund} / REFUNDED (KHR)`} value={`- ${rielDue(sale.total)}`} bold />
+          </>
+        ) : (
+          <>
+            <MoneyRow label={`${KH.total} / TOTAL (USD)`} value={usd(sale.total)} bold />
+            <MoneyRow label={`${KH.total} / TOTAL (KHR)`} value={rielDue(sale.total)} bold />
+          </>
+        )}
       </div>
 
       {/* ---- Cash ---- */}
@@ -237,7 +274,7 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
         {KH.rate} / Exchange Rate $1 = KHR {rate}៛
       </p>
 
-      {showPickup && sale.queueNumber != null && (
+      {!voided && showPickup && sale.queueNumber != null && (
         <div className="mt-3 text-center">
           {/* The code the BOARD calls, drawn the way the board draws it — the
               customer matches this against the TV, so the two must agree. */}
@@ -251,7 +288,12 @@ export function ReceiptCard({ sale, business }: { sale: Sale; business?: Receipt
         </div>
       )}
 
-      {r.footerNote && <p className="mt-3 text-center text-[11px] font-bold">{r.footerNote}</p>}
+      {voided && (
+        <p className="mt-3 border-t border-dashed border-slate-300 pt-2 text-center text-[11px] font-bold text-rose-700">
+          This invoice has been cancelled. It is not a proof of purchase.
+        </p>
+      )}
+      {!voided && r.footerNote && <p className="mt-3 text-center text-[11px] font-bold">{r.footerNote}</p>}
     </div>
   );
 }

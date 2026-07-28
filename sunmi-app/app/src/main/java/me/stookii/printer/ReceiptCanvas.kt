@@ -87,6 +87,11 @@ object ReceiptCanvas {
     private const val KH_VAT = "តម្លៃរួមបញ្ចូលទាំងអាករ"
     private const val KH_RATE = "អត្រាប្តូរប្រាក់"
     private const val KH_TICKET = "លេខផ្ទាំងហៅ"
+    private const val KH_CANCELLED = "វិក្កយបត្រលុបចោល"
+    private const val KH_CANCELLED_AT = "កាលបរិច្ឆេទលុបចោល"
+    private const val KH_APPROVED_BY = "អនុម័តដោយ"
+    private const val KH_REASON = "មូលហេតុ"
+    private const val KH_REFUND = "សងប្រាក់វិញ"
 
     private fun paint(size: Float, bold: Boolean = false, align: Paint.Align = Paint.Align.LEFT): Paint {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -242,10 +247,30 @@ object ReceiptCanvas {
         // The owner's wording, or the standard title if they never changed it.
         // An explicitly BLANK title prints nothing — some stores want no
         // document heading at all.
-        val title = if (r.has("invoiceTitle")) r.optString("invoiceTitle") else "$KH_INVOICE / COMMERCIAL INVOICE"
-        if (title.isNotBlank()) {
+        // A cancelled invoice is a DIFFERENT document from the sale it reverses,
+        // and someone holding both must never have to read the small print to
+        // tell which is which. Boxed, so it survives a bad print head too.
+        val voided = r.optBoolean("cancelled", false)
+        if (voided) {
             gap(10f)
-            for (l in wrap(title, bodyCentre, RIGHT - LEFT)) centre(l, bodyCentre)
+            val top = y
+            gap(6f)
+            centre(KH_CANCELLED, bodyBoldCentre)
+            centre("CANCELLED INVOICE", bodyBoldCentre)
+            gap(6f)
+            if (c != null) {
+                val box = Paint(Paint.ANTI_ALIAS_FLAG)
+                box.color = Color.BLACK
+                box.style = Paint.Style.STROKE
+                box.strokeWidth = 3f
+                c.drawRect(LEFT, top, RIGHT, y, box)
+            }
+        } else {
+            val title = if (r.has("invoiceTitle")) r.optString("invoiceTitle") else "$KH_INVOICE / COMMERCIAL INVOICE"
+            if (title.isNotBlank()) {
+                gap(10f)
+                for (l in wrap(title, bodyCentre, RIGHT - LEFT)) centre(l, bodyCentre)
+            }
         }
         gap(6f)
 
@@ -255,6 +280,15 @@ object ReceiptCanvas {
         r.optString("cashier").takeIf { it.isNotBlank() }?.let { formRow("$KH_CASHIER / Cashier", it) }
         formRow("$KH_INVOICE / Invoice No", r.optString("invoiceNo"))
         r.optString("till").takeIf { it.isNotBlank() }?.let { formRow("$KH_TILL / Till", it) }
+        // A void slip is only worth printing if it says who authorised it and
+        // why — that is what an owner or an auditor comes looking for. The
+        // original invoice number and date stay above, so this ties back to the
+        // sale it reverses.
+        if (voided) {
+            r.optString("cancelledAt").takeIf { it.isNotBlank() }?.let { formRow("$KH_CANCELLED_AT / Cancelled", it) }
+            r.optString("cancelledBy").takeIf { it.isNotBlank() }?.let { formRow("$KH_APPROVED_BY / Approved by", it) }
+            r.optString("cancelReason").takeIf { it.isNotBlank() }?.let { formRow("$KH_REASON / Reason", it) }
+        }
 
         // A named customer prints; an unnamed one prints nothing. A "WALK-IN"
         // banner on nearly every slip is a line of paper that tells no one
@@ -346,8 +380,15 @@ object ReceiptCanvas {
         }
 
         gap(6f)
-        moneyRow("$KH_TOTAL / TOTAL (USD)", usd(r.optDouble("total")), bold = true)
-        moneyRow("$KH_TOTAL / TOTAL (KHR)", khr(r.optLong("totalRiel")), bold = true)
+        if (voided) {
+            // Negative and relabelled: this slip records money going BACK, and a
+            // positive "TOTAL" on a void would read as a sale at a glance.
+            moneyRow("$KH_REFUND / REFUNDED (USD)", "- " + usd(r.optDouble("total")), bold = true)
+            moneyRow("$KH_REFUND / REFUNDED (KHR)", "- " + khr(r.optLong("totalRiel")), bold = true)
+        } else {
+            moneyRow("$KH_TOTAL / TOTAL (USD)", usd(r.optDouble("total")), bold = true)
+            moneyRow("$KH_TOTAL / TOTAL (KHR)", khr(r.optLong("totalRiel")), bold = true)
+        }
 
         // ---- Cash -----------------------------------------------------------
         val receivedUsd = if (r.isNull("receivedUsd")) null else r.optDouble("receivedUsd")
@@ -375,7 +416,7 @@ object ReceiptCanvas {
         centre("$KH_RATE / Exchange Rate \$1 = KHR $rate៛", smallCentre)
 
         // ---- Pickup number --------------------------------------------------
-        if (r.optBoolean("showPickup", true) && !r.isNull("queueNumber")) {
+        if (!voided && r.optBoolean("showPickup", true) && !r.isNull("queueNumber")) {
             gap(10f)
             val codeText = r.optString("queueCode").takeIf { it.isNotBlank() }
                 ?: r.optInt("queueNumber").toString().padStart(3, '0')

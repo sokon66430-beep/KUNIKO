@@ -47,6 +47,17 @@ const SAMPLE_SALE: Sale = {
   queueNumber: 7,
 } as Sale;
 
+// The same sale, cancelled. A void slip is a document the shop hands to a
+// customer and keeps for the books, so the owner needs to be able to look at it
+// without voiding a real invoice to find out what it says.
+const SAMPLE_VOID: Sale = {
+  ...SAMPLE_SALE,
+  cancelled: true,
+  cancelledAt: "2026-08-01T09:14:00",
+  cancelledBy: "Area Manager (Chanvibol)",
+  cancelReason: "Customer changed their mind",
+} as Sale;
+
 export default function InvoiceSettingsPage() {
   const { data, loading, error, reload } = useFetch<ReceiptBusiness & { name?: string }>("/api/business");
   const [name, setName] = useState("");
@@ -67,6 +78,7 @@ export default function InvoiceSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [seeded, setSeeded] = useState(false);
+  const [previewVoid, setPreviewVoid] = useState(false);
 
   useEffect(() => {
     if (!data || seeded) return;
@@ -103,6 +115,7 @@ export default function InvoiceSettingsPage() {
       nameKhmer,
       vatTin,
       addressKhmer: khmerLines,
+      storeName: (data as any)?.storeName,
       vatRate: data?.vatRate,
       exchangeRate: (data as any)?.exchangeRate,
       receipt: { invoiceTitle, headerNote, footerNote, accent, showLogo, showVat, showPickup },
@@ -267,10 +280,28 @@ export default function InvoiceSettingsPage() {
 
         {/* Live preview */}
         <div className="lg:sticky lg:top-6 lg:self-start">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Live preview</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">Live preview</p>
+            <div className="flex rounded-lg bg-slate-100 p-0.5">
+              {[
+                { on: false, label: "Sale" },
+                { on: true, label: "Cancelled" },
+              ].map((t) => (
+                <button
+                  key={t.label}
+                  onClick={() => setPreviewVoid(t.on)}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition ${
+                    previewVoid === t.on ? "bg-white text-ink-900 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="rounded-2xl bg-slate-100 p-5">
             <div className="mx-auto w-full max-w-sm rounded-xl bg-white p-4 shadow-soft">
-              <ReceiptCard sale={SAMPLE_SALE} business={preview} />
+              <ReceiptCard sale={previewVoid ? SAMPLE_VOID : SAMPLE_SALE} business={preview} />
             </div>
           </div>
           <p className="mt-2 text-xs text-slate-400">Sample data — real sales show their own items and totals.</p>
