@@ -3,6 +3,7 @@ import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { canManagePromotions } from "@/lib/access";
 import { CHIME_IDS, DEFAULT_CHIME } from "@/lib/chimes";
+import { BOARD_FONT_IDS, DEFAULT_BOARD_FONT } from "@/lib/boardFonts";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,10 @@ export async function PATCH(req: Request) {
       // Written out rather than a one-liner: a missing volume must fall back to
       // 80, not to 0. Coercing undefined through `|| 0` would store "silent"
       // and the shop would think the chime never worked.
+      // Only a typeface we actually bundle. An unknown name would fall back to
+      // whatever the TV happens to have, which is how a board ends up in a face
+      // nobody chose.
+      const fontId = (v: any) => (BOARD_FONT_IDS.includes(String(v)) ? String(v) : DEFAULT_BOARD_FONT);
       const volumePct = (v: any) => {
         const n = Number(v);
         return Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 80;
@@ -146,6 +151,9 @@ export async function PATCH(req: Request) {
               // screen silently doing nothing, which reads as a broken feature.
               chime: chimeId(s?.chime),
               volume: volumePct(s?.volume),
+              // Only a typeface we actually bundle — an unknown name would leave
+              // the TV rendering in whatever face it happens to have.
+              font: fontId(s?.font),
             }))
             // Two screens sharing an id would both answer to the same link, and
             // the owner would have no way to tell which one they were editing.
@@ -166,6 +174,7 @@ export async function PATCH(req: Request) {
         chime: chimeId(q.chime),
         volume: volumePct(q.volume),
         numberStyle: ["latin", "mixed", "khmer"].includes(String(q.numberStyle)) ? String(q.numberStyle) : "latin",
+        font: fontId(q.font),
       };
     }
     // Owner-set sidebar order (Menu Layout) — a list of page hrefs.

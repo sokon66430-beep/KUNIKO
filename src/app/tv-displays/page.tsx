@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Monitor,
   Volume2,
@@ -19,6 +19,7 @@ import { useFetch, api } from "@/lib/client";
 import { useRole } from "@/lib/client";
 import { CHIMES, DEFAULT_CHIME, playChime, unlockAudio } from "@/lib/chimes";
 import { QUEUE_NUMBER_STYLES, localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
+import { BOARD_FONTS, DEFAULT_BOARD_FONT, boardFont } from "@/lib/boardFonts";
 import { speakQueueCode, voicesReady, hasVoiceFor } from "@/lib/announce";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,7 @@ type Screen = {
   voice?: boolean;
   chime?: string;
   volume?: number;
+  font?: string;
 };
 
 type Business = {
@@ -64,6 +66,7 @@ type Business = {
     chime?: string;
     volume?: number;
     numberStyle?: string;
+    font?: string;
   };
 };
 
@@ -110,6 +113,7 @@ export default function TvDisplaysPage() {
   const [storeChime, setStoreChime] = useState<string>(DEFAULT_CHIME);
   const [storeVolume, setStoreVolume] = useState(80);
   const [numberStyle, setNumberStyle] = useState<QueueNumberStyle>("latin");
+  const [storeFont, setStoreFont] = useState<string>(DEFAULT_BOARD_FONT);
   // What the device in front of the owner can actually speak. Shown as a
   // warning rather than discovered at the counter — see lib/announce.
   const [khmerVoice, setKhmerVoice] = useState<boolean | null>(null);
@@ -117,9 +121,30 @@ export default function TvDisplaysPage() {
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // What the server last gave us, and whether the form has been touched since.
+  //
+  // useFetch polls every 20 seconds and refetches whenever the tab regains
+  // focus. Each poll returns a NEW object, so this effect used to re-run and
+  // reset every field from the server — which quietly deleted a TV the moment
+  // it was added, because a screen only exists locally until Save is pressed.
+  //
+  // So: ignore a payload identical to the one already loaded (the normal poll),
+  // and never overwrite unsaved edits.
+  const lastLoaded = useRef("");
+  const dirty = useRef(false);
+  const touch = () => {
+    dirty.current = true;
+    setUnsaved(true);
+  };
+  const [unsaved, setUnsaved] = useState(false);
+
   useEffect(() => {
     const q = business?.queueSettings;
     if (!q) return;
+    const signature = JSON.stringify(q);
+    if (signature === lastLoaded.current) return; // nothing actually changed
+    if (dirty.current) return; // don't throw away what the owner is typing
+    lastLoaded.current = signature;
     setMaxPerLetter(String(q.maxPerLetter ?? 99));
     setResetDaily(q.resetDaily !== false);
     setVoiceOn(!!q.voice);
@@ -131,12 +156,14 @@ export default function TvDisplaysPage() {
     setStoreChime(q.chime || DEFAULT_CHIME);
     setStoreVolume(q.volume ?? 80);
     setNumberStyle((q.numberStyle as QueueNumberStyle) || "latin");
+    setStoreFont(q.font || DEFAULT_BOARD_FONT);
     setScreens(q.screens?.length ? q.screens : []);
   }, [business]);
 
   // Ids only have to be unique within one store and never change once a TV has
   // the link, so the lowest unused sN is both stable and readable.
   function addScreen() {
+    touch();
     const taken = new Set(screens.map((s) => s.id));
     let n = 1;
     while (taken.has(`s${n}`)) n++;
@@ -151,11 +178,14 @@ export default function TvDisplaysPage() {
         voice: false,
         chime: DEFAULT_CHIME,
         volume: 80,
+        font: DEFAULT_BOARD_FONT,
       },
     ]);
   }
-  const patchScreen = (id: string, patch: Partial<Screen>) =>
+  const patchScreen = (id: string, patch: Partial<Screen>) => {
+    touch();
     setScreens((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
 
   // Preview a chime here in the office. unlockAudio first because the browser
   // blocks sound until a real click — which this is, so it always succeeds.
@@ -181,7 +211,10 @@ export default function TvDisplaysPage() {
       alive = false;
     };
   }, []);
-  const removeScreen = (id: string) => setScreens((prev) => prev.filter((s) => s.id !== id));
+  const removeScreen = (id: string) => {
+    touch();
+    setScreens((prev) => prev.filter((s) => s.id !== id));
+  };
 
   const linkFor = (id: string) =>
     typeof window === "undefined" ? `/queue-display?screen=${id}` : `${window.location.origin}/queue-display?screen=${id}`;
@@ -233,9 +266,15 @@ export default function TvDisplaysPage() {
             chime: storeChime,
             volume: storeVolume,
             numberStyle,
+            font: storeFont,
           },
         }),
       });
+      // Saved: the server now holds exactly what is on screen, so let the next
+      // poll hydrate again.
+      dirty.current = false;
+      setUnsaved(false);
+      lastLoaded.current = "";
       setSaved(true);
       setTimeout(() => setSaved(false), 2200);
       reload();
@@ -378,6 +417,25 @@ export default function TvDisplaysPage() {
                       </p>
                     </div>
                     <div>
+                      <label className="label">Typeface</label>
+                      <Select
+                        value={sc.font ?? DEFAULT_BOARD_FONT}
+                        disabled={!isOwner}
+                        onChange={(v) => patchScreen(sc.id, { font: v })}
+                        options={BOARD_FONTS.map((f) => ({ value: f.id, label: f.name }))}
+                      />
+                      {/* The sample is set IN the chosen face, in both scripts and
+                          at a number size — reading a font name tells nobody what
+                          their board will look like. */}
+                      <p
+                        className="mt-1.5 truncate text-[19px] font-bold leading-tight text-ink-900"
+                        style={{ fontFamily: boardFont(sc.font).stack }}
+                      >
+                        A001 · កំពុងហៅ
+                      </p>
+                      <p className="text-[11px] leading-snug text-slate-400">{boardFont(sc.font).hint}</p>
+                    </div>
+                    <div>
                       <label className="label">Volume · {sc.volume ?? 80}%</label>
                       <input
                         type="range"
@@ -451,6 +509,26 @@ export default function TvDisplaysPage() {
             other — leave it on for just one.
           </p>
         )}
+
+        {/* Save lives HERE too, next to the TVs it saves. It used to exist only
+            at the bottom of the next card, labelled "Save rules" — so adding a
+            TV and walking away lost it, and nothing on screen said why. */}
+        {isOwner && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+            <button onClick={save} disabled={saving} className="btn-primary">
+              {saving ? "Saving…" : "Save screens"}
+            </button>
+            {unsaved ? (
+              <span className="text-[12px] font-semibold text-amber-700">
+                Not saved yet — press Save or these changes will be lost.
+              </span>
+            ) : saved ? (
+              <span className="flex items-center gap-1 text-[12px] font-semibold text-emerald-600">
+                <Check size={14} /> Saved
+              </span>
+            ) : null}
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -498,7 +576,7 @@ export default function TvDisplaysPage() {
                 disabled={!isOwner}
                 maxLength={80}
                 placeholder="e.g. Please collect at the counter"
-                onChange={(e) => setBoardNote(e.target.value)}
+                onChange={(e) => { touch(); setBoardNote(e.target.value); }}
               />
               <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
                 Optional. Leave empty to show nothing.
@@ -638,10 +716,26 @@ export default function TvDisplaysPage() {
             <p className="mt-1 text-[11px] text-slate-400">Used by any TV that hasn&apos;t chosen its own.</p>
           </div>
           <div>
+            <label className="label">Default typeface</label>
+            <Select
+              value={storeFont}
+              onChange={(v) => { touch(); setStoreFont(v); }}
+              disabled={!isOwner}
+              options={BOARD_FONTS.map((f) => ({ value: f.id, label: f.name }))}
+            />
+            <p
+              className="mt-1.5 truncate text-[19px] font-bold leading-tight text-ink-900"
+              style={{ fontFamily: boardFont(storeFont).stack }}
+            >
+              A001 · កំពុងហៅ
+            </p>
+            <p className="text-[11px] leading-snug text-slate-400">Used by any TV that hasn&apos;t chosen its own.</p>
+          </div>
+          <div>
             <label className="label">Number looks like</label>
             <Select
               value={numberStyle}
-              onChange={(v) => setNumberStyle(v as QueueNumberStyle)}
+              onChange={(v) => { touch(); setNumberStyle(v as QueueNumberStyle); }}
               disabled={!isOwner}
               options={QUEUE_NUMBER_STYLES.map((s) => ({ value: s.value, label: s.label }))}
             />
@@ -654,7 +748,7 @@ export default function TvDisplaysPage() {
               <input
                 type="checkbox"
                 checked={resetDaily}
-                onChange={(e) => setResetDaily(e.target.checked)}
+                onChange={(e) => { touch(); setResetDaily(e.target.checked); }}
                 disabled={!isOwner}
                 className="h-4 w-4 accent-brand-600"
               />
@@ -671,7 +765,7 @@ export default function TvDisplaysPage() {
             <input
               type="checkbox"
               checked={voiceOn}
-              onChange={(e) => setVoiceOn(e.target.checked)}
+              onChange={(e) => { touch(); setVoiceOn(e.target.checked); }}
               disabled={!isOwner}
               className="mt-0.5 h-4 w-4 accent-brand-600"
             />
@@ -691,7 +785,7 @@ export default function TvDisplaysPage() {
                 <label className="label">Language</label>
                 <Select
                   value={voiceLang}
-                  onChange={setVoiceLang}
+                  onChange={(v) => { touch(); setVoiceLang(v); }}
                   disabled={!isOwner}
                   options={[
                     { value: "en-US", label: "English" },

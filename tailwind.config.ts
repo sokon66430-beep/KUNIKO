@@ -30,6 +30,9 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "Segoe UI", "sans-serif"],
+        // The Khmer stack, so a class can reach it. The custom property is the
+        // single source (see globals.css / lib/fonts.ts) — this only exposes it.
+        khmer: ["var(--font-khmer)", "sans-serif"],
       },
       borderRadius: {
         xl: "0.85rem",

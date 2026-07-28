@@ -670,6 +670,10 @@ export type QueueScreen = {
   // browser-audio code). Absent = use the store's default chime.
   chime?: string;
   volume?: number; // 0–100, this screen's own loudness
+  // The typeface this screen uses. A BoardFontId from lib/boardFonts (kept as a
+  // string so the shared type file stays free of the font catalogue). Absent =
+  // follow the store default.
+  font?: string;
 };
 
 /** Owner-controlled queue behaviour (Admin settings, Step 10). */
@@ -688,6 +692,8 @@ export type QueueSettings = {
   // A ChimeId from lib/chimes; "none" for a silent shop.
   chime?: string;
   volume?: number; // 0–100
+  // The store default typeface for the board — a BoardFontId from lib/boardFonts.
+  font?: string;
   // How the pickup number is DRAWN for customers: "latin" (A001), "mixed"
   // (A០០១) or "khmer" (ក០០១). The stored code stays Latin either way — see
   // lib/khmer for why.

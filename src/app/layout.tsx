@@ -11,6 +11,19 @@ import "@fontsource/battambang/900.css";
 // Kantumruy Pro — the Khmer typeface for the customer screen (400 + 700 Bold).
 import "@fontsource/kantumruy-pro/400.css";
 import "@fontsource/kantumruy-pro/700.css";
+// The rest of the customer-board typefaces (see lib/boardFonts). Bundled rather
+// than fetched: a TV on shop wifi must not wait on a font server to draw the
+// number someone is queueing for. Only the weights the board can actually use —
+// Koulen and Moul ship one weight each, so asking for more would be a synthesised
+// bold that smears Khmer diacritics.
+import "@fontsource/hanuman/400.css";
+import "@fontsource/hanuman/700.css";
+import "@fontsource/hanuman/900.css";
+import "@fontsource/nokora/400.css";
+import "@fontsource/nokora/700.css";
+import "@fontsource/nokora/900.css";
+import "@fontsource/koulen/400.css";
+import "@fontsource/moul/400.css";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
 

@@ -75,6 +75,9 @@ export async function GET(req: Request) {
           // so setting the chime once covers every TV the shop adds later.
           chime: screen.chime ?? cfg.chime ?? "ding",
           volume: screen.volume ?? cfg.volume ?? 80,
+          // Same rule as the chime: a screen with no typeface of its own follows
+          // the store default, so choosing once covers every TV added later.
+          font: screen.font ?? cfg.font ?? "kantumruy",
         }
       : null,
     // "preparing" and anything still waiting both read as "being made" to a
@@ -89,6 +92,8 @@ export async function GET(req: Request) {
     // How to DRAW the code. Sent rather than applied here so the stored code
     // stays Latin in the payload — the voice needs the Latin form to read it.
     numberStyle: cfg.numberStyle ?? "latin",
+    // Store default typeface, for an unregistered screen with no id in its link.
+    font: cfg.font ?? "kantumruy",
     at: new Date().toISOString(),
   });
 }
