@@ -1453,16 +1453,23 @@ export default function PosPage() {
 
               <div>
                 <label className="label">Payment</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                {/* Real touch targets. These were 10px tall text on a ~36px
+                    button — fine with a mouse, awkward with a thumb on a busy
+                    counter, and picking the wrong one takes the money the wrong
+                    way. Sized to be hit without looking, and the chosen one is
+                    ringed so it reads at a glance from standing height. */}
+                <div className="grid grid-cols-3 gap-2">
                   {PAYMENTS.map((p) => (
                     <button
                       key={p}
                       onClick={() => setPayment(p)}
-                      className={`flex items-center justify-center gap-1 rounded-lg py-2.5 text-xs font-bold transition active:scale-[0.98] ${
-                        payment === p ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      className={`flex items-center justify-center gap-1.5 rounded-xl py-5 text-base font-bold transition active:scale-[0.98] ${
+                        payment === p
+                          ? "bg-brand-600 text-white ring-2 ring-brand-300"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {p === "KHQR" && <QrCode size={13} />}
+                      {p === "KHQR" && <QrCode size={17} />}
                       {p}
                     </button>
                   ))}
