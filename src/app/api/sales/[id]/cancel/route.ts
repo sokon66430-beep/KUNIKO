@@ -5,6 +5,7 @@ import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
 import { findManagerByCode } from "@/lib/managerAuth";
+import { clientIp, throttleKey, lockedOut, recordFail, clearFails } from "@/lib/throttle";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!managerCode) {
     return NextResponse.json({ error: "An approval code is required to cancel an invoice" }, { status: 400 });
   }
+  // Same guess throttle as the login — an approval code authorises a refund.
+  const key = throttleKey("approve", clientIp(req), session.uid);
+  if (lockedOut(key)) {
+    return NextResponse.json({ error: "Too many wrong codes. Wait a few minutes and try again." }, { status: 429 });
+  }
   let approvedBy: string | null = null;
   const storeDb = await readDB();
   const badge = (storeDb.meta.business.approvers || []).find((a) => a.code && a.code === managerCode);
@@ -62,6 +68,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (mgr) approvedBy = `${mgr.name} (${mgr.title})`;
   }
   if (!approvedBy) {
+    recordFail(key);
     return NextResponse.json(
       {
         error:
@@ -70,6 +77,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       { status: 403 },
     );
   }
+  clearFails(key);
   const actor = await currentActor();
 
   const result = await mutateDB((db) => {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { findManagerByCode } from "@/lib/managerAuth";
+import { clientIp, throttleKey, lockedOut, recordFail, clearFails } from "@/lib/throttle";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,17 @@ export async function POST(req: Request) {
   const ownerOnly = !!body.ownerOnly;
   if (!code) return NextResponse.json({ error: "A code is required" }, { status: 400 });
 
+  // A manager code unlocks voids and till controls — it gets the same guess
+  // throttle as a login. Keyed to whoever is signed in on the device asking.
+  const key = throttleKey("approve", clientIp(req), session.uid);
+  if (lockedOut(key)) {
+    return NextResponse.json({ error: "Too many wrong codes. Wait a few minutes and try again." }, { status: 429 });
+  }
+
   const mgr = await findManagerByCode(code, { ownerOnly, storeId: session.storeId });
+  if (mgr) clearFails(key);
   if (!mgr) {
+    recordFail(key);
     return NextResponse.json(
       {
         error: ownerOnly

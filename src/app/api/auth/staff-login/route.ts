@@ -5,6 +5,7 @@ import { heldElsewhere, takeTill } from "@/lib/tillHolders";
 import { getSession } from "@/lib/session";
 import { verifyPassword } from "@/lib/password";
 import { signSession, SESSION_COOKIE, cookieOptions } from "@/lib/auth";
+import { clientIp, throttleKey, lockedOut, recordFail, clearFails } from "@/lib/throttle";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,21 @@ export async function POST(req: Request) {
   if (!employeeId || !pin) return NextResponse.json({ error: "Pick your name and enter your PIN" }, { status: 400 });
   const terminal = typeof posTerminalId === "string" ? posTerminalId.trim() : "";
 
+  // A 6-digit PIN is only as strong as the number of guesses allowed at it.
+  // Same throttle as the password login: 10 wrong tries per (device, employee)
+  // in 15 minutes — one fumbling cashier locks nobody else out.
+  const key = throttleKey("staff-pin", clientIp(req), employeeId);
+  if (lockedOut(key)) {
+    return NextResponse.json({ error: "Too many wrong PINs for this name. Wait a few minutes and try again." }, { status: 429 });
+  }
+
   const db = await readDB(); // current store (from the session)
   const emp = db.scheduleEmployees.find((e) => e.id === employeeId && e.active !== false);
   if (!emp || !emp.pinHash || !verifyPassword(String(pin), emp.pinHash)) {
+    recordFail(key);
     return NextResponse.json({ error: "Wrong PIN, or this staff can't sign in." }, { status: 401 });
   }
+  clearFails(key);
 
   // One person, one till. Checked AFTER the PIN so a wrong PIN can't be used to
   // find out where somebody is working.
