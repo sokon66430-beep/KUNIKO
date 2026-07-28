@@ -64,7 +64,11 @@ export default function CustomerDisplayPage() {
         const r = await fetch("/api/business", { credentials: "include" });
         if (!r.ok) return;
         const b = await r.json();
-        if (alive) setCfg({ ...b.customerDisplay, storeName: b.name, logo: b.logo });
+        // The shop's OWN name — what it was called when the store was created —
+        // ahead of the business-profile field. The two are separate and had
+        // drifted, so a renamed shop still greeted customers with the old
+        // profile text.
+        if (alive) setCfg({ ...b.customerDisplay, storeName: b.storeName || b.name, logo: b.logo });
       } catch {
         /* no session / offline — defaults apply */
       }

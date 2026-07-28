@@ -729,7 +729,7 @@ export default function PosPage() {
       typeof paid === "number" ? Math.max(0, Math.round((paid - total) * 100) / 100) : undefined;
     publishCustomerDisplay({
       kind: "thanks",
-      storeName: business?.name || "ON Mart",
+      storeName,
       total,
       paid,
       change: changeDue,
@@ -791,7 +791,10 @@ export default function PosPage() {
   // "thank you") we hold off so this effect doesn't overwrite it — the ref is
   // set true right after publishing "thanks", so clearing the cart afterwards
   // doesn't immediately flip the customer screen back to idle.
-  const storeName = business?.name || "ON Mart";
+  // What the CUSTOMER screen calls this shop: the name the store was created
+  // with, not the separately-edited business profile field. The two drifted, and
+  // the customer was reading the wrong one.
+  const storeName = business?.storeName || business?.name || "ON Mart";
   const suppressIdleRef = useRef(false);
   useEffect(() => {
     if (khqrOpen) return; // the KHQR dialog publishes its own view
@@ -1551,7 +1554,7 @@ export default function PosPage() {
         <KhqrModal
           amount={total}
           billNumber={khqrBill}
-          storeName={business?.name || "ON Mart"}
+          storeName={storeName}
           onCancel={() => setKhqrOpen(false)}
           onConfirmed={async (md5) => {
             try {

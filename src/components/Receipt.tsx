@@ -15,6 +15,9 @@ import { localizeQueueCode, type QueueNumberStyle } from "@/lib/khmer";
 
 export type ReceiptBusiness = {
   name?: string;
+  // The store's own name, from when the store was created — served by
+  // /api/business alongside the profile. Read-only; edited in Stores.
+  storeName?: string;
   nameKhmer?: string;
   vatTin?: string;
   addressKhmer?: string[];

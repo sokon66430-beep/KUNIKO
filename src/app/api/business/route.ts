@@ -25,7 +25,16 @@ const LIST_FIELDS = ["invoiceTo", "poNotes", "addressKhmer"] as const;
 export async function GET() {
   const s = await getSession();
   const db = await readDB();
-  const b = db.meta.business;
+  // The store's OWN name — the one typed when the store was created — served
+  // alongside the business profile.
+  //
+  // These are two different fields that had quietly drifted: `business.name` is
+  // a profile field edited in Invoice Customization, while the store name is
+  // the shop's identity in the multi-store system. The customer-facing screen
+  // was showing the profile field, so a shop renamed at creation still greeted
+  // customers with whatever the profile said. Sent here so screens can prefer
+  // the store's real name without a second request.
+  const b = { ...db.meta.business, storeName: s?.storeName };
   // Approver CODES authorize voiding sales and approving cash. The client never
   // needs the code values — the server checks a submitted code — and only the
   // owner edits them in Store Settings. Strip the codes for everyone else so a
