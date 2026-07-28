@@ -49,7 +49,7 @@ export async function api<T = any>(url: string, options?: RequestInit & { timeou
     if (e?.name === "AbortError" && !init.signal?.aborted) {
       throw new Error("The store took too long to respond. Check the connection.");
     }
-    throw e;
+    throw asNetworkError(e);
   } finally {
     clearTimeout(timer);
     init.signal?.removeEventListener("abort", onOuterAbort);
@@ -59,6 +59,24 @@ export async function api<T = any>(url: string, options?: RequestInit & { timeou
     throw new Error(body?.error || `Request failed (${res.status})`);
   }
   return readJson<T>(res);
+}
+
+/**
+ * Turn a failed `fetch` into something a cashier can act on.
+ *
+ * When the request never reaches the server at all — the shop's wifi has
+ * dropped, the T3 is off the network — the browser throws a bare
+ * "Failed to fetch" (Safari: "Load failed", Firefox: "NetworkError…"). That is
+ * what appeared on the sign-in screen, and it tells the person standing at the
+ * till nothing about what to do.
+ *
+ * Anything with a real message of its own is left alone.
+ */
+function asNetworkError(e: any): Error {
+  const msg = String(e?.message || "");
+  const isNetwork =
+    e instanceof TypeError || /failed to fetch|load failed|networkerror|network request failed/i.test(msg);
+  return isNetwork ? new Error("No connection to the store — check the shop's wifi, then try again.") : e;
 }
 
 /**

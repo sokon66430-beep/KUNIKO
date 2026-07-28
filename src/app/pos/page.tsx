@@ -202,6 +202,26 @@ export default function PosPage() {
   // across a failed attempt so a retry dedupes, and released once the sale has
   // landed so the NEXT customer is a new sale.
   const chargeRef = useRef<string>("");
+  // Bring a freshly scanned line into view and mark it.
+  //
+  // The newest line is at the TOP of the basket, so once the cashier has
+  // scrolled down through a big order the next scan lands out of sight — they
+  // are left guessing whether the beep registered, and the usual answer is to
+  // scan it again. Scrolling back and ringing the row for a moment answers the
+  // only question they have: did that go in?
+  const [justAdded, setJustAdded] = useState<number | null>(null);
+  useEffect(() => {
+    if (justAdded == null) return;
+    // Scroll the NEW LINE into view rather than a container we picked in
+    // advance: on a till the whole column scrolls, in the full app the basket
+    // scrolls inside it, and scrollIntoView finds whichever ancestor it is.
+    // Runs after the render that added the row, so the row exists.
+    document.querySelector('[data-newest="1"]')?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    // Let the ring fade after a beat — it marks the newest line, it isn't a
+    // permanent selection.
+    const t = setTimeout(() => setJustAdded(null), 1400);
+    return () => clearTimeout(t);
+  }, [justAdded]);
   const blockScanRef = useRef(false);
   blockScanRef.current = khqrOpen || cashOpen || !!receipt || reportOpen || invoicesOpen || cameraOpen || shiftOpen;
 
@@ -489,6 +509,10 @@ export default function PosPage() {
       cartSeq.current += 1; // bump so the just-scanned line floats to the top
       return { ...prev, [key]: { product, qty, seq: cartSeq.current, markdown, unit: u } };
     });
+    // Show the cashier it went in: jump the basket back to the new line and ring
+    // it briefly. Without this, a scan during a long order lands above the fold
+    // and gets scanned a second time.
+    setJustAdded(cartSeq.current);
   }
 
   function setQty(id: string, qty: number) {
@@ -1364,7 +1388,13 @@ export default function PosPage() {
                     // Fixed columns so every row lines up: name (flex) · stepper ·
                     // line total · bin — same widths on each line regardless of the
                     // product name's length.
-                    <div key={lineKey(l.product, l.markdown, l.unit)} className="flex items-center gap-2">
+                    <div
+                      key={lineKey(l.product, l.markdown, l.unit)}
+                      data-newest={l.seq === justAdded ? "1" : undefined}
+                      className={`flex items-center gap-2 rounded-xl transition-colors duration-700 ${
+                        l.seq === justAdded ? "bg-brand-50 ring-2 ring-brand-200" : ""
+                      }`}
+                    >
                       <div className="min-w-0 flex-1">
                         {/* The packaging badge sits OUTSIDE the name: "Case" is
                             the one word the cashier must see, and it must not be
@@ -1486,7 +1516,7 @@ export default function PosPage() {
                     <button
                       key={p}
                       onClick={() => setPayment(p)}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl py-8 text-lg font-bold transition active:scale-[0.98] ${
+                      className={`flex items-center justify-center gap-1.5 rounded-xl py-6 text-lg font-bold transition active:scale-[0.98] ${
                         payment === p
                           ? "bg-brand-600 text-white ring-2 ring-brand-300"
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
