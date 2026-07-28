@@ -11,6 +11,23 @@ function isManagerPosition(name: string | undefined): boolean {
   return /manager/i.test(name || "");
 }
 
+// Human job titles for account roles, so an approval can be recorded as
+// "Sok Dara (Store Manager)" rather than "store_manager" — this text ends up on
+// a cancellation slip a customer may be handed.
+const ROLE_TITLES: Record<string, string> = {
+  owner: "Owner",
+  store_manager: "Store Manager",
+  asst_store_manager: "Assistant Store Manager",
+  area_manager: "Area Manager",
+  ops_manager: "Operation Manager",
+  management: "Management",
+};
+
+export function managerTitle(role: string): string {
+  // A Job-Schedule position already IS its title ("Assistant Store Manager").
+  return ROLE_TITLES[role] || role;
+}
+
 // Verify a manager/owner code on its own (no username) and return whose it is.
 // Shared by the Till-Mode gate (/api/verify-manager) and any action that needs a
 // manager to sign off — e.g. deleting a cash movement or unlocking a shift survey.
@@ -21,7 +38,7 @@ function isManagerPosition(name: string | undefined): boolean {
 export async function findManagerByCode(
   code: string,
   opts: { ownerOnly?: boolean; storeId: string },
-): Promise<{ name: string; role: string } | null> {
+): Promise<{ name: string; role: string; title: string } | null> {
   const c = String(code || "").trim();
   if (!c) return null;
 
@@ -34,7 +51,7 @@ export async function findManagerByCode(
         (isCrossStoreRole(u.role) || u.storeId === opts.storeId || (u.storeIds || []).includes(opts.storeId)),
   );
   const mgr = candidates.find((u) => verifyPassword(c, u.passwordHash));
-  if (mgr) return { name: mgr.name, role: mgr.role };
+  if (mgr) return { name: mgr.name, role: mgr.role, title: managerTitle(mgr.role) };
 
   // 2) Job-Schedule staff PIN — a manager-position employee of THIS store typing
   //    their till PIN. Not offered for owner-only gates (Till Mode stays owner's).
@@ -48,7 +65,10 @@ export async function findManagerByCode(
         isManagerPosition(posName.get(e.positionId || "")) &&
         verifyPassword(c, e.pinHash as string),
     );
-    if (emp) return { name: emp.name, role: posName.get(emp.positionId || "") || "Manager" };
+    if (emp) {
+      const title = posName.get(emp.positionId || "") || "Manager";
+      return { name: emp.name, role: title, title };
+    }
   }
 
   return null;

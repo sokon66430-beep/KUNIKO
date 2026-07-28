@@ -2126,7 +2126,7 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
             )}
           </div>
         </div>
-        <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice needs approval — an approver badge code (set in Store Settings) or a manager&rsquo;s own code.</p>
+        <p className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs font-medium text-amber-700">Cancelling an invoice needs approval — a store manager or assistant store manager enters their own POS PIN.</p>
         <div className="overflow-y-auto px-2 py-2">
           {loading && !data ? (
             <p className="px-3 py-8 text-center text-sm text-slate-400">Loading…</p>
@@ -2210,13 +2210,13 @@ function InvoicesModal({ onClose, onChanged }: { onClose: () => void; onChanged:
                 type="password"
                 value={mgrPass}
                 onChange={(e) => setMgrPass(e.target.value)}
-                placeholder="Approval code / badge"
+                placeholder="Manager's POS PIN"
                 autoComplete="off"
                 autoFocus
                 onKeyDown={(e) => { if (e.key === "Enter") confirmCancel(); }}
                 className="input"
               />
-              <p className="mt-1.5 text-[11px] text-slate-400">Scan or type an approver badge code (Store Settings → Receipt-edit approvers), or a manager&rsquo;s own code — the system records who approved.</p>
+              <p className="mt-1.5 text-[11px] text-slate-400">The store manager or assistant store manager enters the same PIN they sign into the POS with — the system records who approved.</p>
             </div>
 
             {cancelError && (

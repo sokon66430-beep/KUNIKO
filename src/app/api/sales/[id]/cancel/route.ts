@@ -4,9 +4,7 @@ import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
-import { canCancelInvoice, isCrossStoreRole } from "@/lib/access";
-import { readSystem } from "@/lib/system";
-import { verifyPassword } from "@/lib/password";
+import { findManagerByCode } from "@/lib/managerAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +36,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const reason = String(body.reason || "").trim();
   if (!reason) return NextResponse.json({ error: "A reason is required to cancel an invoice" }, { status: 400 });
 
-  // Verify the approving manager by their CODE alone — no username. Two kinds
-  // of code work, checked in this order:
-  //   1. An APPROVAL CODE / BADGE from Store Settings → Receipt-edit approvers —
-  //      the same badge that approves a receipt edit approves a void.
-  //   2. A manager's own login password (store manager / assistant / owner).
+  // Verify the approving manager by their CODE alone — no username. The code a
+  // manager approves with is THE SAME ONE THEY SIGN INTO THE TILL WITH: one code
+  // per person, nothing extra to remember or to write on a note by the register.
+  //   1. A store manager / assistant store manager who signs into the POS with a
+  //      6-digit staff PIN approves with that PIN.
+  //   2. One who signs in with an account (email + password) approves with that
+  //      password. Both handled by findManagerByCode — the same check that gates
+  //      Till Mode, shift close and cash-movement deletions.
+  //   3. An APPROVAL BADGE from Store Settings → Receipt-edit approvers still
+  //      works, for a manager who carries a badge instead of typing.
   const managerCode = String(body.managerCode || body.managerPassword || "").trim();
   if (!managerCode) {
     return NextResponse.json({ error: "An approval code is required to cancel an invoice" }, { status: 400 });
@@ -53,18 +56,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (badge) {
     approvedBy = badge.name ? `${badge.name} (${badge.role})` : badge.role;
   } else {
-    const sys = await readSystem();
-    const approvers = sys.users.filter(
-      (u) =>
-        canCancelInvoice(u.role) &&
-        (isCrossStoreRole(u.role) || u.storeId === session.storeId || (u.storeIds || []).includes(session.storeId)),
-    );
-    const mgr = approvers.find((u) => verifyPassword(managerCode, u.passwordHash));
-    if (mgr) approvedBy = mgr.name;
+    const mgr = await findManagerByCode(managerCode, { storeId: session.storeId });
+    // Name AND title — this line is printed on the cancellation slip, and
+    // "approved by Sok Dara" alone doesn't say they were allowed to.
+    if (mgr) approvedBy = `${mgr.name} (${mgr.title})`;
   }
   if (!approvedBy) {
     return NextResponse.json(
-      { error: "Code not recognised — enter an approver badge code (Store Settings) or a manager's password." },
+      {
+        error:
+          "Code not recognised — a store manager or assistant store manager must enter their own POS PIN (or account password).",
+      },
       { status: 403 },
     );
   }
