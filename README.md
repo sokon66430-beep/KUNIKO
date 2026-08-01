@@ -30,7 +30,9 @@ on this device.
 
 ## This build
 
-Built from `3586c98`, 1 August 2026.
+Built from `1cf9fde`, 1 August 2026.
+
+Printing:
 
 - A receipt can no longer be lost between the print queue and the printer
   connection — the fault that let a sale finish with no paper and no error.
@@ -39,6 +41,18 @@ Built from `3586c98`, 1 August 2026.
   still at the counter.
 - Out of paper, cover open and cutter jams are reported in words.
 - **Test printer** in the till menu, available to floor staff too.
+
+How the slip reads:
+
+- Each item prints its Khmer name large with the English small underneath —
+  both names, as the law asks, but as one item rather than two lines of
+  equal weight. A product with only an English name prints just that.
+- The three cancellation rows — Cancelled, Approved by, Reason — each fit
+  one line instead of wrapping.
+
+Reinstalling matters for this one: the sizes above are drawn by the app, so
+they only change on the paper once this build is on the till. Everything
+else in the POS updates by itself.
 
 ---
 
