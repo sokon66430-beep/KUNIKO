@@ -20,6 +20,26 @@ Open that link **on the T3 itself**, then:
 Installing a newer version over an older one keeps the till signed in and
 keeps any sales still waiting to sync.
 
+## Checking the printer
+
+Once installed, open the account menu (top right) and tap **Test printer**.
+It prints a short slip down the same path a customer receipt takes, so if
+that slip comes out, receipts will too. If it does not, the till now says
+why — out of paper, cover open, or the printer service not being reachable
+on this device.
+
+## This build
+
+Built from `3586c98`, 1 August 2026.
+
+- A receipt can no longer be lost between the print queue and the printer
+  connection — the fault that let a sale finish with no paper and no error.
+- Printer problems are announced on screen instead of only in a log.
+- A receipt still unprinted after 8 seconds says so, while the customer is
+  still at the counter.
+- Out of paper, cover open and cutter jams are reported in words.
+- **Test printer** in the till menu, available to floor staff too.
+
 ---
 
 This branch holds the built APK and nothing else — no source. It is a
