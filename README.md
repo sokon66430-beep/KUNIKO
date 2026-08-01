@@ -30,9 +30,14 @@ on this device.
 
 ## This build
 
-Built from `6f273b6`, 1 August 2026.
+Built from `fdf9815`, 1 August 2026.
 
-Printing:
+The printed receipt now says which shift rang the sale, not only which
+till — a row reading "វេន / Shift : Shift A" between the till and the
+order type. Reinstalling matters for this one: the shift row is drawn by
+the app itself, so it only appears once this build is on the till.
+
+Earlier in this same run, printing:
 
 - A failed print now shows up on screen at the moment it happens — a red
   banner across the top of the till that stays until tapped away. Before
