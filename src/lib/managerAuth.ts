@@ -1,14 +1,14 @@
 import { readSystem } from "@/lib/system";
 import { readDB } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
-import { canCancelInvoice, isCrossStoreRole } from "@/lib/access";
+import { canApproveCash, canCancelInvoice, isCrossStoreRole } from "@/lib/access";
 
 // A Job-Schedule position counts as "manager" (can approve) when its title reads
-// like a manager. Store Manager / Assistant Manager qualify; Cashier / Store Crew
-// don't. Kept as a name test so a store can add its own manager titles without a
-// code change.
+// like a manager or supervisor. Store Manager / Assistant Manager / Supervisor
+// qualify; Cashier / Store Crew don't. Kept as a name test so a store can add its
+// own manager/supervisor titles without a code change.
 function isManagerPosition(name: string | undefined): boolean {
-  return /manager/i.test(name || "");
+  return /manager|supervisor/i.test(name || "");
 }
 
 // Human job titles for account roles, so an approval can be recorded as
@@ -35,19 +35,25 @@ export function managerTitle(role: string): string {
 //                  from Job Schedule using their 6-digit POS PIN — the SAME PIN
 //                  they sign into the till with, so there's one code per person.
 //   • ownerOnly  → the OWNER only.
+//   • purpose    → which policy decides account-holder eligibility:
+//                  "cancelInvoice" (default, canCancelInvoice — store's own
+//                  leadership only) or "approveCash" (canApproveCash — the wider
+//                  supervisor tier that also covers manager/area/ops roles), for
+//                  shift surveys, shift close and cash-movement approval.
 export async function findManagerByCode(
   code: string,
-  opts: { ownerOnly?: boolean; storeId: string },
+  opts: { ownerOnly?: boolean; storeId: string; purpose?: "cancelInvoice" | "approveCash" },
 ): Promise<{ name: string; role: string; title: string } | null> {
   const c = String(code || "").trim();
   if (!c) return null;
 
   // 1) Account holders (owner always; store/asst managers if they have a login).
   const sys = await readSystem();
+  const isEligible = opts.purpose === "approveCash" ? canApproveCash : canCancelInvoice;
   const candidates = sys.users.filter((u) =>
     opts.ownerOnly
       ? u.role === "owner"
-      : canCancelInvoice(u.role) &&
+      : isEligible(u.role) &&
         (isCrossStoreRole(u.role) || u.storeId === opts.storeId || (u.storeIds || []).includes(opts.storeId)),
   );
   const mgr = candidates.find((u) => verifyPassword(c, u.passwordHash));

@@ -162,10 +162,10 @@ export async function DELETE(req: Request) {
   // no data is touched unless a real store manager / owner signed off. The name
   // goes into the audit trail as who approved the removal.
   const body = await req.json().catch(() => ({}));
-  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId });
+  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId, purpose: "approveCash" });
   if (!mgr) {
     return NextResponse.json(
-      { error: "Manager code not recognised — a store manager or the owner must approve deleting a cash record." },
+      { error: "Manager code not recognised — a supervisor, manager or the owner must approve deleting a cash record." },
       { status: 403 },
     );
   }

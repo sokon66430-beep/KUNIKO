@@ -35,10 +35,10 @@ export async function POST(req: Request) {
 
   // Manager-only function: a store manager / assistant store manager (or owner)
   // must approve. Verify the code before recording anything.
-  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId });
+  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId, purpose: "approveCash" });
   if (!mgr) {
     return NextResponse.json(
-      { error: "Manager code not recognised — only a store manager or assistant store manager can run a shift survey." },
+      { error: "Manager code not recognised — only a supervisor or manager can run a shift survey." },
       { status: 403 },
     );
   }

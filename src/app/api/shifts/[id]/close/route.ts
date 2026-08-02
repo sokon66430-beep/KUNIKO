@@ -22,10 +22,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // Closing a shift is a manager-only function: a store manager / assistant store
   // manager (or owner) must approve. Verify the code before touching the shift.
-  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId });
+  const mgr = await findManagerByCode(String(body.managerCode || ""), { storeId: session.storeId, purpose: "approveCash" });
   if (!mgr) {
     return NextResponse.json(
-      { error: "Manager code not recognised — only a store manager or assistant store manager can close a shift." },
+      { error: "Manager code not recognised — only a supervisor or manager can close a shift." },
       { status: 403 },
     );
   }
