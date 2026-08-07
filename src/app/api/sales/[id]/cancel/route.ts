@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { mutateDB, readDB } from "@/lib/db";
+import { mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { currentActor } from "@/lib/actor";
 import { logAudit } from "@/lib/audit";
 import { postLedger } from "@/lib/ledger";
-import { findManagerByCode } from "@/lib/managerAuth";
+import { resolveApprover } from "@/lib/managerAuth";
 import { clientIp, throttleKey, lockedOut, recordFail, clearFails } from "@/lib/throttle";
 
 export const dynamic = "force-dynamic";
@@ -56,17 +56,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (lockedOut(key)) {
     return NextResponse.json({ error: "Too many wrong codes. Wait a few minutes and try again." }, { status: 429 });
   }
-  let approvedBy: string | null = null;
-  const storeDb = await readDB();
-  const badge = (storeDb.meta.business.approvers || []).find((a) => a.code && a.code === managerCode);
-  if (badge) {
-    approvedBy = badge.name ? `${badge.name} (${badge.role})` : badge.role;
-  } else {
-    const mgr = await findManagerByCode(managerCode, { storeId: session.storeId });
-    // Name AND title — this line is printed on the cancellation slip, and
-    // "approved by Sok Dara" alone doesn't say they were allowed to.
-    if (mgr) approvedBy = `${mgr.name} (${mgr.title})`;
-  }
+  // The badge-then-PIN logic this route pioneered now lives in resolveApprover,
+  // shared with stock-count deletion, write-off cancellation and goods-receipt
+  // approval — which each had only half of it, so a manager's PIN worked here
+  // and nowhere else. Cancelling a sale keeps the STRICTER audience
+  // (cancelInvoice: the store's own leadership), unlike the stock and cash
+  // screens that use the wider supervisor tier.
+  const approvedBy = await resolveApprover(managerCode, {
+    storeId: session.storeId,
+    purpose: "cancelInvoice",
+  });
   if (!approvedBy) {
     recordFail(key);
     return NextResponse.json(

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { resolveApprover } from "@/lib/managerAuth";
 import { postLedger } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const session = await getSession();
   const who = session?.name || "Staff";
   const decision = body?.decision as "approve" | "reject" | undefined;
+
+  // Resolved outside the write window — see the note in resolveApprover. A
+  // manager's own POS PIN works here, not just a Store-Settings badge code.
+  const approverName = session
+    ? await resolveApprover(String(body?.code || ""), {
+        storeId: session.storeId,
+        purpose: "approveCash",
+      })
+    : null;
 
   const result = await mutateDB((db) => {
     const wo = db.writeOffs.find((w) => w.id === params.id);
@@ -37,10 +47,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // Step 2 — manager decides, proving identity with their approval code.
     if (status !== "PendingCancel") return { error: "No cancel request is pending on this write-off" };
-    const code = String(body?.code || "").trim();
-    const approver = (db.meta.business.approvers || []).find((a) => a.code && a.code === code);
-    if (!approver) return { error: "bad_code" as const };
-    const approverName = `${approver.role}${approver.name ? ` (${approver.name})` : ""}`;
+    if (!approverName) return { error: "bad_code" as const };
 
     if (decision === "reject") {
       wo.status = "Active";

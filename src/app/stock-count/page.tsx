@@ -453,7 +453,8 @@ function DeleteApproveModal({
       />
       {err && <p className="mt-2 text-xs font-medium text-rose-600">{err}</p>}
       <p className="mt-2 text-xs text-slate-400">
-        Ask a Manager or Assistant Manager to enter their code. Codes are managed in Store Settings.
+        Ask a Manager or Assistant Manager to enter their own POS PIN — the same one they sign into
+        the till with. Store Settings approval codes still work.
       </p>
     </Modal>
   );

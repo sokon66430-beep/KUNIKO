@@ -40,6 +40,45 @@ export function managerTitle(role: string): string {
 //                  leadership only) or "approveCash" (canApproveCash — the wider
 //                  supervisor tier that also covers manager/area/ops roles), for
 //                  shift surveys, shift close and cash-movement approval.
+/**
+ * Resolve an approval code to a printable approver name — ONE answer for every
+ * screen that asks a manager to sign something off.
+ *
+ * Four screens asked the question and only one answered it fully. Cancelling a
+ * sale accepted a Store-Settings badge code OR a manager's own POS PIN;
+ * deleting a stock count, cancelling a write-off and approving a goods receipt
+ * accepted only the badge list. So a store manager typed the PIN they sign into
+ * the till with — the one code they actually know — and got "Invalid approval
+ * code" on three screens out of four, with a dialog telling them to go and look
+ * in Store Settings for a code nobody had handed out.
+ *
+ * Order matters: the badge list is checked first because it is a plain string
+ * compare and cannot lock anybody out mid-shift; the PIN check follows. The
+ * badge list stays supported rather than being ripped out — a store that has
+ * been using printed codes keeps working — but the PIN is now the code that
+ * always works, which is what makes "one code per person" true.
+ *
+ * Returns null when neither matches; the caller decides the wording and the
+ * throttle, because a wrong code on a cancellation and a wrong code on a
+ * deletion are not the same event.
+ */
+export async function resolveApprover(
+  code: string,
+  opts: { storeId: string; purpose?: "cancelInvoice" | "approveCash" },
+): Promise<string | null> {
+  const c = String(code || "").trim();
+  if (!c) return null;
+
+  const db = await readDB(opts.storeId);
+  const badge = (db.meta?.business?.approvers || []).find((a) => a.code && a.code === c);
+  if (badge) return badge.name ? `${badge.name} (${badge.role})` : badge.role;
+
+  const mgr = await findManagerByCode(c, { storeId: opts.storeId, purpose: opts.purpose });
+  // Name AND title: this text lands on a slip and in the audit log, and
+  // "approved by Sok Dara" alone does not say they were allowed to.
+  return mgr ? `${mgr.name} (${mgr.title})` : null;
+}
+
 export async function findManagerByCode(
   code: string,
   opts: { ownerOnly?: boolean; storeId: string; purpose?: "cancelInvoice" | "approveCash" },

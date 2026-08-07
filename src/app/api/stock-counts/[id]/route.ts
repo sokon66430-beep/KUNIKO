@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readDB, mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { resolveApprover } from "@/lib/managerAuth";
 import { COUNT_PLACES, type StockCountItem, type CountPlace } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -88,13 +89,18 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   const code = String(body?.code || "").trim();
   const session = await getSession();
 
+  // Resolved BEFORE the mutation: it reads the store file and the system file,
+  // and a nested read inside mutateDB's write window is a deadlock waiting to
+  // be discovered by whoever deletes a count on a busy evening.
+  const approverName = session
+    ? await resolveApprover(code, { storeId: session.storeId, purpose: "approveCash" })
+    : null;
+
   const result = await mutateDB((db) => {
     const idx = db.stockCounts.findIndex((c) => c.id === params.id);
     if (idx === -1) return { error: "not_found" as const };
-    const approver = (db.meta.business.approvers || []).find((a) => a.code && a.code === code);
-    if (!approver) return { error: "bad_code" as const };
+    if (!approverName) return { error: "bad_code" as const };
     const [removed] = db.stockCounts.splice(idx, 1);
-    const approverName = `${approver.role}${approver.name ? ` (${approver.name})` : ""}`;
     logAudit(db, {
       actor: approverName,
       action: "Deleted",
@@ -107,7 +113,10 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
   if ("error" in result) {
     if (result.error === "not_found") return NextResponse.json({ error: "Count not found" }, { status: 404 });
-    return NextResponse.json({ error: "Invalid approval code" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Code not recognised — a manager can use their own POS PIN." },
+      { status: 403 },
+    );
   }
   return NextResponse.json({ ok: true });
 }

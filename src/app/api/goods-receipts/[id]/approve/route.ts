@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { poStatus } from "@/lib/procurement";
 import { logAudit } from "@/lib/audit";
+import { getSession } from "@/lib/session";
+import { resolveApprover } from "@/lib/managerAuth";
 import { postLedger } from "@/lib/ledger";
 import { purchaseUnitCost } from "@/lib/sellingUnits";
 
@@ -14,6 +16,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const code = String(body?.code || "").trim();
   const decision = body?.decision === "reject" ? "reject" : "approve";
 
+  // A session is needed to know WHICH store's manager PINs to check against —
+  // this route had none, which is part of why it could only ever compare the
+  // Store-Settings badge list. Resolved outside the write window; see the note
+  // in resolveApprover.
+  const session = await getSession();
+  const who = session
+    ? await resolveApprover(code, { storeId: session.storeId, purpose: "approveCash" })
+    : null;
+
   const result = await mutateDB((db) => {
     const grn = db.goodsReceipts.find((g) => g.id === params.id);
     if (!grn) return { error: "not_found" as const };
@@ -21,10 +32,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return { error: "not_pending" as const };
     }
 
-    const approvers = db.meta.business.approvers || [];
-    const approver = approvers.find((a) => a.code && a.code === code);
-    if (!approver) return { error: "bad_code" as const };
-    const who = `${approver.role}${approver.name ? ` (${approver.name})` : ""}`;
+    if (!who) return { error: "bad_code" as const };
 
     if (decision === "reject") {
       grn.status = "Posted";
