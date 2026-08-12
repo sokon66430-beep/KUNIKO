@@ -23,6 +23,7 @@ import {
   ArrowRightCircle,
   PackageCheck as ReceiveIcon,
   Sparkles,
+  Download,
   ChevronRight,
   Pencil,
   Trash2,
@@ -70,6 +71,9 @@ export default function PurchaseOrdersPage() {
   const [viewing, setViewing] = useState<PurchaseOrder | null>(null);
   const [viewingPR, setViewingPR] = useState<PurchaseRequest | null>(null);
   const [prBusy, setPrBusy] = useState(false);
+  // Owner-only, because the export carries every supplier invoice photograph
+  // this store holds. See /api/procurement-export.
+  const pageRole = useRole();
 
   // Procurement's inbox: requests submitted by the operation team.
   const queue = (prs || []).filter((r) => r.status === "Submitted" || r.status === "Approved");
@@ -203,6 +207,21 @@ export default function PurchaseOrdersPage() {
         subtitle="Procurement team — approve store requests, order from suppliers, track receiving"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {/* Hands THIS store's purchase records to ON Mart POS. A plain
+                download link, not a fetch: the browser saves the file itself,
+                and a 200MB response held in memory to be re-saved is how a
+                handset runs out of it. Read-only — nothing here is marked,
+                moved or locked, so it can be taken as many times as the import
+                takes to get right. */}
+            {pageRole === "owner" && (
+              <a
+                className="btn-ghost"
+                href="/api/procurement-export"
+                title="Download this store's purchase orders and goods receipts, with the invoice photos, for ON Mart POS"
+              >
+                <Download size={18} /> Export procurement
+              </a>
+            )}
             <button className="btn-ghost" onClick={() => setOpeningStore(true)} title="Order best sellers to stock a new store">
               <Sparkles size={18} /> Stock a new store
             </button>

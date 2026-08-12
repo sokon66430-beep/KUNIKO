@@ -62,5 +62,9 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json(map);
+  // Wrapped, not the bare map: the client (LineBuilder's VelocityData) reads
+  // `.velocity` and `.days` — returning the map alone silently left both
+  // undefined, so every product's Sold 30d/7d/3d and its 7-day bar chart
+  // showed zero regardless of actual sales.
+  return NextResponse.json({ days, velocity: map });
 }
