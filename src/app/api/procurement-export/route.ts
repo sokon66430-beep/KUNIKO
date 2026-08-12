@@ -5,6 +5,7 @@ import { readDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { readSystem } from "@/lib/system";
 import { DATA_DIR } from "@/lib/system";
+import { streamProcurementExport } from "@/lib/procurementExport";
 
 export const dynamic = "force-dynamic";
 
@@ -57,25 +58,7 @@ export async function GET() {
     for (const name of inv.images ?? [inv.image]) if (name) wanted.add(name);
   }
 
-  const invoiceImages: Record<string, string> = {};
-  let missingPages = 0;
-  for (const name of wanted) {
-    try {
-      const bytes = await fs.readFile(path.join(INVOICE_DIR, name));
-      const type = name.toLowerCase().endsWith(".png") ? "png" : "jpeg";
-      invoiceImages[name] = `data:image/${type};base64,${bytes.toString("base64")}`;
-    } catch {
-      /*
-       * A page whose file is gone. Counted and reported rather than exported as
-       * a name with nothing behind it: the importer drops any page it has no
-       * image for, and the count below is how anybody finds out that a
-       * historical invoice lost its paper on THIS side, not in the move.
-       */
-      missingPages++;
-    }
-  }
-
-  const file = {
+  const records = {
     format: "stookii-procurement" as const,
     version: 1 as const,
     exportedAt: new Date().toISOString(),
@@ -156,19 +139,34 @@ export async function GET() {
       createdAt: grn.createdAt,
       invoicePages: grn.invoice ? (grn.invoice.images ?? [grn.invoice.image]).filter(Boolean) : [],
     })),
-
-    invoiceImages,
-    /** Pages whose file could not be read on this server. Zero is the normal
-     *  answer; anything else is a gap that already existed here. */
-    missingPages,
   };
 
-  const stamp = file.exportedAt.slice(0, 10);
+  const stamp = records.exportedAt.slice(0, 10);
   const safeStore = storeName.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-  return new NextResponse(JSON.stringify(file), {
+
+  /*
+   * STREAMED, ONE PAGE AT A TIME — see lib/procurementExport.ts for why, and
+   * scripts/test-procurement-export.ts for the proof that the file it writes
+   * still parses. This route only decides WHICH pages; the assembly is there
+   * because assembling JSON by hand is a silent thing to get wrong.
+   */
+  const stream = streamProcurementExport(records, [...wanted], async (name) => {
+    try {
+      const bytes = await fs.readFile(path.join(INVOICE_DIR, name));
+      const type = name.toLowerCase().endsWith(".png") ? "png" : "jpeg";
+      return `data:image/${type};base64,${bytes.toString("base64")}`;
+    } catch {
+      return null;
+    }
+  });
+
+  return new NextResponse(stream, {
     headers: {
       "Content-Type": "application/json",
       "Content-Disposition": `attachment; filename="procurement-${safeStore}-${stamp}.json"`,
+      // Length is unknown up front now, so the browser shows progress rather
+      // than a percentage it would have to invent.
+      "Cache-Control": "no-store",
     },
   });
 }
