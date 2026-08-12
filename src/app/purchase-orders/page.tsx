@@ -213,29 +213,7 @@ export default function PurchaseOrdersPage() {
                 handset runs out of it. Read-only — nothing here is marked,
                 moved or locked, so it can be taken as many times as the import
                 takes to get right. */}
-            {pageRole === "owner" && (
-              <>
-                {/* Records only, for the review passes on the far side. That
-                    review is run more than once — the owner fixes a supplier
-                    name and asks again — and it needs no photographs at all,
-                    so it should not mean waiting on a huge download each
-                    time. Small and quick. */}
-                <a
-                  className="btn-ghost"
-                  href="/api/procurement-export?images=0"
-                  title="Small, quick file for checking what will import — no invoice photos. Use this to review, not to import for real."
-                >
-                  <Download size={18} /> Export for review
-                </a>
-                <a
-                  className="btn-ghost"
-                  href="/api/procurement-export"
-                  title="The whole thing, with every invoice photo. Large and slow — use it for the real import."
-                >
-                  <Download size={18} /> Export procurement (full)
-                </a>
-              </>
-            )}
+            {pageRole === "owner" && <ProcurementExport />}
             <button className="btn-ghost" onClick={() => setOpeningStore(true)} title="Order best sellers to stock a new store">
               <Sparkles size={18} /> Stock a new store
             </button>
@@ -539,6 +517,86 @@ export default function PurchaseOrdersPage() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Handing this store's procurement to ON Mart POS, in files that can arrive.
+ *
+ * PDK's first full export came to 324MB and could not be uploaded anywhere:
+ * the far side parses the file in a browser tab and then sends it in one
+ * request, on a server with less memory than the file. So the records and the
+ * paper travel separately, and the photographs come in numbered parts.
+ *
+ * The manifest is fetched rather than assumed, because only this end knows how
+ * many parts there are — and an owner staring at "Photos" with no idea whether
+ * that means one file or forty will not start.
+ */
+function ProcurementExport() {
+  const { data: manifest } = useFetch<{
+    parts: number;
+    pages: number;
+    approxMb: number;
+    missingPages: number;
+  }>("/api/procurement-export?photos=manifest");
+  const [showPhotos, setShowPhotos] = useState(false);
+
+  return (
+    <>
+      {/* STEP ONE, and the only one needed to review. The review on the far
+          side is run repeatedly while supplier names get fixed, and it never
+          looks at a photograph. */}
+      <a
+        className="btn-ghost"
+        href="/api/procurement-export"
+        title="The purchase orders and goods receipts. Small — this is the file to review and import first."
+      >
+        <Download size={18} /> Export records
+      </a>
+      {!!manifest?.parts && (
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setShowPhotos(true)}
+          title="The invoice photographs, in parts. Import the records first — these attach to them."
+        >
+          <FileText size={18} /> Invoice photos ({manifest.parts})
+        </button>
+      )}
+
+      {showPhotos && manifest && (
+        <Modal open title="Invoice photos" onClose={() => setShowPhotos(false)}>
+          <p className="text-sm text-slate-600">
+            {manifest.pages} page{manifest.pages === 1 ? "" : "s"} · about {manifest.approxMb} MB in
+            total, split into {manifest.parts} file{manifest.parts === 1 ? "" : "s"} so each one can
+            actually be uploaded.
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            <b>Import the records first.</b> These attach to the receipts that file creates, so a
+            part uploaded before them has nothing to attach to. Order does not matter between the
+            parts, and one that fails can simply be taken again.
+          </p>
+          {!!manifest.missingPages && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              {manifest.missingPages} page{manifest.missingPages === 1 ? " has" : "s have"} no image
+              file on this server any more — that gap is here, not in the move, so nothing can carry
+              it across.
+            </p>
+          )}
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {Array.from({ length: manifest.parts }, (_, i) => (
+              <a
+                key={i}
+                className="btn-ghost justify-start"
+                href={`/api/procurement-export?photos=${i + 1}`}
+              >
+                <Download size={16} /> Part {i + 1} of {manifest.parts}
+              </a>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 
