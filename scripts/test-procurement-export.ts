@@ -102,6 +102,38 @@ async function main() {
     check("and says so", parsed.missingPages, 2);
   }
 
+  /* ---- backpressure: THE reason the shop went down twice ------------------ */
+  {
+    console.log("\na consumer that reads slowly:");
+    /*
+     * The first streaming attempt did all its work in start() and called
+     * enqueue() on every page as fast as the disk allowed. enqueue() waits for
+     * nobody, so on a slow connection the entire file piled up in the stream's
+     * own queue and the process was killed exactly as it had been when the
+     * file was built in an object. Same outage, different container.
+     *
+     * So: read two chunks and stop. If the pages are only opened as the
+     * consumer asks for them, almost none of them have been read yet.
+     */
+    const opened: string[] = [];
+    const many = Array.from({ length: 200 }, (_, i) => `page-${i}.jpg`);
+    const stream = streamProcurementExport(RECORDS, many, async (n) => {
+      opened.push(n);
+      return "data:image/jpeg;base64,X";
+    });
+    const reader = stream.getReader();
+    await reader.read(); // the records
+    await reader.read(); // the opening of invoiceImages
+    await reader.cancel();
+
+    check(
+      "the disk is not read ahead of the download",
+      opened.length <= 2,
+      true,
+    );
+    console.log(`       (${opened.length} of 200 pages opened before the reader stopped)`);
+  }
+
   /* ---- a reader that throws ---------------------------------------------- */
   {
     console.log("\na disk that fails half way:");

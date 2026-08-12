@@ -33,45 +33,74 @@ export function streamProcurementExport(
   readPage: PageReader,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const chunks = pieces(records, pageNames, readPage);
   return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const push = (s: string) => controller.enqueue(encoder.encode(s));
-      try {
-        const head = JSON.stringify(records);
-        // Everything but the closing brace, so the images can be appended as
-        // further keys of the same object.
-        push(head.slice(0, -1));
-        push(',"invoiceImages":{');
-
-        let missingPages = 0;
-        let first = true;
-        for (const name of pageNames) {
-          const encoded = await readPage(name);
-          if (encoded === null) {
-            /*
-             * A page whose file is gone. Counted and reported rather than
-             * exported as a name with nothing behind it: the importer drops any
-             * page it has no image for, and this count is how anybody finds out
-             * that a historical invoice lost its paper on THIS side, not in the
-             * move.
-             */
-            missingPages++;
-            continue;
-          }
-          push(`${first ? "" : ","}${JSON.stringify(name)}:${JSON.stringify(encoded)}`);
-          first = false;
-        }
-
-        push(`},"missingPages":${missingPages}}`);
-        controller.close();
-      } catch (err) {
-        /*
-         * ABORTED, never closed. A truncated file that LOOKS complete is the
-         * one outcome worse than a failed download: it would import cleanly on
-         * the far side and be silently missing records.
-         */
-        controller.error(err);
-      }
+    /*
+     * PULL, NOT START — and this is the whole point, not a style choice.
+     *
+     * The first attempt at streaming did the work in start(): it read every
+     * page as fast as the disk allowed and called enqueue() on each.
+     * enqueue() does not wait for anybody. On a fast disk and a slow
+     * connection — a phone on mobile data, downloading tens of megabytes —
+     * the entire file simply accumulated in the stream's own queue instead of
+     * in an object, and the process was killed exactly as before. The shop
+     * went down a second time for the same reason wearing a different hat.
+     *
+     * pull() is called once per chunk the consumer is ready for, so the next
+     * page is not even opened until the previous one is on the wire. Memory
+     * now follows the SLOWER of the two ends, which is the only version of
+     * this that is safe on a box that is also running a till.
+     */
+    async pull(controller) {
+      const { done, value } = await chunks.next();
+      if (done) controller.close();
+      else controller.enqueue(encoder.encode(value));
+    },
+    async cancel() {
+      // The owner closed the tab or lost signal. Stop reading the disk.
+      await chunks.return?.(undefined);
     },
   });
+}
+
+/**
+ * The file, in the order it is written, one piece at a time.
+ *
+ * A generator rather than a loop, so that "produce the next piece" is
+ * something the stream can ask for rather than something this code decides to
+ * do. Anything thrown here reaches pull(), which errors the stream — the
+ * download then FAILS rather than finishing short, because a truncated file
+ * that looks complete would import cleanly on the far side and be silently
+ * missing records.
+ */
+async function* pieces(
+  records: Record<string, unknown>,
+  pageNames: string[],
+  readPage: PageReader,
+): AsyncGenerator<string, void, undefined> {
+  const head = JSON.stringify(records);
+  // Everything but the closing brace, so the images can be appended as
+  // further keys of the same object.
+  yield head.slice(0, -1);
+  yield ',"invoiceImages":{';
+
+  let missingPages = 0;
+  let first = true;
+  for (const name of pageNames) {
+    const encoded = await readPage(name);
+    if (encoded === null) {
+      /*
+       * A page whose file is gone. Counted and reported rather than exported
+       * as a name with nothing behind it: the importer drops any page it has
+       * no image for, and this count is how anybody finds out that a
+       * historical invoice lost its paper on THIS side, not in the move.
+       */
+      missingPages++;
+      continue;
+    }
+    yield `${first ? "" : ","}${JSON.stringify(name)}:${JSON.stringify(encoded)}`;
+    first = false;
+  }
+
+  yield `},"missingPages":${missingPages}}`;
 }

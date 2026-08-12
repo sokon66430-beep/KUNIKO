@@ -33,11 +33,25 @@ const INVOICE_DIR = path.join(DATA_DIR, "invoices");
  * — `format` and `version` are checked there before anything is read, so a
  * wrong file is refused with a sentence instead of a stack of errors.
  */
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getSession();
   if (!session || session.role !== "owner") {
     return NextResponse.json({ error: "Owners only" }, { status: 403 });
   }
+
+  /*
+   * `?images=0` — the records without the photographs.
+   *
+   * The review on the far side is run MORE THAN ONCE: it lists the supplier
+   * names it could not match, the owner fixes them, and asks again. That
+   * question does not need a single photograph, and answering it should not
+   * mean waiting on a hundred-megabyte download over mobile data each time.
+   *
+   * NOT for the real import. A receipt imported without its pages cannot be
+   * given them later by re-running — the second pass sees it is already there
+   * and skips it — so the file that is finally committed must be the whole one.
+   */
+  const withImages = new URL(req.url).searchParams.get("images") !== "0";
 
   const db = await readDB();
   const system = await readSystem();
@@ -150,7 +164,7 @@ export async function GET() {
    * still parses. This route only decides WHICH pages; the assembly is there
    * because assembling JSON by hand is a silent thing to get wrong.
    */
-  const stream = streamProcurementExport(records, [...wanted], async (name) => {
+  const stream = streamProcurementExport(records, withImages ? [...wanted] : [], async (name) => {
     try {
       const bytes = await fs.readFile(path.join(INVOICE_DIR, name));
       const type = name.toLowerCase().endsWith(".png") ? "png" : "jpeg";
@@ -163,7 +177,7 @@ export async function GET() {
   return new NextResponse(stream, {
     headers: {
       "Content-Type": "application/json",
-      "Content-Disposition": `attachment; filename="procurement-${safeStore}-${stamp}.json"`,
+      "Content-Disposition": `attachment; filename="procurement-${safeStore}${withImages ? "" : "-records-only"}-${stamp}.json"`,
       // Length is unknown up front now, so the browser shows progress rather
       // than a percentage it would have to invent.
       "Cache-Control": "no-store",

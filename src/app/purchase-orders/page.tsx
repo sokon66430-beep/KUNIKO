@@ -214,13 +214,27 @@ export default function PurchaseOrdersPage() {
                 moved or locked, so it can be taken as many times as the import
                 takes to get right. */}
             {pageRole === "owner" && (
-              <a
-                className="btn-ghost"
-                href="/api/procurement-export"
-                title="Download this store's purchase orders and goods receipts, with the invoice photos, for ON Mart POS"
-              >
-                <Download size={18} /> Export procurement
-              </a>
+              <>
+                {/* Records only, for the review passes on the far side. That
+                    review is run more than once — the owner fixes a supplier
+                    name and asks again — and it needs no photographs at all,
+                    so it should not mean waiting on a huge download each
+                    time. Small and quick. */}
+                <a
+                  className="btn-ghost"
+                  href="/api/procurement-export?images=0"
+                  title="Small, quick file for checking what will import — no invoice photos. Use this to review, not to import for real."
+                >
+                  <Download size={18} /> Export for review
+                </a>
+                <a
+                  className="btn-ghost"
+                  href="/api/procurement-export"
+                  title="The whole thing, with every invoice photo. Large and slow — use it for the real import."
+                >
+                  <Download size={18} /> Export procurement (full)
+                </a>
+              </>
             )}
             <button className="btn-ghost" onClick={() => setOpeningStore(true)} title="Order best sellers to stock a new store">
               <Sparkles size={18} /> Stock a new store
