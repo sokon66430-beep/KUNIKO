@@ -1,15 +1,27 @@
 import type { DB, Product, PurchaseOrder, POItem, POStatus, Supplier } from "./types";
 
-// A submitted goods receipt can be corrected only for a short window after it's
-// logged; after that its quantities are final. This keeps late, unreviewed
-// edits off the books — the correct fix for an old receipt is a stock count or
-// write-off, both of which leave their own trail.
-export const RECEIPT_EDIT_WINDOW_DAYS = 2;
-export function receiptEditOpen(createdAt: string, now: number = Date.now()): boolean {
-  const t = new Date(createdAt).getTime();
-  if (!Number.isFinite(t)) return true; // no/blank timestamp → don't lock it out
-  return now - t <= RECEIPT_EDIT_WINDOW_DAYS * 86_400_000;
-}
+/*
+ * THE TWO-DAY EDIT WINDOW WAS REMOVED. Do not put it back.
+ *
+ * `RECEIPT_EDIT_WINDOW_DAYS` and `receiptEditOpen` lived here and froze a
+ * receipt's quantities two days after it was logged. The stated reason was to
+ * keep "late, unreviewed edits" off the books, and the word that stopped being
+ * true is UNREVIEWED: editing a receipt does not touch stock. It sets the
+ * receipt to PendingApproval and parks the corrected numbers until a manager
+ * approves them, with the request and the approval both written to the audit
+ * log. Every edit is reviewed by construction, so the window was a second lock
+ * on a door that was already locked.
+ *
+ * What it cost was real. Supplier queries arrive days after a delivery, and
+ * past the window the receiving desk could not correct the record at all. The
+ * advice was to use a stock count or a write-off instead — which moves the
+ * quantity but leaves the receipt still claiming the delivery arrived in full,
+ * so a short delivery reads as complete forever and the difference is blamed
+ * on the shop floor.
+ *
+ * If old receipts ever need protecting again, gate it on ROLE or on the period
+ * being closed — not on the age of the paperwork.
+ */
 
 /**
  * The supplier code a PO is really for.

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { receiptEditOpen, RECEIPT_EDIT_WINDOW_DAYS } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +15,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const result = await mutateDB((db) => {
     const grn = db.goodsReceipts.find((g) => g.id === params.id);
     if (!grn) return { error: "not_found" as const };
-    // Past the edit window, the receipt is final — no more corrections.
-    if (!receiptEditOpen(grn.createdAt)) return { error: "window_closed" as const };
+    /*
+     * NO AGE LIMIT. A receipt of any age can be corrected.
+     *
+     * There was a two-day window here, guarding against "late, unreviewed
+     * edits". The second half of that phrase is the part that stopped being
+     * true: an edit does not touch stock. It sets PendingApproval and parks
+     * the numbers in `pendingEdit` until a manager approves them, and both the
+     * request and the approval are written to the audit log. There is no such
+     * thing as an unreviewed edit here, so the window was a second lock on a
+     * door that was already locked.
+     *
+     * What it cost: a supplier query arriving three days after a delivery —
+     * which is when queries arrive — left the receiving desk with no way to
+     * correct the record. The advice was to fix it with a stock count or a
+     * write-off, which moves the quantity but leaves the receipt still saying
+     * the wrong thing, so the delivery that was actually short reads as
+     * complete forever and the shrink is blamed on the floor.
+     */
 
     // Correctable lines = what the receipt already has, PLUS anything else on
     // the purchase order.
@@ -65,11 +80,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ("error" in result) {
     if (result.error === "not_found")
       return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
-    if (result.error === "window_closed")
-      return NextResponse.json(
-        { error: `This receipt is more than ${RECEIPT_EDIT_WINDOW_DAYS} days old and can no longer be edited. Adjust stock with a stock count or write-off instead.` },
-        { status: 400 },
-      );
     return NextResponse.json({ error: "No changes to submit" }, { status: 400 });
   }
   return NextResponse.json(result.grn);

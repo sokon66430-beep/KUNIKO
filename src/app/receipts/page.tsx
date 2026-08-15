@@ -13,12 +13,11 @@ import {
   ShieldCheck,
   Truck,
   ArrowRight,
-  Lock,
+  Image as ImageIcon,
   Search,
   X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
-import { receiptEditOpen, RECEIPT_EDIT_WINDOW_DAYS } from "@/lib/procurement";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
 import { PdfViewer } from "@/components/PdfViewer";
 import { DatePicker } from "@/components/DatePicker";
@@ -40,6 +39,8 @@ export default function ReceiptsPage() {
   const [editing, setEditing] = useState<GoodsReceipt | null>(null);
   const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
+  /** The receipt whose submitted invoice photo is being looked at. */
+  const [invoiceView, setInvoiceView] = useState<{ grn: GoodsReceipt } | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"date-desc" | "date-asc" | "grn">("date-desc");
   // Filter the receipt history to a date range (inclusive) so the team can track
@@ -167,6 +168,34 @@ export default function ReceiptsPage() {
         <Camera size={14} /> Scan invoice
       </button>
     ) : null;
+    /*
+     * SEE THE INVOICE YOU SENT TO ACCOUNTING.
+     *
+     * There was no way to. The photo went up, the badge changed to "pending
+     * review", and the picture itself was reachable only from Accounting's own
+     * screen — so the person who scanned it could not check whether the page
+     * they shot was straight, legible, or even the right invoice, and a
+     * rejection sent them back to a supplier's paperwork with nothing to
+     * compare against.
+     *
+     * The image route already allows any signed-in user and already validates
+     * the filename; only the link was missing.
+     */
+    // Icon only. The actions row already carries four labelled controls, and a
+    // fifth word pushed the whole set wide enough to clip on a laptop. The
+    // tooltip carries the meaning, and the status badge beside it already says
+    // an invoice exists — this is the way to look at it, not the news that it
+    // is there.
+    const viewInvoiceBtn = g.invoice ? (
+      <button
+        onClick={() => setInvoiceView({ grn: g })}
+        title="See the invoice photo submitted to Accounting"
+        aria-label={`See the invoice submitted for ${g.grnNo}`}
+        className="inline-flex items-center justify-center rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50"
+      >
+        <ImageIcon size={15} />
+      </button>
+    ) : null;
     const excelBtn = (
       <a
         href={`/api/goods-receipts/${g.id}/export`}
@@ -193,28 +222,30 @@ export default function ReceiptsPage() {
       >
         <ShieldCheck size={14} /> Review
       </button>
-    ) : receiptEditOpen(g.createdAt) ? (
+    ) : (
+      // EDITABLE AT ANY AGE. The greyed-out "Locked" that used to sit here past
+      // two days is gone: an edit does not change stock, it asks a manager to
+      // approve one, so age was never what made a correction safe. A supplier
+      // query three days after a delivery is the ordinary case, not the
+      // suspicious one.
       <button
         onClick={() => setEditing(g)}
         className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
       >
         <Pencil size={14} /> Edit
       </button>
-    ) : (
-      // Past the 2-day window: locked, with a reason so it reads as a rule.
-      <span
-        title={`Locked — receipts can only be edited within ${RECEIPT_EDIT_WINDOW_DAYS} days of being logged`}
-        className="inline-flex cursor-default items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-300"
-      >
-        <Lock size={13} /> Locked
-      </span>
     );
 
     if (variant === "row") {
       // Fixed-width slots, each right-aligned → the buttons form neat columns.
       return (
         <div className="flex items-center justify-end gap-1">
+          {/* Scan and View get their OWN slots rather than sharing one. They
+              are not mutually exclusive: a REJECTED invoice needs both — see
+              what Accounting turned down and why, then shoot it again — and
+              that is precisely the moment the picture matters most. */}
           <div className="flex w-[108px] justify-end">{scanBtn}</div>
+          <div className="flex w-[34px] justify-end">{viewInvoiceBtn}</div>
           <div className="flex w-[72px] justify-end">{excelBtn}</div>
           <div className="flex w-[62px] justify-end">{pdfBtn}</div>
           <div className="flex w-[92px] justify-end">{stateBtn}</div>
@@ -224,6 +255,7 @@ export default function ReceiptsPage() {
     return (
       <div className="flex flex-wrap items-center gap-1.5">
         {scanBtn}
+        {viewInvoiceBtn}
         {excelBtn}
         {pdfBtn}
         {stateBtn}
@@ -494,6 +526,9 @@ export default function ReceiptsPage() {
 
       {pdfView && (
         <PdfViewer url={pdfView.url} title={pdfView.title} heading={`Receipt ${pdfView.title}`} onClose={closePdf} />
+      )}
+      {invoiceView && (
+        <InvoiceViewer grn={invoiceView.grn} onClose={() => setInvoiceView(null)} />
       )}
     </div>
   );
@@ -799,5 +834,84 @@ function ApproveModal({
         {err && <p className="mt-2 text-sm font-medium text-rose-600">{err}</p>}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * The invoice photo that was sent to Accounting, shown to whoever sent it.
+ *
+ * Until now this picture existed on disk and on Accounting's screen, and
+ * nowhere the receiving desk could reach — so the person who took the photo
+ * could not check it was straight, legible, or even the right invoice, and a
+ * rejection sent them back to the supplier's paperwork with nothing to compare
+ * against.
+ *
+ * Every page, not just the first. `images` carries them all and `image` is the
+ * first, kept for older receipts written before multi-page existed; reading one
+ * and falling back to the other is what stops a two-page invoice looking like a
+ * one-page one.
+ *
+ * The review verdict is repeated at the top, including the rejection note. That
+ * note is the whole reason somebody opens this screen — "which of these two did
+ * they reject, and why" is unanswerable from a badge on a list.
+ */
+function InvoiceViewer({ grn, onClose }: { grn: GoodsReceipt; onClose: () => void }) {
+  const inv = grn.invoice;
+  if (!inv) return null;
+  const pages = inv.images?.length ? inv.images : [inv.image];
+  const tone =
+    inv.status === "Approved"
+      ? "bg-emerald-100 text-emerald-700"
+      : inv.status === "Rejected"
+        ? "bg-rose-100 text-rose-700"
+        : "bg-slate-100 text-slate-600";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-ink-900/70 p-3 backdrop-blur-sm sm:p-6">
+      <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-lift">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-ink-900">
+              Invoice for {grn.grnNo}
+              <span className="ml-2 font-normal text-slate-400">{grn.supplier}</span>
+            </h3>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              <span className={`inline-flex rounded-md px-1.5 py-0.5 font-semibold ${tone}`}>
+                {inv.status === "Pending" ? "Pending review" : inv.status}
+              </span>
+              <span>Sent by {inv.uploadedBy}</span>
+              {pages.length > 1 && <span>{pages.length} pages</span>}
+            </div>
+            {/* The reason, when there is one. A rejection with the note left on
+                Accounting's screen is a re-scan somebody has to guess at. */}
+            {inv.status === "Rejected" && inv.reviewNote && (
+              <p className="mt-1.5 rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700">
+                Rejected{inv.reviewedBy ? ` by ${inv.reviewedBy}` : ""}: {inv.reviewNote}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="btn-ghost !py-2 text-sm">
+            <X size={15} /> Close
+          </button>
+        </div>
+        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3">
+          {pages.map((name, i) => (
+            <figure key={name} className="overflow-hidden rounded-xl bg-white shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/invoice-image/${encodeURIComponent(name)}`}
+                alt={`${grn.grnNo} invoice page ${i + 1}`}
+                className="block w-full"
+              />
+              {pages.length > 1 && (
+                <figcaption className="px-3 py-1.5 text-[11px] text-slate-400">
+                  Page {i + 1} of {pages.length}
+                </figcaption>
+              )}
+            </figure>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
