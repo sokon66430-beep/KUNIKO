@@ -1005,6 +1005,21 @@ export type GoodsReceipt = {
   discount?: number; // trade discount off the ex-VAT total, in US$
   vatAmount?: number; // VAT as billed, in US$ — overrides the computed figure
   receivedBy: string;
+  /**
+   * When the corrected costs on this receipt were accepted into Master Data,
+   * and by whom.
+   *
+   * Present means the catalogue now agrees with what receiving keyed. Absent
+   * means the correction is still only a fact about this delivery — which is
+   * the default, because a receipt records one delivery and repricing the
+   * catalogue is a separate decision somebody has to make on purpose.
+   *
+   * Also what stops it being applied twice: the second run would read the
+   * already-corrected cost as the "expected" one and write it back on top of
+   * itself, which is harmless once and confusing forever.
+   */
+  costsAppliedAt?: string;
+  costsAppliedBy?: string;
   createdAt: string;
   status?: GRNStatus; // undefined = "Posted" (legacy receipts)
   pendingEdit?: GRNPendingEdit;

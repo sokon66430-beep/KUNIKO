@@ -154,6 +154,42 @@ export function purchaseUnitCost(product: Pick<Product, "cost" | "sellingUnits">
 }
 
 /**
+ * Write a corrected PER-UNIT cost back onto the product — the exact inverse of
+ * purchaseUnitCost, and it lives here so the two cannot drift apart.
+ *
+ * WHY IT IS NOT `product.cost = newCost`. When a case price is set, the per-unit
+ * figure everything reads is derived FROM it — case cost ÷ units in a case. Set
+ * the base cost alone and purchaseUnitCost keeps returning the old case-derived
+ * number, so the correction appears to save and changes nothing; write it to the
+ * case as a per-unit figure and a $10.00 case silently becomes a $0.42 one. The
+ * only correct move is to put it back where it was read from, multiplied out.
+ *
+ * Mutates the product it is given, and reports what it did in words for the
+ * audit trail — "case of 24: $10.00 → $10.08" is checkable by somebody holding
+ * the invoice, while "cost updated" is not.
+ */
+export function applyPurchaseUnitCost(
+  product: Pick<Product, "cost" | "sellingUnits">,
+  newUnitCost: number,
+): { field: "base" | "packaging"; label: string } {
+  const levels = (product.sellingUnits || []).filter((u) => (u.cost ?? 0) > 0 && u.conversion > 1);
+  if (!levels.length) {
+    const from = product.cost || 0;
+    product.cost = Math.round(newUnitCost * 1e4) / 1e4;
+    return { field: "base", label: `unit cost $${from.toFixed(4)} → $${product.cost.toFixed(4)}` };
+  }
+  const biggest = levels.reduce((a, b) => (b.conversion > a.conversion ? b : a));
+  const from = biggest.cost!;
+  // Cents on the case, because that is the figure a supplier invoices and a
+  // buyer negotiates. The per-unit number stays derived, as it always was.
+  biggest.cost = Math.round(newUnitCost * biggest.conversion * 100) / 100;
+  return {
+    field: "packaging",
+    label: `${biggest.name} of ${biggest.conversion}: $${from.toFixed(2)} → $${biggest.cost.toFixed(2)}`,
+  };
+}
+
+/**
  * Type-ahead search over a product's PACKAGING levels.
  *
  * The base unit is found by product name / Item ID / barcode elsewhere; this

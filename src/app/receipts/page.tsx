@@ -39,6 +39,8 @@ export default function ReceiptsPage() {
   const { data: grns, loading, error, reload: reloadGrns } = useFetch<GoodsReceipt[]>("/api/goods-receipts");
   const [editing, setEditing] = useState<GoodsReceipt | null>(null);
   const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
+  /** The receipt whose corrected costs are being accepted into Master Data. */
+  const [applying, setApplying] = useState<GoodsReceipt | null>(null);
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
   /** The receipt whose submitted invoice photo is being looked at. */
   const [invoiceView, setInvoiceView] = useState<{ grn: GoodsReceipt } | null>(null);
@@ -135,14 +137,26 @@ export default function ReceiptsPage() {
     const corrected = g.items.filter((i) => i.costWas !== undefined).length;
     return (
       <>
-        {corrected > 0 && (
-          <span
-            className="inline-flex items-center gap-1 rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700"
-            title="Receiving keyed a cost that differs from Master Data. Open the receipt to see both figures."
-          >
-            <Tag size={11} /> {corrected} cost{corrected === 1 ? "" : "s"} corrected
-          </span>
-        )}
+        {corrected > 0 &&
+          (g.costsAppliedAt ? (
+            /* Accepted: the catalogue now agrees with this receipt. Green and
+               past tense, so a row that still needs a decision cannot be
+               mistaken for one that has had it — which is the only thing the
+               owner is scanning this column for. */
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+              title={`${corrected} corrected cost${corrected === 1 ? "" : "s"} accepted into Master Data by ${g.costsAppliedBy || "—"}`}
+            >
+              <Tag size={11} /> {corrected} cost{corrected === 1 ? "" : "s"} accepted
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700"
+              title="Receiving keyed a cost that differs from Master Data. Open the receipt to see both figures, or Accept costs to update the catalogue."
+            >
+              <Tag size={11} /> {corrected} cost{corrected === 1 ? "" : "s"} corrected
+            </span>
+          ))}
         {pending && (
           <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
             <Clock size={11} /> Edit pending approval
@@ -176,6 +190,27 @@ export default function ReceiptsPage() {
   const rowActions = (g: GoodsReceipt, variant: "row" | "card" = "card") => {
     const pending = g.status === "PendingApproval";
     const needsInvoice = !g.invoice || g.invoice.status === "Rejected";
+    /*
+     * ACCEPT THE CORRECTED COSTS INTO MASTER DATA.
+     *
+     * Shown only where there is something to accept and it has not been
+     * accepted yet — a permanently-visible button on every receipt would be a
+     * control that does nothing on nearly all of them.
+     *
+     * Sky, matching the badge that brought the owner here, so the two read as
+     * one thing: the row says costs were corrected, and this is what to do
+     * about it.
+     */
+    const hasUnapplied = !g.costsAppliedAt && g.items.some((i) => i.costWas !== undefined);
+    const applyBtn = hasUnapplied ? (
+      <button
+        onClick={() => setApplying(g)}
+        title="Update the catalogue to the costs receiving keyed off the invoice"
+        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+      >
+        <Tag size={14} /> Accept costs
+      </button>
+    ) : null;
 
     // A quiet icon-link like Excel / PDF — not a loud filled button — so the
     // whole actions row reads as one consistent set. The red "Incomplete —
@@ -265,6 +300,10 @@ export default function ReceiptsPage() {
               are not mutually exclusive: a REJECTED invoice needs both — see
               what Accounting turned down and why, then shoot it again — and
               that is precisely the moment the picture matters most. */}
+          {/* Its own slot, same rule as the rest: the column keeps its width
+              whether or not this receipt has costs to accept, so the buttons
+              beside it do not shuffle sideways row to row. */}
+          <div className="flex w-[104px] justify-end">{applyBtn}</div>
           <div className="flex w-[108px] justify-end">{scanBtn}</div>
           <div className="flex w-[34px] justify-end">{viewInvoiceBtn}</div>
           <div className="flex w-[72px] justify-end">{excelBtn}</div>
@@ -275,6 +314,7 @@ export default function ReceiptsPage() {
     }
     return (
       <div className="flex flex-wrap items-center gap-1.5">
+        {applyBtn}
         {scanBtn}
         {viewInvoiceBtn}
         {excelBtn}
@@ -545,6 +585,17 @@ export default function ReceiptsPage() {
         />
       )}
 
+      {applying && (
+        <AcceptCostsModal
+          grn={applying}
+          onClose={() => setApplying(null)}
+          onDone={() => {
+            setApplying(null);
+            reloadGrns();
+          }}
+        />
+      )}
+
       {pdfView && (
         <PdfViewer url={pdfView.url} title={pdfView.title} heading={`Receipt ${pdfView.title}`} onClose={closePdf} />
       )}
@@ -749,6 +800,130 @@ function EditReceiptModal({
 
 // Manager review: shows the requested change and applies it once a valid
 // approval code is entered/scanned.
+/**
+ * Accept the costs receiving keyed, into the catalogue.
+ *
+ * SHOWS THE WHOLE LIST BEFORE ASKING FOR A CODE. This is the one screen where
+ * a person decides that the shop's costs are wrong and these are right — every
+ * margin, report and stock valuation moves behind it. A dialog that said
+ * "accept 3 costs?" would be asking somebody to approve a number, not a
+ * decision, and they would click it.
+ */
+function AcceptCostsModal({
+  grn,
+  onClose,
+  onDone,
+}: {
+  grn: GoodsReceipt;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const rows = grn.items.filter((i) => i.costWas !== undefined && i.cost !== undefined);
+
+  async function accept() {
+    if (!code.trim()) {
+      setErr("Enter or scan your approval code");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      await api(`/api/goods-receipts/${grn.id}/apply-costs`, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Accept costs · ${grn.grnNo}`}
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={busy} onClick={accept}>
+            <ShieldCheck size={16} /> {busy ? "Applying…" : `Accept ${rows.length} cost${rows.length === 1 ? "" : "s"}`}
+          </button>
+        </>
+      }
+    >
+      <p className="mb-3 text-sm text-slate-500">
+        Receiving keyed these off <b className="text-ink-700">{grn.supplier}</b>&rsquo;s invoice on{" "}
+        {grn.poNo}. Accepting makes them the catalogue&rsquo;s costs — every margin, report and
+        stock value follows. The receipt itself does not change.
+      </p>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 font-semibold">Product</th>
+              <th className="px-3 py-2 text-right font-semibold">Catalogue</th>
+              <th className="px-3 py-2 text-right font-semibold">Invoiced</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.productId} className="border-b border-slate-50 last:border-0">
+                <td className="px-3 py-2">
+                  <p className="font-semibold text-ink-800">{r.name}</p>
+                  <p className="text-xs text-slate-400">{r.sku}</p>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-400 line-through">
+                  {usd(r.costWas!)}
+                </td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-sky-700">
+                  {usd(r.cost!)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Said before the code box, not after. A product bought by the case has
+          its per-unit cost DERIVED from the case price, so that is what moves —
+          and somebody approving this should know which figure they are changing
+          before they approve it, not discover it in Master Data later. */}
+      <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+        Where a product is bought by the case, the case price is what changes — the per-unit
+        figure is worked out from it, as it always is.
+      </p>
+
+      <div className="mt-3">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Approval code
+        </label>
+        <input
+          type="password"
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") accept();
+          }}
+          placeholder="Scan your badge or type your code"
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+        />
+      </div>
+
+      {err && <p className="mt-2 text-sm font-medium text-rose-600">{err}</p>}
+    </Modal>
+  );
+}
+
 function ApproveModal({
   grn,
   onClose,
