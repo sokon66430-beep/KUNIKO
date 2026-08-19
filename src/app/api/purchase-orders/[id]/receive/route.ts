@@ -30,6 +30,32 @@ function money(v: unknown): number | undefined {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * A UNIT cost, which is not the same thing as a money total — four decimals,
+ * not two.
+ *
+ * money() above rounds to cents because it validates an invoice's discount and
+ * VAT, where cents are the whole unit of account. A per-unit cost is divided
+ * out of a case and routinely is not a round cent: a case of 24 at $10.00 is
+ * $0.416667 each. Rounding that to $0.42 and multiplying back by 96 gives
+ * $40.32 against a $40.00 invoice — the receiver types the right figure, the
+ * receipt shows a different one, and nothing says why.
+ *
+ * That is exactly what this route did for its first draft, because money() was
+ * reused for both. Kept separate now, and named for what it validates.
+ *
+ * The ceiling is a typo guard: a cost is per unit, so a five-figure one is a
+ * decimal point in the wrong place rather than a real price, and it would
+ * otherwise value the delivery in the millions.
+ */
+const MAX_UNIT_COST = 100_000;
+function unitCost(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_UNIT_COST) return undefined;
+  return Math.round(n * 10_000) / 10_000;
+}
+
 // The supplier invoice scan is attached here when available; without it the
 // receipt is saved but stays INCOMPLETE until the invoice is scanned in.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -132,7 +158,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
        * it — see costWas on GRNItem.
        */
       const expected = product ? purchaseUnitCost(product) : poLine.cost;
-      const keyed = money(line.unitCost);
+      const keyed = unitCost(line.unitCost);
       const corrected = keyed !== undefined && keyed !== expected;
       if (corrected) {
         costCorrections.push(`${poLine.name} ${expected.toFixed(4)} → ${keyed.toFixed(4)}`);
