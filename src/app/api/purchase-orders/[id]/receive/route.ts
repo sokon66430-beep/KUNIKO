@@ -34,7 +34,9 @@ function money(v: unknown): number | undefined {
 // receipt is saved but stays INCOMPLETE until the invoice is scanned in.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json();
-  const lines: { productId: string; qtyReceived: number }[] = Array.isArray(body?.items)
+  const lines: { productId: string; qtyReceived: number; unitCost?: unknown }[] = Array.isArray(
+    body?.items,
+  )
     ? body.items
     : [];
 
@@ -71,6 +73,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     const receivedBy = body.receivedBy?.trim() || "Receiving Desk";
     const grnItems: GRNItem[] = [];
+    /** Lines where receiving keyed a cost the system did not expect. */
+    const costCorrections: string[] = [];
     // Lines where more arrived than was ordered — recorded, then reported to the
     // audit trail so a genuine mis-scan is still traceable after the fact.
     const overReceipts: string[] = [];
@@ -105,18 +109,43 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         overReceipts.push(`${poLine.name} +${overBy} over the ${poLine.qtyOrdered} ordered`);
       }
 
+      /*
+       * WHAT THIS UNIT COST, and who decided.
+       *
+       * `expected` is what the system believes: the CASE rate when a case
+       * price is set, else the PO's own line. It is a frozen snapshot either
+       * way — without one, an old receipt's documents would read the product's
+       * price on the day they happen to be opened, so last month's paperwork
+       * changes when somebody edits a cost.
+       *
+       * `keyed` is what the person unloading typed off the invoice, and it
+       * WINS. Master Data is wrong on a lot of these products, which is why
+       * receiving was slow: the only person who could see the error had
+       * nowhere to put it. Validated here rather than trusted — a negative or
+       * absurd figure is dropped in favour of the expected one rather than
+       * being written into a stock value.
+       *
+       * WHAT THIS DOES NOT DO is change the product. A receipt is a record of
+       * one delivery; repricing the catalogue from a receiving screen would
+       * move every margin in the business on one person's typing, with no
+       * second pair of eyes. The pair is stored instead, and the owner reviews
+       * it — see costWas on GRNItem.
+       */
+      const expected = product ? purchaseUnitCost(product) : poLine.cost;
+      const keyed = money(line.unitCost);
+      const corrected = keyed !== undefined && keyed !== expected;
+      if (corrected) {
+        costCorrections.push(`${poLine.name} ${expected.toFixed(4)} → ${keyed.toFixed(4)}`);
+      }
+
       grnItems.push({
         productId: poLine.productId,
         sku: poLine.sku,
         name: poLine.name,
         qtyOrdered: poLine.qtyOrdered,
         qtyReceived: applied,
-        // The unit cost AS RECEIVED. Without it the receipt has no cost of its
-        // own and its documents read the product's price of the day they're
-        // opened — so last month's receipt quietly changes when a cost does.
-        // Booked at the CASE rate when a case price is set (else the PO cost),
-        // so the receipt and stock value reflect what was really paid.
-        cost: product ? purchaseUnitCost(product) : poLine.cost,
+        cost: corrected ? keyed : expected,
+        ...(corrected ? { costWas: expected } : {}),
       });
     }
 
@@ -169,6 +198,25 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       entity: grn.grnNo,
       detail: `${po.poNo} · +${grnItems.reduce((s, i) => s + i.qtyReceived, 0)} units`,
     });
+
+    /*
+     * A CORRECTED COST GETS ITS OWN AUDIT LINE.
+     *
+     * Not folded into the "Received" entry above: that one is about goods
+     * arriving, which happens every day and is skimmed. A cost the shop
+     * believed was wrong is a different kind of event — it is the thing the
+     * owner asked to be able to check — and it needs to be findable in the
+     * audit trail by itself, naming the product and both figures.
+     */
+    if (costCorrections.length) {
+      logAudit(db, {
+        actor: grn.receivedBy,
+        action: "Cost corrected at receiving",
+        entityType: "GRN",
+        entity: grn.grnNo,
+        detail: `${po.poNo} · ${costCorrections.join(", ")} — the receipt uses the invoiced figure; Master Data is unchanged`,
+      });
+    }
 
     // An over-delivery is legitimate but worth a trail — it's also what a
     // mis-scan looks like, and this is how one gets found later.

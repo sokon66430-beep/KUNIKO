@@ -312,10 +312,34 @@ function ReceiveModal({
   // PO reflects it. Falls back to the PO line's own cost when there's no match.
   const { data: products } = useFetch<Product[]>("/api/products");
   const productMap = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
-  const costOf = (it: { productId: string; cost: number }) => {
+  /** What the system EXPECTS this to cost — the case rate, or the PO's line. */
+  const expectedCostOf = (it: { productId: string; cost: number }) => {
     const p = productMap.get(it.productId);
     return p ? purchaseUnitCost(p) : it.cost;
   };
+  /*
+   * WHAT THE INVOICE ACTUALLY SAYS, typed by whoever is unloading.
+   *
+   * Held as a string, not a number: "" has to mean "as expected" and stay
+   * distinguishable from a typed 0, which is a real answer somebody may need
+   * to key. An unparseable or negative entry falls back rather than poisoning
+   * the running total while it is half typed.
+   *
+   * The cost was display-only until now, read from Master Data. That is right
+   * when Master Data is right — and a lot of these costs are wrong, which is
+   * why receiving was crawling: the person holding the invoice could see the
+   * error and had nowhere to put it.
+   */
+  const [costEdit, setCostEdit] = useState<Record<string, string>>({});
+  const costOf = (it: { productId: string; cost: number }) => {
+    const typed = costEdit[it.productId];
+    if (typed === undefined || typed.trim() === "") return expectedCostOf(it);
+    const n = Number(typed);
+    return Number.isFinite(n) && n >= 0 ? n : expectedCostOf(it);
+  };
+  /** True when this line's cost is not the one the system expected. */
+  const costEdited = (it: { productId: string; cost: number }) =>
+    costOf(it) !== expectedCostOf(it);
   // Show the CURRENT product name from Master Data, not the one snapshotted onto
   // the PO when it was raised — so renaming a product in Master Data shows through
   // here on the open order. Falls back to the PO line's own name if the product
@@ -464,7 +488,14 @@ function ReceiveModal({
 
   async function confirm() {
     const items = po.items
-      .map((it) => ({ productId: it.productId, qtyReceived: now[it.productId] || 0 }))
+      .map((it) => ({
+        productId: it.productId,
+        qtyReceived: now[it.productId] || 0,
+        // Sent only when it was actually TYPED. Sending the expected cost back
+        // would make every line look corrected, and the receipt could never
+        // tell a checked figure from an untouched one.
+        ...(costEdited(it) ? { unitCost: costOf(it) } : {}),
+      }))
       .filter((x) => x.qtyReceived > 0);
     if (items.length === 0) {
       setFlash({ tone: "warn", text: "Enter at least one quantity" });
@@ -672,7 +703,60 @@ function ReceiveModal({
                   >
                     {usd(costOf(it) * receivingNow)}
                   </span>
-                  <span className="block text-[10px] tabular-nums text-slate-400">{usd(costOf(it))} ea</span>
+                  {/* THE COST, TYPED WHERE IT IS READ.
+                      Sat here as plain text before, which was fine while
+                      Master Data was right. It often is not, and the person
+                      holding the invoice is the only one who can see that —
+                      so the figure they are checking against is the figure
+                      they can correct. Amber once touched: a changed cost is
+                      not a quiet detail, it re-values the whole line. */}
+                  <span className="mt-0.5 flex items-center justify-end gap-1">
+                    <span className="text-[10px] text-slate-400">US$</span>
+                    <input
+                      /*
+                       * TEXT, NOT NUMBER, and that is not a detail.
+                       *
+                       * A number input draws spinner arrows. At the precision
+                       * a cost needs (four decimals) one stray tap on the
+                       * arrow moves it by 0.0001 — invisible in a figure
+                       * displayed to two places, and it holds down to repeat.
+                       * Driving this screen, a single mis-aimed click walked a
+                       * cost from 0.7500 to 0.7523 before I stopped it. On a
+                       * tablet held in one hand beside a pallet, that is a
+                       * cost quietly altered by somebody's thumb.
+                       *
+                       * inputMode still brings up the numeric keypad on a
+                       * handset, so nothing is lost; the value is sanitised
+                       * below and parsed by costOf.
+                       */
+                      type="text"
+                      inputMode="decimal"
+                      aria-label={`Unit cost for ${nameOf(it)}`}
+                      placeholder={expectedCostOf(it).toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}
+                      value={costEdit[it.productId] ?? ""}
+                      onChange={(e) =>
+                        setCostEdit((m) => ({
+                          // Digits and a single point. A text box accepts
+                          // anything, and "0.75.2" or a pasted "$0.75" would
+                          // fall back to the expected cost silently — which
+                          // looks exactly like the edit not having worked.
+                          ...m,
+                          [it.productId]: e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"),
+                        }))
+                      }
+                      className={`h-7 w-20 rounded-lg border px-1.5 text-right text-[11px] font-semibold tabular-nums outline-none focus:ring-2 ${
+                        costEdited(it)
+                          ? "border-amber-300 bg-amber-50 text-amber-900 focus:ring-amber-200"
+                          : "border-slate-200 text-slate-500 focus:ring-brand-200"
+                      }`}
+                    />
+                    <span className="text-[10px] text-slate-400">ea</span>
+                  </span>
+                  {costEdited(it) && (
+                    <span className="block text-[10px] tabular-nums text-amber-600">
+                      was {usd(expectedCostOf(it))}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -858,6 +942,19 @@ function ReceiveModal({
                           <td className="px-3 py-2">
                             <p className={`font-semibold ${none ? "text-slate-400" : "text-ink-800"}`}>{nameOf(it)}</p>
                             <p className="text-[11px] text-slate-400">ordered {it.qtyOrdered}</p>
+                            {/* THE LAST LOOK BEFORE IT IS COMMITTED.
+                                This screen exists to be checked against the
+                                paper invoice, and a corrected cost is the one
+                                figure on it that came from a person rather
+                                than the system — so it is the one worth
+                                re-reading. A digit slipped here re-values the
+                                whole line and nothing downstream would query
+                                it. */}
+                            {costEdited(it) && (
+                              <p className="text-[11px] font-semibold text-amber-600">
+                                cost {usd(expectedCostOf(it))} → {usd(costOf(it))} — you keyed this
+                              </p>
+                            )}
                           </td>
                           <td className={`px-3 py-2 text-center text-[15px] font-bold tabular-nums ${none ? "text-slate-300" : "text-ink-900"}`}>{q}</td>
                           <td className="px-3 py-2 text-center text-xs">

@@ -948,6 +948,16 @@ export type GRNItem = {
   // product's cost changes later. Absent on receipts made before this existed;
   // those fall back to the product's current cost.
   cost?: number;
+  /**
+   * What the system EXPECTED this to cost, when receiving keyed something
+   * else. Absent means nobody touched it and `cost` is the expected figure.
+   *
+   * Kept beside the cost rather than replacing it, because the pair is the
+   * whole point: "$0.19" is a number, "$0.17 → $0.19" is a decision somebody
+   * made with the invoice in their hand, and it is what the owner reviews.
+   * Master Data is NOT moved by it — see the receive route.
+   */
+  costWas?: number;
 };
 
 export type GRNStatus = "Posted" | "PendingApproval";

@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Image as ImageIcon,
   Search,
+  Tag,
   X,
 } from "lucide-react";
 import { useFetch, api } from "@/lib/client";
@@ -24,7 +25,7 @@ import { DatePicker } from "@/components/DatePicker";
 import type { GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState, Modal } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
-import { num, dateTime } from "@/lib/format";
+import { num, dateTime, usd } from "@/lib/format";
 
 /**
  * Receipt history — split out of /receiving.
@@ -120,8 +121,28 @@ export default function ReceiptsPage() {
   // the phone cards below, so both always show the same thing.
   const statusBadges = (g: GoodsReceipt) => {
     const pending = g.status === "PendingApproval";
+    /*
+     * COSTS THE RECEIVING TEAM CORRECTED, surfaced on the list itself.
+     *
+     * The owner asked to be able to check these. A badge only where the
+     * receipt is opened would mean opening every receipt to find the two that
+     * need a look — so it belongs beside the invoice status, in the one place
+     * every receipt is already scanned down.
+     *
+     * Blue, not amber or rose: a corrected cost is the system working as
+     * intended, not a fault. Amber here would train the eye to ignore it.
+     */
+    const corrected = g.items.filter((i) => i.costWas !== undefined).length;
     return (
       <>
+        {corrected > 0 && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700"
+            title="Receiving keyed a cost that differs from Master Data. Open the receipt to see both figures."
+          >
+            <Tag size={11} /> {corrected} cost{corrected === 1 ? "" : "s"} corrected
+          </span>
+        )}
         {pending && (
           <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
             <Clock size={11} /> Edit pending approval
@@ -577,6 +598,11 @@ function EditReceiptModal({
         qtyOrdered: p.qtyOrdered,
         qtyReceived: got?.qtyReceived ?? 0,
         onReceipt: !!got,
+        // Carried through so the correction can be READ where the receipt is
+        // examined. The badge on the list says a receipt has some; this is
+        // where the owner sees which product and both figures.
+        cost: got?.cost,
+        costWas: got?.costWas,
       };
     });
     // Anything on the receipt but not on the order (the order was edited after
@@ -591,6 +617,8 @@ function EditReceiptModal({
           qtyOrdered: i.qtyOrdered,
           qtyReceived: i.qtyReceived,
           onReceipt: true,
+          cost: i.cost,
+          costWas: i.costWas,
         });
       }
     }
@@ -663,6 +691,16 @@ function EditReceiptModal({
                           not previously show at all. */}
                       {!it.onReceipt && <span className="ml-2 font-semibold text-amber-600">not received</span>}
                     </p>
+                    {/* BOTH FIGURES, never just the new one. "$0.19" is a
+                        number; "$0.17 → $0.19" is a decision somebody made
+                        with the invoice in their hand, and it is the only
+                        form of it the owner can actually check. */}
+                    {it.costWas !== undefined && it.cost !== undefined && (
+                      <p className="mt-0.5 text-xs font-semibold text-sky-700">
+                        cost {usd(it.costWas)} <ArrowRight size={11} className="inline" /> {usd(it.cost)}
+                        <span className="ml-1 font-normal text-slate-400">keyed at receiving</span>
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-center text-slate-400">{it.qtyOrdered}</td>
                   <td className="px-3 py-2 text-center text-slate-400">{it.qtyReceived}</td>
