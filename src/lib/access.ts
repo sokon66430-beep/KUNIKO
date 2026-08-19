@@ -114,6 +114,19 @@ export const PERMISSION_PAGES: { href: string; label: string }[] = [
 
 export const PROFIT_CAP = "cap:profit";
 export const MASTER_DATA_CAP = "cap:master-data";
+/**
+ * Accept a cost an invoice proves, without the run of the master file.
+ *
+ * Split out of Master Data because the two are very different sizes. Master
+ * Data opens every product, supplier, recipe and deal for every store and lets
+ * them be changed to anything. This lets one figure move, to one value, that a
+ * supplier's invoice already showed, on a delivery somebody received — and it
+ * is recorded against their name with both figures either side.
+ *
+ * Without the split, letting Procurement confirm an invoiced cost meant handing
+ * them the whole catalogue, which is a much bigger grant than the job needs.
+ */
+export const ACCEPT_COSTS_CAP = "cap:accept-costs";
 
 export type RoleCaps = Partial<Record<string, boolean>>;
 
@@ -130,6 +143,11 @@ export const PERMISSION_CAPS: { href: string; label: string; note: string }[] = 
     label: "Master Data",
     note: "The company-wide master file — create and edit products, suppliers, recipes and deals for every store",
   },
+  {
+    href: ACCEPT_COSTS_CAP,
+    label: "Accept invoiced costs",
+    note: "On a goods receipt, make the cost receiving keyed off the supplier's invoice the product's cost. Nothing else about the product changes. Included in Master Data.",
+  },
 ];
 
 // Who gets a capability until the owner says otherwise. Profit/margin figures
@@ -141,6 +159,11 @@ const CAP_BASELINE: Record<string, Role[]> = {
   // Nobody gets the master file until the owner grants it by hand — one master
   // edit rewrites products for every store, so there is no safe default.
   [MASTER_DATA_CAP]: [],
+  // Also nobody by default, deliberately. It is a far smaller grant than the
+  // master file, but it still moves a cost that every margin and stock
+  // valuation is built on — so it is the owner's to hand out, on the screen
+  // built for handing things out, rather than something that quietly appeared.
+  [ACCEPT_COSTS_CAP]: [],
 };
 
 export function hasCap(role: Role, cap: string, caps?: RoleCaps): boolean {
@@ -304,6 +327,19 @@ export function canSeeProfit(role: Role, caps?: RoleCaps): boolean {
 // available (server: `masterDataFor` in lib/caps.ts; client: `useAccess`).
 export function canUseMasterData(role: Role, caps?: RoleCaps): boolean {
   return hasCap(role, MASTER_DATA_CAP, caps);
+}
+
+/**
+ * May this role accept an invoiced cost onto the product?
+ *
+ * Master Data INCLUDES it, and that is not a shortcut — somebody who can open
+ * the master file and type any cost they like into any product is not being
+ * protected by being refused the one figure a supplier's invoice proves. The
+ * separate capability exists so the reverse is possible: give Procurement the
+ * cost, without giving them the catalogue.
+ */
+export function canAcceptCosts(role: Role, caps?: RoleCaps): boolean {
+  return hasCap(role, ACCEPT_COSTS_CAP, caps) || canUseMasterData(role, caps);
 }
 
 // Who may pull a fresh price list onto a till.

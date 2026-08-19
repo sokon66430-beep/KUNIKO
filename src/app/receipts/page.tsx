@@ -26,7 +26,7 @@ import type { GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState, Modal } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
 import { num, dateTime, usd } from "@/lib/format";
-import { canUseMasterData } from "@/lib/access";
+import { canAcceptCosts } from "@/lib/access";
 
 /**
  * Receipt history — split out of /receiving.
@@ -209,7 +209,7 @@ export default function ReceiptsPage() {
     // already change a cost there directly should not be stopped from
     // accepting the one an invoice proves; somebody who cannot should not see
     // a button that will only refuse them.
-    const applyBtn = hasUnapplied && canUseMasterData(role ?? "store_crew", caps) ? (
+    const applyBtn = hasUnapplied && canAcceptCosts(role ?? "store_crew", caps) ? (
       <button
         onClick={() => setApplying(g)}
         title="Update the catalogue to the costs receiving keyed off the invoice"

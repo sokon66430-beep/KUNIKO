@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { masterDataFor } from "@/lib/caps";
+import { acceptCostsFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { applyPurchaseUnitCost } from "@/lib/sellingUnits";
 
@@ -21,18 +21,20 @@ export const dynamic = "force-dynamic";
  * moves every margin, report and stock valuation in the business and should
  * not happen as a side effect of unloading a pallet.
  *
- * WHO MAY DO IT IS THE MASTER DATA CAPABILITY, not an approval code.
+ * WHO MAY DO IT IS ITS OWN CAPABILITY — cap:accept-costs, on /permissions.
  *
- * The first draft demanded a manager's code, which was wrong twice over. It
- * invented a rule this app does not have — the owner decides on /permissions
- * who may edit company-wide products, and cap:master-data is that decision
- * already made. And it put a second, hidden gate in front of people the owner
- * had ALREADY granted the function to, so a procurement clerk who can edit any
- * cost in Master Data directly could not accept the one an invoice proves.
+ * It got here in two steps, and both are worth knowing. The first draft
+ * demanded a manager's approval code, which invented a rule this app does not
+ * have: the owner decides who may do what on /permissions, and a second hidden
+ * gate in front of somebody already granted a function is friction, not
+ * control. The second draft used cap:master-data, which was the right SHAPE
+ * and the wrong SIZE — giving Procurement the cost meant handing them every
+ * product, supplier, recipe and deal for every store.
  *
- * So: whoever the owner has given Master Data to can do this, exactly as they
- * can already change the same cost on the Master Data screen. The audit line
- * below is what makes it reviewable, which is the part that actually matters.
+ * So it has its own row now. Master Data still includes it, because anybody
+ * who can type any cost into any product is not protected by being refused the
+ * one figure a supplier's invoice proves. The audit line below is what makes
+ * it reviewable, which is the part that actually matters.
  *
  * ONCE ONLY. Applying twice would read the already-corrected cost as the
  * expected one and write it back over itself — harmless once, and permanently
@@ -42,7 +44,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // Resolved OUTSIDE the write window: it reads the owner's live permission
   // config, and mutateDB's callback must stay synchronous.
   const session = await getSession();
-  const allowed = session ? await masterDataFor(session.role) : false;
+  const allowed = session ? await acceptCostsFor(session.role) : false;
   // The signed-in person, by name — not a badge holder standing beside them.
   // That is the point of moving off the code: the audit line now says who
   // actually did it rather than whose card was tapped.
@@ -105,7 +107,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         { status: 400 },
       );
     return NextResponse.json(
-      { error: "Accepting costs needs Master Data access — the owner grants it on Permissions." },
+      { error: "You do not have “Accept invoiced costs” — the owner grants it on Permissions." },
       { status: 403 },
     );
   }
