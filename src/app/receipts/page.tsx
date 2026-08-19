@@ -18,7 +18,7 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import { useFetch, api } from "@/lib/client";
+import { useFetch, api, useAccess } from "@/lib/client";
 import { InvoiceCamera } from "@/components/InvoiceCamera";
 import { PdfViewer } from "@/components/PdfViewer";
 import { DatePicker } from "@/components/DatePicker";
@@ -26,6 +26,7 @@ import type { GoodsReceipt } from "@/lib/types";
 import { PageHeader, StatCard, Card, Spinner, ErrorBox, EmptyState, Modal } from "@/components/ui";
 import { SearchSelect } from "@/components/SearchSelect";
 import { num, dateTime, usd } from "@/lib/format";
+import { canUseMasterData } from "@/lib/access";
 
 /**
  * Receipt history — split out of /receiving.
@@ -41,6 +42,8 @@ export default function ReceiptsPage() {
   const [reviewing, setReviewing] = useState<GoodsReceipt | null>(null);
   /** The receipt whose corrected costs are being accepted into Master Data. */
   const [applying, setApplying] = useState<GoodsReceipt | null>(null);
+  /** Who is signed in, and what the owner has granted them on /permissions. */
+  const { role, caps } = useAccess();
   const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null);
   /** The receipt whose submitted invoice photo is being looked at. */
   const [invoiceView, setInvoiceView] = useState<{ grn: GoodsReceipt } | null>(null);
@@ -202,7 +205,11 @@ export default function ReceiptsPage() {
      * about it.
      */
     const hasUnapplied = !g.costsAppliedAt && g.items.some((i) => i.costWas !== undefined);
-    const applyBtn = hasUnapplied ? (
+    // Gated on the SAME capability that opens Master Data. Somebody who can
+    // already change a cost there directly should not be stopped from
+    // accepting the one an invoice proves; somebody who cannot should not see
+    // a button that will only refuse them.
+    const applyBtn = hasUnapplied && canUseMasterData(role ?? "store_crew", caps) ? (
       <button
         onClick={() => setApplying(g)}
         title="Update the catalogue to the costs receiving keyed off the invoice"
@@ -803,11 +810,18 @@ function EditReceiptModal({
 /**
  * Accept the costs receiving keyed, into the catalogue.
  *
- * SHOWS THE WHOLE LIST BEFORE ASKING FOR A CODE. This is the one screen where
- * a person decides that the shop's costs are wrong and these are right — every
- * margin, report and stock valuation moves behind it. A dialog that said
- * "accept 3 costs?" would be asking somebody to approve a number, not a
- * decision, and they would click it.
+ * SHOWS THE WHOLE LIST, AND ASKS FOR NOTHING ELSE. This is the one screen where
+ * a person decides the shop's costs are wrong and these are right — every
+ * margin, report and stock valuation moves behind it. A dialog reading "accept
+ * 3 costs?" would be asking somebody to approve a number rather than a
+ * decision, and they would click it. The list IS the confirmation.
+ *
+ * It used to demand a manager's approval code as well. That invented a rule
+ * this app does not have: the owner already decides on /permissions who may
+ * edit company-wide products, and anybody holding that can change the very
+ * same cost on the Master Data screen without a code. A second hidden gate in
+ * front of people already granted the function is friction, not control —
+ * the audit line is what makes this reviewable.
  */
 function AcceptCostsModal({
   grn,
@@ -818,23 +832,15 @@ function AcceptCostsModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const rows = grn.items.filter((i) => i.costWas !== undefined && i.cost !== undefined);
 
   async function accept() {
-    if (!code.trim()) {
-      setErr("Enter or scan your approval code");
-      return;
-    }
     setBusy(true);
     setErr("");
     try {
-      await api(`/api/goods-receipts/${grn.id}/apply-costs`, {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      });
+      await api(`/api/goods-receipts/${grn.id}/apply-costs`, { method: "POST" });
       onDone();
     } catch (e: any) {
       setErr(e.message);
@@ -902,24 +908,7 @@ function AcceptCostsModal({
         figure is worked out from it, as it always is.
       </p>
 
-      <div className="mt-3">
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Approval code
-        </label>
-        <input
-          type="password"
-          autoFocus
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") accept();
-          }}
-          placeholder="Scan your badge or type your code"
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-        />
-      </div>
-
-      {err && <p className="mt-2 text-sm font-medium text-rose-600">{err}</p>}
+      {err && <p className="mt-3 text-sm font-medium text-rose-600">{err}</p>}
     </Modal>
   );
 }

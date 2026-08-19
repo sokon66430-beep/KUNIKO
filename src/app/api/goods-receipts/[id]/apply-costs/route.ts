@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { mutateDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { resolveApprover } from "@/lib/managerAuth";
+import { masterDataFor } from "@/lib/caps";
 import { logAudit } from "@/lib/audit";
 import { applyPurchaseUnitCost } from "@/lib/sellingUnits";
 
@@ -17,27 +17,36 @@ export const dynamic = "force-dynamic";
  * dashboard keeps using a number nobody believes. This is the one action that
  * ends that loop.
  *
- * IT IS DELIBERATELY A SEPARATE, APPROVED ACT. Repricing the catalogue moves
- * every margin, report and stock valuation in the business; doing it as a side
- * effect of somebody unloading a pallet would mean one person's typing changes
- * the shop's numbers with nobody else looking. So the person at the pallet
- * records what they see, and somebody with an approval code decides it is the
- * new truth. Same code, same check as approving a receipt edit.
+ * IT IS STILL A SEPARATE ACT from receiving, because repricing the catalogue
+ * moves every margin, report and stock valuation in the business and should
+ * not happen as a side effect of unloading a pallet.
+ *
+ * WHO MAY DO IT IS THE MASTER DATA CAPABILITY, not an approval code.
+ *
+ * The first draft demanded a manager's code, which was wrong twice over. It
+ * invented a rule this app does not have — the owner decides on /permissions
+ * who may edit company-wide products, and cap:master-data is that decision
+ * already made. And it put a second, hidden gate in front of people the owner
+ * had ALREADY granted the function to, so a procurement clerk who can edit any
+ * cost in Master Data directly could not accept the one an invoice proves.
+ *
+ * So: whoever the owner has given Master Data to can do this, exactly as they
+ * can already change the same cost on the Master Data screen. The audit line
+ * below is what makes it reviewable, which is the part that actually matters.
  *
  * ONCE ONLY. Applying twice would read the already-corrected cost as the
  * expected one and write it back over itself — harmless once, and permanently
  * confusing to anybody reading the audit trail afterwards.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const body = await req.json().catch(() => ({}));
-  const code = String(body?.code || "").trim();
-
-  // Resolved OUTSIDE the write window — it reads the store's manager records,
-  // and mutateDB's callback must stay synchronous.
+export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  // Resolved OUTSIDE the write window: it reads the owner's live permission
+  // config, and mutateDB's callback must stay synchronous.
   const session = await getSession();
-  const who = session
-    ? await resolveApprover(code, { storeId: session.storeId, purpose: "approveCash" })
-    : null;
+  const allowed = session ? await masterDataFor(session.role) : false;
+  // The signed-in person, by name — not a badge holder standing beside them.
+  // That is the point of moving off the code: the audit line now says who
+  // actually did it rather than whose card was tapped.
+  const who = session ? `${session.name} (${session.role})` : null;
 
   const result = await mutateDB((db) => {
     const grn = db.goodsReceipts.find((g) => g.id === params.id);
@@ -47,9 +56,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const corrections = grn.items.filter((i) => i.costWas !== undefined && i.cost !== undefined);
     if (corrections.length === 0) return { error: "nothing" as const };
 
-    // Checked AFTER the receipt is known to have something to apply, so a bad
-    // code on a receipt with no corrections reports the real problem.
-    if (!who) return { error: "bad_code" as const };
+    // Checked AFTER the receipt is known to have something to apply, so a
+    // permission failure on a receipt with nothing to accept still reports the
+    // real problem rather than blaming the person.
+    if (!allowed || !who) return { error: "not_allowed" as const };
 
     const changes: string[] = [];
     const missing: string[] = [];
@@ -95,7 +105,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { status: 400 },
       );
     return NextResponse.json(
-      { error: "That approval code was not recognised." },
+      { error: "Accepting costs needs Master Data access — the owner grants it on Permissions." },
       { status: 403 },
     );
   }
