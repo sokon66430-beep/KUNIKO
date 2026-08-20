@@ -35,6 +35,35 @@ function backupFileFor(dateStr: string): string {
 /** Never drop below this many backups, whatever the disk is doing. */
 const MIN_KEEP = 3;
 
+/**
+ * The share of the volume backups may occupy.
+ *
+ * A count alone cannot bound them: each backup holds every store, so "14 days"
+ * meant 343 MB of a 973 MB disk here — eleven times the live data it protects —
+ * and it grows every time the business does. The disk does not grow with it.
+ *
+ * A share does bound them, and keeps bounding them as both sides change. The
+ * rest of the volume is the working room the shop actually trades on: the store
+ * documents, the invoice photos, and the space a sale needs to rewrite its
+ * store through a temp file. Backups are the one thing here that can be given
+ * up safely, so they are the thing that yields.
+ */
+const BUDGET_PCT = Math.min(60, Math.max(5, Number(process.env.BACKUP_BUDGET_PCT) || 25));
+
+/**
+ * A flat ceiling in MB, when a share of the volume is the wrong unit — a big
+ * disk shared with something else, or simply a number an operator wants to fix
+ * rather than derive. Overrides the share when set.
+ */
+const BUDGET_MB = Number(process.env.BACKUP_BUDGET_MB) || 0;
+
+/** Bytes backups may occupy: the flat ceiling if set, otherwise the share. */
+async function backupBudget(): Promise<number | null> {
+  if (BUDGET_MB > 0) return BUDGET_MB * 1048576;
+  const total = await volumeBytes();
+  return total == null ? null : total * (BUDGET_PCT / 100);
+}
+
 /** The backup files on disk, oldest first, with their sizes. */
 async function backupFiles(): Promise<Array<{ name: string; bytes: number }>> {
   const names = (await fs.readdir(BACKUP_DIR).catch(() => []))
@@ -53,6 +82,16 @@ async function freeBytes(): Promise<number | null> {
   try {
     const st = await statfs(BACKUP_DIR);
     return st.bfree * st.bsize;
+  } catch {
+    return null;
+  }
+}
+
+/** Total size of that volume, or null if unmeasurable. */
+async function volumeBytes(): Promise<number | null> {
+  try {
+    const st = await statfs(BACKUP_DIR);
+    return st.blocks * st.bsize;
   } catch {
     return null;
   }
@@ -139,6 +178,22 @@ async function pruneOld(needBytes = 0): Promise<void> {
   while (files.length > KEEP_DAYS) {
     if (!(await dropOldest("past the retention window"))) return;
   }
+
+  // Then to the share of the volume backups are allowed. This is what keeps the
+  // working room the tills need, and it is deliberately independent of whether
+  // a backup is being written right now — trimming only enough for the next
+  // backup would have left this disk with less free space than one sale needs.
+  const budget = await backupBudget();
+  if (budget != null) {
+    const limit = BUDGET_MB > 0 ? `${BUDGET_MB} MB cap` : `${BUDGET_PCT}% disk share`;
+    let held = files.reduce((n, f) => n + f.bytes, 0);
+    while (files.length > MIN_KEEP && held > budget) {
+      const oldest = files[0];
+      if (!(await dropOldest(`over the ${limit} for backups`))) break;
+      held -= oldest.bytes;
+    }
+  }
+
   if (!needBytes) return;
   while (files.length > MIN_KEEP) {
     const free = await freeBytes();
