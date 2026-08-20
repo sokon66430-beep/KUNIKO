@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { readBlob, usingPostgres } from "@/lib/blobStore";
 import { readSystem } from "@/lib/system";
 import { storeFaultReport } from "@/lib/db";
-import { listAutoBackups } from "@/lib/backup";
-import { statfs } from "fs/promises";
+import { listAutoBackups, backupBytes } from "@/lib/backup";
+import { statfs, stat, readdir } from "fs/promises";
+import { join } from "path";
 import { DATA_DIR } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
@@ -36,13 +37,52 @@ type Health = {
   commit?: string;
   stores: Array<{ id: string; present: boolean; parses: boolean; bytes: number; error?: string }>;
   faults: ReturnType<typeof storeFaultReport>;
-  backups: { count: number; newest?: string };
-  disk?: { freeMb: number; totalMb: number; usedPct: number };
+  backups: { count: number; newest?: string; mb?: number };
+  disk?: { freeMb: number; totalMb: number; usedPct: number; needMb?: number };
+  dataMb?: Record<string, number>;
   error?: string;
 };
 
 let cached: { at: number; body: Health } | null = null;
 const TTL_MS = 30_000;
+
+/**
+ * Megabytes under each top-level entry of the data disk.
+ *
+ * "98% full" is not actionable on its own — it says stop, not what to remove.
+ * When this volume filled, the backups and the store files together accounted
+ * for barely half of what was used, and there was no way to find the rest
+ * without a shell. So the check names the folders and their sizes.
+ *
+ * Walking is capped: invoice photos are many small files, and an
+ * unauthenticated endpoint that stats tens of thousands of them on a shared
+ * process would itself become the outage. Past the cap the figure is a floor,
+ * which is enough to identify the culprit.
+ */
+async function dataUsage(): Promise<Record<string, number>> {
+  const MAX_FILES = 20_000;
+  let seen = 0;
+  const sizeOf = async (p: string): Promise<number> => {
+    if (seen >= MAX_FILES) return 0;
+    const st = await stat(p).catch(() => null);
+    if (!st) return 0;
+    if (st.isFile()) {
+      seen++;
+      return st.size;
+    }
+    if (!st.isDirectory()) return 0;
+    const names = await readdir(p).catch(() => []);
+    let total = 0;
+    for (const n of names) total += await sizeOf(join(p, n));
+    return total;
+  };
+  const out: Record<string, number> = {};
+  for (const name of await readdir(DATA_DIR).catch(() => [])) {
+    const mb = Math.round((await sizeOf(join(DATA_DIR, name))) / 1048576);
+    if (mb > 0) out[name] = mb;
+  }
+  return out;
+}
 
 async function check(): Promise<Health> {
   const health: Health = {
@@ -87,7 +127,14 @@ async function check(): Promise<Health> {
 
   try {
     const dates = await listAutoBackups();
-    health.backups = { count: dates.length, newest: dates[0] };
+    // Their SIZE, not just their dates: each backup holds every store, so on
+    // this volume they outgrow the data they protect and are the first thing to
+    // look at when the disk fills.
+    health.backups = {
+      count: dates.length,
+      newest: dates[0],
+      mb: Math.round((await backupBytes()) / 1048576),
+    };
   } catch {
     /* the backup folder is not part of whether the shop can trade */
   }
@@ -103,12 +150,19 @@ async function check(): Promise<Health> {
     const freeMb = Math.round((st.bfree * st.bsize) / 1048576);
     const usedPct = totalMb > 0 ? Math.round(((totalMb - freeMb) / totalMb) * 100) : 0;
     health.disk = { freeMb, totalMb, usedPct };
-    // A store document is rewritten IN FULL on every sale, so the headroom that
-    // matters is several times its size, not a few spare kilobytes.
-    if (freeMb < 20) health.ok = false;
+    // The headroom that matters is measured against the BIGGEST store document,
+    // because one sale rewrites one whole document through a temp file beside
+    // it — so the shop needs room for two copies of its largest store before it
+    // can take money, no matter how healthy a percentage looks. A fixed figure
+    // was wrong for exactly this reason: 20 MB free reads as "nearly full but
+    // fine" next to a 23 MB store that cannot save a single sale.
+    const biggestMb = Math.max(0, ...health.stores.map((s) => s.bytes / 1048576));
+    health.disk.needMb = Math.max(50, Math.ceil(biggestMb * 2));
+    if (freeMb < health.disk.needMb) health.ok = false;
   } catch {
     /* not measurable on this platform — not a reason to call the shop unhealthy */
   }
+  health.dataMb = await dataUsage();
   if (Object.keys(health.faults).length > 0) health.ok = false;
   return health;
 }
