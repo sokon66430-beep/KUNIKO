@@ -17,6 +17,10 @@ export async function middleware(req: NextRequest) {
     // Sunmi T3's second display without bouncing to /login.
     pathname === "/customer-display" ||
     pathname.startsWith("/api/auth/") ||
+    // "Can anyone get in and work?" cannot be asked from behind the login —
+    // reaching it would already assume the answer. Reports condition only: no
+    // products, prices, takings or logins. See the route for what it exposes.
+    pathname === "/api/health" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
   if (isPublic) return NextResponse.next();

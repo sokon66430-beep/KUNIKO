@@ -4,6 +4,7 @@ import { getSession } from "./session";
 import { repairBarcodes } from "./barcodes";
 import { DEFAULT_STORE_ID, readSystem } from "./system";
 import { readBlob, writeBlob } from "./blobStore";
+import { listAutoBackups, readAutoBackup } from "./backup";
 
 // In-process write lock so concurrent API calls don't clobber a store's document.
 // A PER-STORE write lock. Each store serializes its own writes (they mutate that
@@ -228,16 +229,132 @@ function touchCache(sid: string, db: DB): void {
   }
 }
 
+/**
+ * Why a store's document can fail to parse, and what we do about it.
+ *
+ * Every screen in the app reads this one JSON document, so if it does not parse
+ * the whole shop stops: the till will not open, nothing can be sold, and every
+ * page returns 500 — while the LOGIN still works, because sign-in reads the
+ * separate, much smaller system document. That exact split is the signature of
+ * this fault, and it is what an owner reports as "it lets me in and then
+ * everything is broken".
+ *
+ * It used to be a dead end. JSON.parse threw, the error reached the browser as a
+ * bare 500, and the shop stayed down until somebody with a shell restored a
+ * backup by hand — even though up to 14 nightly backups were sitting on the same
+ * disk the whole time. So: take the newest backup that actually parses and put
+ * the shop back on it.
+ *
+ * The unreadable bytes are NEVER thrown away. They are copied aside first, under
+ * their own id, so whatever went wrong can still be looked at afterwards — and
+ * so this can never be the thing that destroys the only copy.
+ *
+ * Recovering is not free and must not be silent: restoring last night's backup
+ * means anything keyed since then is not in it. The fault is recorded and
+ * reported by /api/health, naming the backup's date, so the shop knows exactly
+ * how far back it has been put and what to re-key.
+ */
+export type StoreFault = {
+  at: string;
+  error: string;
+  recoveredFrom?: string; // backup date the store was put back on
+  preservedAs?: string; // where the unreadable bytes were kept
+};
+// Kept on globalThis, not in a module variable. Next builds each route into its
+// own bundle, so a plain module-level Map can end up with one copy per route —
+// the recovery would record a fault that /api/health then reports as empty,
+// which is worse than not reporting it at all. Same pattern as the PG pool.
+const faultStore = globalThis as unknown as { _stookiiStoreFaults?: Map<string, StoreFault> };
+const storeFaults = (faultStore._stookiiStoreFaults ??= new Map<string, StoreFault>());
+
+/** Stores that failed to parse, and what was done about each. For /api/health. */
+export function storeFaultReport(): Record<string, StoreFault> {
+  return Object.fromEntries(storeFaults);
+}
+
+async function parseOrRecover(sid: string, raw: string): Promise<DB> {
+  try {
+    return JSON.parse(raw) as DB;
+  } catch (e: any) {
+    const error = e?.message || String(e);
+    // Loud, because this is the one fault that takes the whole shop off the air.
+    console.error(`[db] store "${sid}" did not parse (${raw.length} bytes): ${error}`);
+    const fault: StoreFault = { at: new Date().toISOString(), error };
+    storeFaults.set(sid, fault);
+
+    // Keep the unreadable bytes before anything overwrites them. A blob id has
+    // to stay a plain slug, so the timestamp is dashed rather than ISO.
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const preservedAs = `${sid}-corrupt-${stamp}`;
+    try {
+      await writeBlob("store", preservedAs, raw);
+      fault.preservedAs = preservedAs;
+    } catch (err: any) {
+      console.error(`[db] could not preserve the unreadable copy: ${err?.message || err}`);
+    }
+
+    // Newest backup first — the least data lost that still opens.
+    for (const date of await listAutoBackups()) {
+      const text = await readAutoBackup(date);
+      if (!text) continue;
+      try {
+        const doc = JSON.parse(text) as { stores?: Record<string, unknown> };
+        const restored = doc.stores?.[sid];
+        if (!restored) continue;
+        const json = JSON.stringify(restored);
+        await writeBlob("store", sid, json);
+        fault.recoveredFrom = date;
+        console.error(`[db] store "${sid}" restored from the ${date} backup — anything keyed after ${date} is not in it.`);
+        return JSON.parse(json) as DB;
+      } catch {
+        continue; // that backup is unusable too; try the one before it
+      }
+    }
+
+    // Nothing to fall back on. Say so in words an owner can act on, rather than
+    // letting a bare parse error surface as an unexplained 500. Deliberately NOT
+    // reseeding: an empty shop that looks fine is far worse than a clear stop.
+    throw new Error(
+      `The data file for store "${sid}" is unreadable and no usable backup was found. ` +
+        `The unreadable copy was kept${fault.preservedAs ? ` as "${fault.preservedAs}"` : ""}. ` +
+        `Restore a backup before trading. (${error})`,
+    );
+  }
+}
+
+// Cold loads of the SAME store, in flight at once, share one read.
+//
+// Opening any screen fires several API calls together (session, notifications,
+// business, stats). On a cold cache they used to each read and parse the whole
+// ~1.5 MB document independently — and when the document was unreadable, each
+// one separately preserved a copy and separately restored the backup. Four
+// full-store writes, at the exact moment the shop is already in trouble on a
+// 512 MB instance. So the first caller does the work and the rest await it.
+const inflightLoads = new Map<string, Promise<DB>>();
+
 async function loadDB(sid: string): Promise<DB> {
   const cached = dbCache.get(sid);
   if (cached) {
     touchCache(sid, cached);
     return cached;
   }
-  const raw = await readBlob("store", sid);
-  const db = raw == null ? await seedStore(sid) : backfill(JSON.parse(raw) as DB);
-  touchCache(sid, db);
-  return db;
+  const inflight = inflightLoads.get(sid);
+  if (inflight) return inflight;
+  const load = (async () => {
+    const raw = await readBlob("store", sid);
+    const db = raw == null ? await seedStore(sid) : backfill(await parseOrRecover(sid, raw));
+    touchCache(sid, db);
+    return db;
+  })();
+  // The map holds the load ITSELF, so a caller that joins mid-flight gets the
+  // real result — or the real error. Cleanup hangs off a separate chain whose
+  // rejection is swallowed: an unhandled one here would take the process down,
+  // and this path only ever runs when something is already wrong.
+  inflightLoads.set(sid, load);
+  void load
+    .finally(() => inflightLoads.delete(sid))
+    .catch(() => {});
+  return load;
 }
 
 /** Drop a store's cached copy (e.g. after an out-of-band change). */
